@@ -6,6 +6,7 @@ This client driver connects to a MQTT Broker and can
 - Subscribe to Sparkplug B devices, create and update tags with Sparkplug metrics.
 - Subscribe to regular MQTT topics, create and updated tags with topics with auto-detected payloads like number, string, boolean, JSON, relaxed JSON.
 - Subscribe to regular binary MQTT topics to be saved as files on MongoDB-Gridfs.
+- Subscribe to MQTT topics with OPC UA PubSub JSON payloads to be saved as tags.
 - Publish tags as regular MQTT topics.
 - Publish tags as a Sparkplug B device.
 
@@ -223,6 +224,10 @@ Commands will be listed in the metrics available on the DBIRTH message with the 
 Example topic for Sparkplug B command:
 
     spBv1.0/group_id/edge_node_id/DCMD/device_id/KAW2AL-21XCBR5238----K
+
+## Receive Data Via OPC UA PubSub JSON
+
+OPC UA PubSub JSON data (MessageType="ua-data") messages are received and automatically expanded and processed as tags.
 
 ## Example of JSON-SCADA Protocol Driver Instances and Connections Numbering
 

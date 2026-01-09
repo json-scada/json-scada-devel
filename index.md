@@ -133,11 +133,12 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [ ] IEC 61850 GOOSE/SV Client
 - [x] DNP3 Client TCP/UDP/TLS/Serial - Windows x64 only!
 - [x] DNP3 Server TCP/UDP/TLS/Serial
-- [x] MQTT/Sparkplug-B PUB/SUB TCP/TLS
 - [x] Modbus Client via PLC4X-GO
 - [ ] ICCP Client TCP/TLS
 - [ ] ICCP Server TCP/TLS
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
+- [x] MQTT/Sparkplug-B PUB/SUB TCP/TLS
+- [x] OPC UA PubSub over MQTT with JSON payloads client
 - [x] OPC UA Client TCP/Secure
 - [x] OPC UA Server TCP/Secure
 - [ ] OPC UA Historical Data Server
@@ -191,10 +192,10 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 
 ## Enterprise Services (available on request)
 
-- [ ] Customizations
-- [ ] Linux Image / VM
-- [ ] Managed Cloud Service
-- [ ] Supported LTS versions
+- [x] Customizations
+- [x] Linux Image / VM
+- [x] Managed Cloud Service
+- [x] Supported LTS versions
 
 ## Spin up a free private instance on Google's Firebase Studio
 
