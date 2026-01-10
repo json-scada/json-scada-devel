@@ -1519,6 +1519,25 @@ tbl_prepare: function()
             while (WebSAGE.g_tbl.rows.length>1) 
             WebSAGE.g_tbl.deleteRow(1);
         };      
+
+    // Add tooltip for overflowing cells using event delegation
+    WebSAGE.g_tbl.addEventListener('mouseenter', function(e) {
+        var cell = e.target;
+        if (cell.tagName === 'TD') {
+            // Check if cell content is overflowing
+            if (cell.scrollWidth > cell.clientWidth) {
+                cell.title = cell.textContent || cell.innerText;
+            }
+        }
+    }, true);
+
+    WebSAGE.g_tbl.addEventListener('mouseleave', function(e) {
+        var cell = e.target;
+        if (cell.tagName === 'TD') {
+            cell.title = '';
+        }
+    }, true);
+
   },
 
 showInfo: function()
