@@ -51,7 +51,10 @@ export function Start(interval: number, clientMongo: MongoClient, db: Db, config
 
 // process JSON-SCADA redundancy state for this driver module
 export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db | null, configObj: IConfig) {
-  if (!clientMongo || !db) return
+  if (!clientMongo || !db) {
+    ProcessActive = false
+    return
+  }
 
   Log.levelCurrent = configObj.LogLevel || 1
 
@@ -156,6 +159,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
       }
     }
   } catch (err) {
+    ProcessActive = false
     Log.log('Redundancy - Error: ' + err)
   }
 }

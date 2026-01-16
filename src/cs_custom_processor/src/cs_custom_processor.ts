@@ -20,8 +20,8 @@
 import Log from './simple-logger.js'
 import LoadConfig from './load-config.js'
 import Redundancy from './redundancy.js'
-import { MongoClient } from 'mongodb'
 import { CustomProcessor } from './customized_module.js'
+import { MongoConnectionManager } from './jsonscada-types.js'
 
 process.on('uncaughtException', (err: Error) => Log.log('Uncaught Exception:' + JSON.stringify(err)))
 
@@ -35,75 +35,14 @@ let confFile: string | undefined = undefined
 if (args.length > 2) confFile = args[2]
 
 const jsConfig = LoadConfig(confFile, logLevel, inst)
-const MongoStatus = { HintMongoIsConnected: false }
 
-Log.log('Connecting to MongoDB server...')
+const mongoMgr = new MongoConnectionManager({
+  connectionString: jsConfig.mongoConnectionString,
+  options: jsConfig.MongoConnectionOptions,
+  dbName: jsConfig.mongoDatabaseName,
+})
 
-async function run() {
-  let clientMongo: MongoClient | null = null
-  while (true) {
-    if (clientMongo === null) {
-      try {
-        const client = await MongoClient.connect(
-          jsConfig.mongoConnectionString,
-          jsConfig.MongoConnectionOptions
-        )
-        clientMongo = client
-        MongoStatus.HintMongoIsConnected = true
-        const db = clientMongo.db(jsConfig.mongoDatabaseName)
-        Log.log('Connected correctly to MongoDB server')
-        Redundancy.Start(5000, clientMongo, db, jsConfig, MongoStatus)
-        CustomProcessor(clientMongo, jsConfig, Redundancy, MongoStatus)
-      } catch (err) {
-        if (clientMongo) clientMongo.close()
-        clientMongo = null
-        Log.log(err as string)
-      }
-    }
-
-    // wait 5 seconds
-    await new Promise((resolve) => setTimeout(resolve, 5000))
-
-    // detect connection problems, if error will null the client to later reconnect
-    if (clientMongo === null) {
-      Log.log('Disconnected Mongodb!')
-    } else {
-      if (!(await checkConnectedMongo(clientMongo))) {
-        // not anymore connected, will retry
-        Log.log('Disconnected Mongodb!')
-        if (clientMongo) clientMongo.close()
-        clientMongo = null
-      }
-    }
-  }
-}
-
-run()
-
-// test mongoDB connectivity
-async function checkConnectedMongo(client: MongoClient): Promise<boolean> {
-  if (!client) {
-    return false
-  }
-  const CheckMongoConnectionTimeout = 10000
-  let tr = setTimeout(() => {
-    Log.log('Mongo ping timeout error!')
-    MongoStatus.HintMongoIsConnected = false
-  }, CheckMongoConnectionTimeout)
-
-  let res: any = null
-  try {
-    res = await client.db('admin').command({ ping: 1 })
-    clearTimeout(tr)
-  } catch (e) {
-    Log.log('Error on mongodb connection!')
-    return false
-  }
-  if (res && 'ok' in res && res.ok) {
-    MongoStatus.HintMongoIsConnected = true
-    return true
-  } else {
-    MongoStatus.HintMongoIsConnected = false
-    return false
-  }
-}
+mongoMgr.run((client, db) => {
+  Redundancy.Start(5000, client, db, jsConfig, mongoMgr.status)
+  CustomProcessor(client, jsConfig, Redundancy, mongoMgr.status)
+})
