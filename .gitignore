@@ -1,4 +1,7 @@
 
+*.js.map
+*.d.ts
+*.d.ts.map
 temp/
 data/
 platform-windows/nginx_php/
@@ -10,6 +13,7 @@ platform-windows/*-runtime/
 src/htdocs/htdocs
 src/clients/
 
+src/cs_custom_processor/dist/
 src/backup-mongo/output/
 src/plc4x-client/
 src/calculations/calculations
