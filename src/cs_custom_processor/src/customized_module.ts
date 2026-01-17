@@ -19,14 +19,14 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { Double, MongoClient } from 'mongodb'
+import { MongoClient } from 'mongodb'
 import { setInterval, clearInterval } from 'timers'
 import {
   Log,
   IConfig,
-  ICommandsQueue,
+  // ICommandsQueue,
   IRealtimeData,
-  IUserAction,
+  // IUserAction,
   CollectionNames,
 } from './jsonscada/index.js'
 
