@@ -17,7 +17,7 @@
 
 import { CollectionNames } from './types.js'
 import fs from 'fs'
-import Log from './simple-logger.js'
+import Log from './logger.js'
 import { ReadPreference, MongoClientOptions } from 'mongodb'
 import packageInfo from '../../package.json' with { type: 'json' };
 

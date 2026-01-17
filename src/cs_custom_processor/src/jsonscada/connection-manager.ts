@@ -16,7 +16,7 @@
  */
 
 import { MongoClient, Db } from 'mongodb'
-import Log from './simple-logger.js'
+import Log from './logger.js'
 import LoadConfig, { IConfig } from './load-config.js'
 
 export class MongoConnectionManager {

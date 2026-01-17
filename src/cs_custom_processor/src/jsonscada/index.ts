@@ -18,12 +18,12 @@
 // JSON-SCADA shared types and utilities
 
 export * from './types.js'
-export * from './simple-logger.js'
+export * from './logger.js'
 export * from './load-config.js'
 export * from './redundancy.js'
-export * from './mongo-connection-manager.js'
+export * from './connection-manager.js'
 
-export { default as Log } from './simple-logger.js'
+export { default as Log } from './logger.js'
 export { default as LoadConfig } from './load-config.js'
 export { default as Redundancy } from './redundancy.js'
 

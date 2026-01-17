@@ -17,7 +17,7 @@
 
 import { setInterval, clearInterval } from 'timers'
 import { Double, MongoClient, Db } from 'mongodb'
-import Log from './simple-logger.js'
+import Log from './logger.js'
 import { IConfig } from './load-config.js'
 import { IProtocolDriverInstance } from './types.js'
 import packageInfo from '../../package.json' with { type: 'json' };
