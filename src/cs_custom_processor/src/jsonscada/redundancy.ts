@@ -18,7 +18,7 @@
 import { setInterval, clearInterval } from 'timers'
 import { Double, MongoClient, Db } from 'mongodb'
 import Log from './simple-logger.js'
-import * as AppDefs from './app-defs.js'
+import * as AppDefs from '../app-defs.js'
 import { IConfig } from './load-config.js'
 
 let ProcessActive = false // redundancy state

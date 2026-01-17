@@ -21,16 +21,16 @@
 
 import { Double, MongoClient } from 'mongodb'
 import { setInterval, clearInterval } from 'timers'
-import Log from './simple-logger.js'
-import { IConfig } from './load-config.js'
 import {
+  Log,
+  IConfig,
   ICommandsQueue,
   IRealtimeData,
   IUserAction,
   RealtimeDataCollectionName,
   UserActionsCollectionName,
   CommandsQueueCollectionName,
-} from './jsonscada-types.js'
+} from './jsonscada/index.js'
 
 let CyclicIntervalHandle: NodeJS.Timeout | null = null
 

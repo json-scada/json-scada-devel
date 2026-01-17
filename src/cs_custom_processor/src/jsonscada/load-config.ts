@@ -27,10 +27,10 @@ import {
   ProcessInstancesCollectionName,
   SoeDataCollectionName,
   HistCollectionName,
-} from './jsonscada-types.js'
+} from './types.js'
 import fs from 'fs'
 import Log from './simple-logger.js'
-import * as AppDefs from './app-defs.js'
+import * as AppDefs from '../app-defs.js'
 import { ReadPreference, MongoClientOptions } from 'mongodb'
 
 export interface IConfig {
