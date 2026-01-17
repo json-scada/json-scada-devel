@@ -54,7 +54,7 @@ function LoadConfig (
   instArg?: number
 ): IConfig {
   let configFile =
-    confFileArg || process.env.JS_CONFIG_FILE || '../../conf/json-scada.json'
+    confFileArg || process.env['JS_CONFIG_FILE'] || '../../conf/json-scada.json'
   Log.log('Config - Config File: ' + configFile)
 
   if (!fs.existsSync(configFile)) {

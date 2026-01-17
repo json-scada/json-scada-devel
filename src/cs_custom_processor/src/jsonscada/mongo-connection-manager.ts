@@ -71,7 +71,7 @@ export class MongoConnectionManager {
     if (!client) return false
     try {
       const res = await client.db('admin').command({ ping: 1 })
-      const isOk = res && 'ok' in res && res.ok
+      const isOk = res && 'ok' in res && res['ok']
       this.status.HintMongoIsConnected = !!isOk
       return !!isOk
     } catch (e) {

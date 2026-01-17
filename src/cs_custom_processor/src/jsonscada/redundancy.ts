@@ -20,6 +20,7 @@ import { Double, MongoClient, Db } from 'mongodb'
 import Log from './simple-logger.js'
 import * as AppDefs from '../app-defs.js'
 import { IConfig } from './load-config.js'
+import { IProtocolDriverInstance } from './types.js'
 
 let ProcessActive = false // redundancy state
 let redundancyIntervalHandle: NodeJS.Timeout | null = null // timer handle
@@ -86,7 +87,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
       })
     } else {
       // check for disabled or node not allowed
-      const instance = result
+      const instance = result as IProtocolDriverInstance
       let instKeepAliveTimeTag: string | null = null
 
       if ('activeNodeKeepAliveTimeTag' in instance && instance.activeNodeKeepAliveTimeTag)
