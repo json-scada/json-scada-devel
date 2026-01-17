@@ -18,9 +18,12 @@
 import { setInterval, clearInterval } from 'timers'
 import { Double, MongoClient, Db } from 'mongodb'
 import Log from './simple-logger.js'
-import * as AppDefs from '../app-defs.js'
 import { IConfig } from './load-config.js'
 import { IProtocolDriverInstance } from './types.js'
+import packageInfo from '../../package.json' with { type: 'json' };
+
+const VERSION = packageInfo.version || '0.0.0'
+const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
 
 let ProcessActive = false // redundancy state
 let redundancyIntervalHandle: NodeJS.Timeout | null = null // timer handle
@@ -68,7 +71,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
     const result = await db
       .collection(configObj.ProcessInstancesCollectionName!)
       .findOne({
-        processName: AppDefs.NAME,
+        processName: NAME,
         processInstanceNumber: new Double(configObj.Instance!),
       })
 
@@ -77,7 +80,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
       ProcessActive = true
       Log.log('Redundancy - Instance config not found, creating one...')
       db.collection(configObj.ProcessInstancesCollectionName!).insertOne({
-        processName: AppDefs.NAME,
+        processName: NAME,
         processInstanceNumber: new Double(configObj.Instance!),
         enabled: true,
         logLevel: new Double(1),
@@ -145,14 +148,14 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
         // process active, then update keep alive
         db.collection(configObj.ProcessInstancesCollectionName!).updateOne(
           {
-            processName: AppDefs.NAME,
+            processName: NAME,
             processInstanceNumber: new Double(configObj.Instance!),
           },
           {
             $set: {
               activeNodeName: configObj.nodeName,
               activeNodeKeepAliveTimeTag: new Date(),
-              softwareVersion: AppDefs.VERSION,
+              softwareVersion: VERSION,
               stats: {},
             },
           }

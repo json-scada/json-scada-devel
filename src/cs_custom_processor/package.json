@@ -1,9 +1,12 @@
 {
   "name": "cs_custom_processor",
-  "version": "1.0.0",
-  "description": "Customizable processor of mongodb changes.",
+  "version": "0.2.0",
+  "description": "{json:scada} - Change Stream Custom Processor.",
   "type": "module",
   "main": "dist/cs_custom_processor.js",
+  "config": {
+    "envPrefix": "JS_CSCUSTOMPROC_"
+  },
   "scripts": {
     "build": "tsc",
     "start": "node dist/cs_custom_processor.js",
@@ -14,7 +17,7 @@
   "author": "Ricardo Lastra Olsen",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "mongodb": "^7.0.0"
+    "mongodb": "^8.0.0"
   },
   "devDependencies": {
     "@types/mongodb": "^4.0.6",

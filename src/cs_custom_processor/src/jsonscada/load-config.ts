@@ -18,8 +18,13 @@
 import { CollectionNames } from './types.js'
 import fs from 'fs'
 import Log from './simple-logger.js'
-import * as AppDefs from '../app-defs.js'
 import { ReadPreference, MongoClientOptions } from 'mongodb'
+import packageInfo from '../../package.json' with { type: 'json' };
+
+const ENV_PREFIX = packageInfo.config.envPrefix || 'JS_CSCUSTOMPROC_'
+const MSG = packageInfo.description || '{json:scada} - Change Stream Custom Processor.'
+const VERSION = packageInfo.version || '0.0.0'
+const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
 
 export interface IConfig {
   mongoConnectionString: string
@@ -73,16 +78,16 @@ function LoadConfig (
   }
 
   Log.levelCurrent = Log.levelNormal
-  if (AppDefs.ENV_PREFIX + 'LOGLEVEL' in process.env)
+  if (ENV_PREFIX + 'LOGLEVEL' in process.env)
     Log.levelCurrent = parseInt(
-      process.env[AppDefs.ENV_PREFIX + 'LOGLEVEL'] || '1'
+      process.env[ENV_PREFIX + 'LOGLEVEL'] || '1'
     )
   if (logLevelArg) Log.levelCurrent = parseInt(logLevelArg)
   configObj.LogLevel = Log.levelCurrent
 
   configObj.Instance =
     instArg ||
-    parseInt(process.env[AppDefs.ENV_PREFIX + 'INSTANCE'] || '1') ||
+    parseInt(process.env[ENV_PREFIX + 'INSTANCE'] || '1') ||
     1
 
   configObj.GridFsCollectionName = CollectionNames.GridFs
@@ -96,7 +101,7 @@ function LoadConfig (
   configObj.GroupSep = '~'
   configObj.ConnectionNumber = 0
 
-  Log.log('Config - ' + AppDefs.MSG + ' Version ' + AppDefs.VERSION)
+  Log.log('Config - ' + MSG + ' Version ' + VERSION)
   Log.log('Config - Instance: ' + configObj.Instance)
   Log.log('Config - Log level: ' + Log.levelCurrent)
 
@@ -110,9 +115,9 @@ function getMongoConnectionOptions (configObj: IConfig): MongoClientOptions {
     // useNewUrlParser: true,
     // useUnifiedTopology: true,
     appName:
-      AppDefs.NAME +
+      NAME +
       ' Version:' +
-      AppDefs.VERSION +
+      VERSION +
       ' Instance:' +
       configObj.Instance,
     maxPoolSize: 20,
