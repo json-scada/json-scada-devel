@@ -15,19 +15,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import {
-  GridFsCollectionName,
-  RealtimeDataCollectionName,
-  UserActionsCollectionName,
-  CommandsQueueCollectionName,
-  UsersCollectionName,
-  RolesCollectionName,
-  ProtocolDriverInstancesCollectionName,
-  ProtocolConnectionsCollectionName,
-  ProcessInstancesCollectionName,
-  SoeDataCollectionName,
-  HistCollectionName,
-} from './types.js'
+import { CollectionNames } from './types.js'
 import fs from 'fs'
 import Log from './simple-logger.js'
 import * as AppDefs from '../app-defs.js'
@@ -97,14 +85,14 @@ function LoadConfig (
     parseInt(process.env[AppDefs.ENV_PREFIX + 'INSTANCE'] || '1') ||
     1
 
-  configObj.GridFsCollectionName = GridFsCollectionName
-  configObj.RealtimeDataCollectionName = RealtimeDataCollectionName
-  configObj.UsersCollectionName = UsersCollectionName
-  configObj.SoeDataCollectionName = SoeDataCollectionName
-  configObj.CommandsQueueCollectionName = CommandsQueueCollectionName
-  configObj.ProtocolDriverInstancesCollectionName = ProtocolDriverInstancesCollectionName
-  configObj.ProtocolConnectionsCollectionName = ProtocolConnectionsCollectionName
-  configObj.ProcessInstancesCollectionName = ProcessInstancesCollectionName
+  configObj.GridFsCollectionName = CollectionNames.GridFs
+  configObj.RealtimeDataCollectionName = CollectionNames.RealtimeData
+  configObj.UsersCollectionName = CollectionNames.Users
+  configObj.SoeDataCollectionName = CollectionNames.SoeData
+  configObj.CommandsQueueCollectionName = CollectionNames.CommandsQueue
+  configObj.ProtocolDriverInstancesCollectionName = CollectionNames.ProtocolDriverInstances
+  configObj.ProtocolConnectionsCollectionName = CollectionNames.ProtocolConnections
+  configObj.ProcessInstancesCollectionName = CollectionNames.ProcessInstances
   configObj.GroupSep = '~'
   configObj.ConnectionNumber = 0
 

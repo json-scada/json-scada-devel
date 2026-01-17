@@ -27,9 +27,7 @@ import {
   ICommandsQueue,
   IRealtimeData,
   IUserAction,
-  RealtimeDataCollectionName,
-  UserActionsCollectionName,
-  CommandsQueueCollectionName,
+  CollectionNames,
 } from './jsonscada/index.js'
 
 let CyclicIntervalHandle: NodeJS.Timeout | null = null
@@ -64,7 +62,7 @@ export const CustomProcessor = function (
 
     try {
       let res: unknown = await db
-        .collection(RealtimeDataCollectionName)
+        .collection(CollectionNames.RealtimeData)
         .findOne({ _id: -2 as any }) // id of point tag with number of digital updates
 
       if (res) {
@@ -93,7 +91,7 @@ export const CustomProcessor = function (
   // BEGIN EXAMPLE
 
   const changeStreamUserActions = db
-    .collection<IUserAction>(UserActionsCollectionName)
+    .collection<IUserAction>(CollectionNames.UserActions)
     .watch(
       [{ $match: { operationType: 'insert' } }], // will listen only for insert operations
       {
@@ -128,7 +126,7 @@ export const CustomProcessor = function (
         Log.log('Custom Process - Generating Interrogation Request')
 
         // insert a command for requesting general interrogation on a IEC 104 connection
-        db.collection(CommandsQueueCollectionName).insertOne({
+        db.collection(CollectionNames.CommandsQueue).insertOne({
           protocolSourceConnectionNumber: new Double(61), // put here number of connection (101/104 client)
           protocolSourceCommonAddress: new Double(1), // put here common address to interrogate
           protocolSourceObjectAddress: new Double(0), // should be 0 for general interrogation

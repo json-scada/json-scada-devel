@@ -17,17 +17,19 @@
 
 import { Double, ObjectId } from 'mongodb'
 
-export const UserActionsCollectionName = 'userActions'
-export const UsersCollectionName = 'users'
-export const RolesCollectionName = 'roles'
-export const GridFsCollectionName = 'files'
-export const RealtimeDataCollectionName = 'realtimeData'
-export const SoeDataCollectionName = 'soeData'
-export const CommandsQueueCollectionName = 'commandsQueue'
-export const ProcessInstancesCollectionName = 'processInstances'
-export const ProtocolDriverInstancesCollectionName = 'protocolDriverInstances'
-export const ProtocolConnectionsCollectionName = 'protocolConnections'
-export const HistCollectionName = 'hist'
+export const CollectionNames = {
+  UserActions: 'userActions',
+  Users: 'users',
+  Roles: 'roles',
+  GridFs: 'files',
+  RealtimeData: 'realtimeData',
+  SoeData: 'soeData',
+  CommandsQueue: 'commandsQueue',
+  ProcessInstances: 'processInstances',
+  ProtocolDriverInstances: 'protocolDriverInstances',
+  ProtocolConnections: 'protocolConnections',
+  Hist: 'hist',
+} as const
 
 export type ProtocolDriverName =
   | 'IEC60870-5-104'
