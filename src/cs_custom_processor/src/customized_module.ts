@@ -19,11 +19,10 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { Double, MongoClient } from 'mongodb'
+import { Db, Double, MongoClient } from 'mongodb'
 import { setInterval, clearInterval } from 'timers'
 import {
   Log,
-  IConfig,
   ICommandsQueue,
   IRealtimeData,
   IUserAction,
@@ -43,12 +42,11 @@ export interface IRedundancy {
 // this will be called by the main module when mongo is connected (or reconnected)
 export const CustomProcessor = function (
   clientMongo: MongoClient | null,
-  jsConfig: IConfig,
+  db: Db,
   Redundancy: IRedundancy,
   MongoStatus: IMongoStatus
 ) {
   if (clientMongo === null) return
-  const db = clientMongo.db(jsConfig.mongoDatabaseName)
 
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CYCLIC PROCESSING AT INTERVALS

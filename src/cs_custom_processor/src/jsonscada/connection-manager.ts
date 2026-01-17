@@ -22,6 +22,7 @@ import LoadConfig, { IConfig } from './load-config.js'
 export class MongoConnectionManager {
   public status = { HintMongoIsConnected: false }
   public jsConfig!: IConfig
+  public db!: Db
   private client: MongoClient | null = null
 
   constructor() {
@@ -47,9 +48,9 @@ export class MongoConnectionManager {
             this.jsConfig.MongoConnectionOptions
           )
           this.status.HintMongoIsConnected = true
-          const db = this.client.db(this.jsConfig.mongoDatabaseName)
+          this.db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
-          onConnect(this.client, db)
+          onConnect(this.client, this.db)
         } catch (err) {
           if (this.client) (this.client as MongoClient).close()
           this.client = null
