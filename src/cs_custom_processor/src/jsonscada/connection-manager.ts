@@ -20,7 +20,7 @@ import Log from './logger.js'
 import LoadConfig, { IConfig } from './load-config.js'
 import Redundancy from './redundancy.js'
 
-export class MongoConnectionManager {
+export class ConnectionManager {
   public status = { HintMongoIsConnected: false }
   public jsConfig!: IConfig
   public db!: Db
