@@ -18,14 +18,18 @@
 import { MongoClient, Db } from 'mongodb'
 import Log from './logger.js'
 import LoadConfig, { IConfig } from './load-config.js'
+import Redundancy from './redundancy.js'
 
 export class MongoConnectionManager {
   public status = { HintMongoIsConnected: false }
   public jsConfig!: IConfig
   public db!: Db
-  public client!: MongoClient | null
+  public client: MongoClient | null = null
+  private manageRedundancy: boolean = false
 
-  constructor() {
+  constructor(options?: { manageRedundancy?: boolean }) {
+    this.manageRedundancy = options?.manageRedundancy || false
+    Redundancy.ProcessActive = !this.manageRedundancy
     const args = process.argv.slice(2)
     let inst: number | undefined = undefined
     if (args.length > 0) inst = parseInt(args[0]!)
@@ -50,6 +54,9 @@ export class MongoConnectionManager {
           this.status.HintMongoIsConnected = true
           this.db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
+          if (this.manageRedundancy) {
+            Redundancy.Start(5000, this.client, this.db, this.jsConfig, this.status)
+          }
           onConnect(this.client, this.db)
         } catch (err) {
           if (this.client) (this.client as MongoClient).close()

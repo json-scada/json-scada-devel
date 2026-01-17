@@ -16,7 +16,8 @@
  */
 
 // JSON-SCADA shared types and utilities
-
+import { Double, ObjectId, MongoClient, Db } from 'mongodb'
+export { Double, ObjectId, MongoClient, Db }
 export * from './types.js'
 export * from './logger.js'
 export * from './load-config.js'

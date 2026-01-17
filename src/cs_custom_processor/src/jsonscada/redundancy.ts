@@ -25,7 +25,7 @@ import packageInfo from '../../package.json' with { type: 'json' };
 const VERSION = packageInfo.version || '0.0.0'
 const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
 
-let ProcessActive = false // redundancy state
+export let ProcessActive = false // redundancy state
 let redundancyIntervalHandle: NodeJS.Timeout | null = null // timer handle
 
 interface RedundancyStats {
@@ -176,4 +176,5 @@ export default {
   ProcessRedundancy,
   Start,
   ProcessStateIsActive,
+  ProcessActive,
 }

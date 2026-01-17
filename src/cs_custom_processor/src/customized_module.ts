@@ -19,7 +19,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { Db, Double, MongoClient } from 'mongodb'
 import { setInterval, clearInterval } from 'timers'
 import {
   Log,
@@ -27,26 +26,16 @@ import {
   IRealtimeData,
   IUserAction,
   CollectionNames,
+  Redundancy,
+  MongoConnectionManager,
+  Double,
 } from './jsonscada/index.js'
 
 let CyclicIntervalHandle: NodeJS.Timeout | null = null
 
-export interface IMongoStatus {
-  HintMongoIsConnected: boolean
-}
-
-export interface IRedundancy {
-  ProcessStateIsActive: () => boolean
-}
-
 // this will be called by the main module when mongo is connected (or reconnected)
-export const CustomProcessor = function (
-  clientMongo: MongoClient | null,
-  db: Db,
-  Redundancy: IRedundancy,
-  MongoStatus: IMongoStatus
-) {
-  if (clientMongo === null) return
+export const CustomProcessor = function (mongoMgr: MongoConnectionManager) {
+  if (mongoMgr.client === null) return
 
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CYCLIC PROCESSING AT INTERVALS
@@ -55,11 +44,11 @@ export const CustomProcessor = function (
   let CyclicProcess = async function () {
     // do cyclic processing at each CyclicInterval ms
 
-    if (!Redundancy.ProcessStateIsActive() || !MongoStatus.HintMongoIsConnected)
+    if (!Redundancy.ProcessStateIsActive() || !mongoMgr.status.HintMongoIsConnected)
       return // do nothing if process is inactive
 
     try {
-      let res = await db
+      let res = await mongoMgr.db
         .collection(CollectionNames.RealtimeData)
         .findOne({ _id: -2 as any }) // id of point tag with number of digital updates
 
@@ -88,7 +77,7 @@ export const CustomProcessor = function (
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // BEGIN EXAMPLE
 
-  const changeStreamUserActions = db
+  const changeStreamUserActions = mongoMgr.db
     .collection<IUserAction>(CollectionNames.UserActions)
     .watch(
       [{ $match: { operationType: 'insert' } }], // will listen only for insert operations
@@ -99,7 +88,7 @@ export const CustomProcessor = function (
 
   try {
     changeStreamUserActions.on('error', () => {
-      if (clientMongo) clientMongo.close()
+      if (mongoMgr.client) mongoMgr.client.close()
       // clientMongo = null
       Log.log('Custom Process - Error on changeStreamUserActions!')
     })
@@ -107,7 +96,7 @@ export const CustomProcessor = function (
       Log.log('Custom Process - Closed changeStreamUserActions!')
     })
     changeStreamUserActions.on('end', () => {
-      if (clientMongo) clientMongo.close()
+      if (mongoMgr.client) mongoMgr.client.close()
       // clientMongo = null
       Log.log('Custom Process - Ended changeStreamUserActions!')
     })
@@ -124,7 +113,7 @@ export const CustomProcessor = function (
         Log.log('Custom Process - Generating Interrogation Request')
 
         // insert a command for requesting general interrogation on a IEC 104 connection
-        db.collection(CollectionNames.CommandsQueue).insertOne({
+        mongoMgr.db.collection(CollectionNames.CommandsQueue).insertOne({
           protocolSourceConnectionNumber: new Double(61), // put here number of connection (101/104 client)
           protocolSourceCommonAddress: new Double(1), // put here common address to interrogate
           protocolSourceObjectAddress: new Double(0), // should be 0 for general interrogation
