@@ -25,7 +25,6 @@ import packageInfo from '../../package.json' with { type: 'json' };
 const VERSION = packageInfo.version || '0.0.0'
 const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
 
-export let ProcessActive = false // redundancy state
 let redundancyIntervalHandle: NodeJS.Timeout | null = null // timer handle
 
 interface RedundancyStats {
@@ -39,13 +38,19 @@ const stats: RedundancyStats = {
 };
 
 // start processing redundancy
-export function Start(interval: number, clientMongo: MongoClient, db: Db, configObj: IConfig, MongoStatus: { HintMongoIsConnected: boolean }) {
+export function Start(
+  interval: number,
+  clientMongo: MongoClient,
+  db: Db,
+  configObj: IConfig,
+  MongoStatus: { HintMongoIsConnected: boolean }
+) {
   // check and update redundancy control
   ProcessRedundancy(clientMongo, db, configObj)
   if (redundancyIntervalHandle) clearInterval(redundancyIntervalHandle)
   redundancyIntervalHandle = setInterval(function () {
     if (!MongoStatus.HintMongoIsConnected) {
-      ProcessActive = false
+      Redundancy.ProcessActive = false
       return
     }
 
@@ -54,9 +59,13 @@ export function Start(interval: number, clientMongo: MongoClient, db: Db, config
 }
 
 // process JSON-SCADA redundancy state for this driver module
-export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db | null, configObj: IConfig) {
+export async function ProcessRedundancy(
+  clientMongo: MongoClient | null,
+  db: Db | null,
+  configObj: IConfig
+) {
   if (!clientMongo || !db) {
-    ProcessActive = false
+    Redundancy.ProcessActive = false
     return
   }
 
@@ -64,7 +73,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
 
   const countKeepAliveUpdatesLimit = 4
 
-  Log.log('Redundancy - Process ' + (ProcessActive ? 'Active' : 'Inactive'))
+  Log.log('Redundancy - Process ' + (Redundancy.ProcessActive ? 'Active' : 'Inactive'))
 
   try {
     // look for process instance entry, if not found create a new entry
@@ -77,7 +86,7 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
 
     if (!result) {
       // not found, then create
-      ProcessActive = true
+      Redundancy.ProcessActive = true
       Log.log('Redundancy - Instance config not found, creating one...')
       db.collection(configObj.ProcessInstancesCollectionName!).insertOne({
         processName: NAME,
@@ -93,34 +102,38 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
       const instance = result as IProtocolDriverInstance
       let instKeepAliveTimeTag: string | null = null
 
-      if ('activeNodeKeepAliveTimeTag' in instance && instance.activeNodeKeepAliveTimeTag)
+      if (
+        'activeNodeKeepAliveTimeTag' in instance &&
+        instance.activeNodeKeepAliveTimeTag
+      )
         instKeepAliveTimeTag = (instance.activeNodeKeepAliveTimeTag as Date).toISOString()
 
       if (instance?.enabled === false) {
         Log.log('Redundancy - Instance disabled, exiting...')
         process.exit()
       }
-      if (instance?.nodeNames !== null && Array.isArray(instance.nodeNames) && instance.nodeNames.length > 0) {
+      if (
+        instance?.nodeNames !== null &&
+        Array.isArray(instance.nodeNames) &&
+        instance.nodeNames.length > 0
+      ) {
         if (!instance.nodeNames.includes(configObj.nodeName as string)) {
           Log.log('Redundancy - Node name not allowed, exiting...')
           process.exit()
         }
       }
       if (instance?.activeNodeName === configObj.nodeName) {
-        if (!ProcessActive) Log.log('Redundancy - Node activated!')
+        if (!Redundancy.ProcessActive) Log.log('Redundancy - Node activated!')
         stats.countKeepAliveNotUpdated = 0
-        ProcessActive = true
+        Redundancy.ProcessActive = true
       } else {
         // other node active
-        if (ProcessActive) {
+        if (Redundancy.ProcessActive) {
           Log.log('Redundancy - Node deactivated!')
           stats.countKeepAliveNotUpdated = 0
         }
-        ProcessActive = false
-        if (
-          stats.lastActiveNodeKeepAliveTimeTag ===
-          instKeepAliveTimeTag
-        ) {
+        Redundancy.ProcessActive = false
+        if (stats.lastActiveNodeKeepAliveTimeTag === instKeepAliveTimeTag) {
           stats.countKeepAliveNotUpdated++
           Log.log(
             'Redundancy - Keep-alive from active node not updated. ' +
@@ -133,18 +146,15 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
           )
         }
         stats.lastActiveNodeKeepAliveTimeTag = instKeepAliveTimeTag
-        if (
-          stats.countKeepAliveNotUpdated >
-          countKeepAliveUpdatesLimit
-        ) {
+        if (stats.countKeepAliveNotUpdated > countKeepAliveUpdatesLimit) {
           // cnt exceeded, be active
           stats.countKeepAliveNotUpdated = 0
           Log.log('Redundancy - Node activated!')
-          ProcessActive = true
+          Redundancy.ProcessActive = true
         }
       }
 
-      if (ProcessActive) {
+      if (Redundancy.ProcessActive) {
         // process active, then update keep alive
         db.collection(configObj.ProcessInstancesCollectionName!).updateOne(
           {
@@ -163,18 +173,20 @@ export async function ProcessRedundancy(clientMongo: MongoClient | null, db: Db 
       }
     }
   } catch (err) {
-    ProcessActive = false
+    Redundancy.ProcessActive = false
     Log.log('Redundancy - Error: ' + err)
   }
 }
 
 export function ProcessStateIsActive() {
-  return ProcessActive
+  return Redundancy.ProcessActive
 }
 
-export default {
+export const Redundancy = {
+  ProcessActive: false,
   ProcessRedundancy,
   Start,
   ProcessStateIsActive,
-  ProcessActive,
 }
+
+export default Redundancy
