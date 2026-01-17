@@ -19,14 +19,14 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { MongoClient } from 'mongodb'
+import { Double, MongoClient } from 'mongodb'
 import { setInterval, clearInterval } from 'timers'
 import {
   Log,
   IConfig,
-  // ICommandsQueue,
+  ICommandsQueue,
   IRealtimeData,
-  // IUserAction,
+  IUserAction,
   CollectionNames,
 } from './jsonscada/index.js'
 
@@ -61,14 +61,14 @@ export const CustomProcessor = function (
       return // do nothing if process is inactive
 
     try {
-      let res: unknown = await db
+      let res = await db
         .collection(CollectionNames.RealtimeData)
         .findOne({ _id: -2 as any }) // id of point tag with number of digital updates
 
       if (res) {
         Log.log(
           'Custom Process - Checking number of digital updates: ' +
-            (res as IRealtimeData).valueString
+            (res as unknown as IRealtimeData).valueString
         )
       }
     } catch (err) {
@@ -85,7 +85,7 @@ export const CustomProcessor = function (
   // END EXAMPLE
   // -------------------------------------------------------------------------------------------
 
-  /*
+  
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // BEGIN EXAMPLE
@@ -100,7 +100,7 @@ export const CustomProcessor = function (
     )
 
   try {
-    changeStreamUserActions.on('error', (change) => {
+    changeStreamUserActions.on('error', () => {
       if (clientMongo) clientMongo.close()
       // clientMongo = null
       Log.log('Custom Process - Error on changeStreamUserActions!')
@@ -155,7 +155,7 @@ export const CustomProcessor = function (
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // END EXAMPLE
-  */
+  
 }
 
 export default {
