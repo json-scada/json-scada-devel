@@ -25,6 +25,7 @@ export class MongoConnectionManager {
   public jsConfig!: IConfig
   public db!: Db
   public client: MongoClient | null = null
+  public redundancy = Redundancy
   private manageRedundancy: boolean = false
 
   constructor(options?: { manageRedundancy?: boolean }) {
@@ -55,7 +56,7 @@ export class MongoConnectionManager {
           this.db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
           if (this.manageRedundancy) {
-            Redundancy.Start(5000, this.client, this.db, this.jsConfig, this.status)
+            this.redundancy.Start(5000, this.client, this.db, this.jsConfig, this.status)
           }
           onConnect(this.client, this.db)
         } catch (err) {

@@ -26,7 +26,6 @@ import {
   IRealtimeData,
   IUserAction,
   CollectionNames,
-  Redundancy,
   MongoConnectionManager,
   Double,
 } from './jsonscada/index.js'
@@ -44,7 +43,7 @@ export const CustomProcessor = function (mongoMgr: MongoConnectionManager) {
   let CyclicProcess = async function () {
     // do cyclic processing at each CyclicInterval ms
 
-    if (!Redundancy.ProcessStateIsActive() || !mongoMgr.status.HintMongoIsConnected)
+    if (!mongoMgr.redundancy.ProcessStateIsActive() || !mongoMgr.status.HintMongoIsConnected)
       return // do nothing if process is inactive
 
     try {
@@ -105,7 +104,7 @@ export const CustomProcessor = function (mongoMgr: MongoConnectionManager) {
     changeStreamUserActions.on('change', (change) => {
       // Log.log(change.fullDocument)
 
-      if (!Redundancy.ProcessStateIsActive()) return // do nothing if process is inactive
+      if (!mongoMgr.redundancy.ProcessStateIsActive()) return // do nothing if process is inactive
       if (change.operationType != 'insert') return // do nothing if operation is not insert
 
       // when operator acks all alarms
