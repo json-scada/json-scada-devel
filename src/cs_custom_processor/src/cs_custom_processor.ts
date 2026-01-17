@@ -26,5 +26,5 @@ const mongoMgr = new MongoConnectionManager()
 
 mongoMgr.run((client, db) => {
   Redundancy.Start(5000, client, db, mongoMgr.jsConfig, mongoMgr.status)
-  CustomProcessor(client, mongoMgr.db, Redundancy, mongoMgr.status)
+  CustomProcessor(client, db, Redundancy, mongoMgr.status)
 })

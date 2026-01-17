@@ -23,7 +23,7 @@ export class MongoConnectionManager {
   public status = { HintMongoIsConnected: false }
   public jsConfig!: IConfig
   public db!: Db
-  private client: MongoClient | null = null
+  public client!: MongoClient | null
 
   constructor() {
     const args = process.argv.slice(2)
