@@ -17,29 +17,14 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { Log, LoadConfig, Redundancy, MongoConnectionManager } from './jsonscada/index.js'
+import { Log, Redundancy, MongoConnectionManager } from './jsonscada/index.js'
 import { CustomProcessor } from './customized_module.js'
 
 process.on('uncaughtException', (err: Error) => Log.log('Uncaught Exception:' + JSON.stringify(err)))
 
-const args = process.argv.slice(2)
-let inst: number | undefined = undefined
-if (args.length > 0) inst = parseInt(args[0])
-
-let logLevel: string | undefined = undefined
-if (args.length > 1) logLevel = args[1]
-let confFile: string | undefined = undefined
-if (args.length > 2) confFile = args[2]
-
-const jsConfig = LoadConfig(confFile, logLevel, inst)
-
-const mongoMgr = new MongoConnectionManager({
-  connectionString: jsConfig.mongoConnectionString,
-  options: jsConfig.MongoConnectionOptions,
-  dbName: jsConfig.mongoDatabaseName,
-})
+const mongoMgr = new MongoConnectionManager()
 
 mongoMgr.run((client, db) => {
-  Redundancy.Start(5000, client, db, jsConfig, mongoMgr.status)
-  CustomProcessor(client, jsConfig, Redundancy, mongoMgr.status)
+  Redundancy.Start(5000, client, db, mongoMgr.jsConfig, mongoMgr.status)
+  CustomProcessor(client, mongoMgr.jsConfig, Redundancy, mongoMgr.status)
 })

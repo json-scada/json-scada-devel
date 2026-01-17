@@ -15,22 +15,26 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { MongoClient, MongoClientOptions, Db } from 'mongodb'
+import { MongoClient, Db } from 'mongodb'
 import Log from './simple-logger.js'
-
-export interface IMongoConnectionConfig {
-  connectionString: string
-  options?: MongoClientOptions
-  dbName: string
-}
+import LoadConfig, { IConfig } from './load-config.js'
 
 export class MongoConnectionManager {
   public status = { HintMongoIsConnected: false }
+  public jsConfig!: IConfig
   private client: MongoClient | null = null
-  private config: IMongoConnectionConfig
 
-  constructor(config: IMongoConnectionConfig) {
-    this.config = config
+  constructor() {
+    const args = process.argv.slice(2)
+    let inst: number | undefined = undefined
+    if (args.length > 0) inst = parseInt(args[0]!)
+
+    let logLevel: string | undefined = undefined
+    if (args.length > 1) logLevel = args[1]
+    let confFile: string | undefined = undefined
+    if (args.length > 2) confFile = args[2]
+
+    this.jsConfig = LoadConfig(confFile, logLevel, inst)
   }
 
   public async run(onConnect: (client: MongoClient, db: Db) => void) {
@@ -38,9 +42,12 @@ export class MongoConnectionManager {
     while (true) {
       if (this.client === null) {
         try {
-          this.client = await MongoClient.connect(this.config.connectionString, this.config.options)
+          this.client = await MongoClient.connect(
+            this.jsConfig.mongoConnectionString,
+            this.jsConfig.MongoConnectionOptions
+          )
           this.status.HintMongoIsConnected = true
-          const db = this.client.db(this.config.dbName)
+          const db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
           onConnect(this.client, db)
         } catch (err) {
