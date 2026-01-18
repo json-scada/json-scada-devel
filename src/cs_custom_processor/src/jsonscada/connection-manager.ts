@@ -19,6 +19,19 @@ import { MongoClient, Db } from 'mongodb'
 import Log from './logger.js'
 import LoadConfig, { IConfig } from './load-config.js'
 import Redundancy from './redundancy.js'
+import {
+  CollectionNames,
+  IRealtimeData,
+  ICommandsQueue,
+  IUserAction,
+  ISoeData,
+  IProcessInstance,
+  IProtocolDriverInstance,
+  IProtocolConnection,
+  IUser,
+  IRole,
+  IHist,
+} from './types.js'
 
 export class ConnectionManager {
   public status = { HintMongoIsConnected: false }
@@ -95,5 +108,45 @@ export class ConnectionManager {
       this.status.HintMongoIsConnected = false
       return false
     }
+  }
+
+  public getRealtimeDataCollection() {
+    return this.db.collection<IRealtimeData>(CollectionNames.RealtimeData)
+  }
+
+  public getCommandsQueueCollection() {
+    return this.db.collection<ICommandsQueue>(CollectionNames.CommandsQueue)
+  }
+
+  public getUserActionsCollection() {
+    return this.db.collection<IUserAction>(CollectionNames.UserActions)
+  }
+
+  public getSoeDataCollection() {
+    return this.db.collection<ISoeData>(CollectionNames.SoeData)
+  }
+
+  public getProcessInstancesCollection() {
+    return this.db.collection<IProcessInstance>(CollectionNames.ProcessInstances)
+  }
+
+  public getProtocolDriverInstancesCollection() {
+    return this.db.collection<IProtocolDriverInstance>(CollectionNames.ProtocolDriverInstances)
+  }
+
+  public getProtocolConnectionsCollection() {
+    return this.db.collection<IProtocolConnection>(CollectionNames.ProtocolConnections)
+  }
+
+  public getUsersCollection() {
+    return this.db.collection<IUser>(CollectionNames.Users)
+  }
+
+  public getRolesCollection() {
+    return this.db.collection<IRole>(CollectionNames.Roles)
+  }
+
+  public getHistCollection() {
+    return this.db.collection<IHist>(CollectionNames.Hist)
   }
 }

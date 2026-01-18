@@ -22,12 +22,8 @@
 import { setInterval, clearInterval } from 'timers'
 import {
   Log,
-  ICommandsQueue,
-  IRealtimeData,
-  IUserAction,
-  CollectionNames,
-  ConnectionManager,
   Double,
+  ConnectionManager,
 } from './jsonscada/index.js'
 
 let CyclicIntervalHandle: NodeJS.Timeout | null = null
@@ -47,14 +43,13 @@ export const CustomProcessor = function (mgr: ConnectionManager) {
       return // do nothing if process is inactive
 
     try {
-      let res = await mgr.db
-        .collection(CollectionNames.RealtimeData)
-        .findOne({ _id: -2 as any }) // id of point tag with number of digital updates
+      let res = await mgr.getRealtimeDataCollection()
+        .findOne({ _id: -2 }) // id of point tag with number of digital updates
 
       if (res) {
         Log.log(
           'Custom Process - Checking number of digital updates: ' +
-            (res as unknown as IRealtimeData).valueString
+            res.valueString
         )
       }
     } catch (err) {
@@ -76,8 +71,7 @@ export const CustomProcessor = function (mgr: ConnectionManager) {
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // BEGIN EXAMPLE
 
-  const changeStreamUserActions = mgr.db
-    .collection<IUserAction>(CollectionNames.UserActions)
+  const changeStreamUserActions = mgr.getUserActionsCollection()
     .watch(
       [{ $match: { operationType: 'insert' } }], // will listen only for insert operations
       {
@@ -110,7 +104,7 @@ export const CustomProcessor = function (mgr: ConnectionManager) {
         Log.log('Custom Process - Generating Interrogation Request')
 
         // insert a command for requesting general interrogation on a IEC 104 connection
-        mgr.db.collection(CollectionNames.CommandsQueue).insertOne({
+        mgr.getCommandsQueueCollection().insertOne({
           protocolSourceConnectionNumber: new Double(61), // put here number of connection (101/104 client)
           protocolSourceCommonAddress: new Double(1), // put here common address to interrogate
           protocolSourceObjectAddress: new Double(0), // should be 0 for general interrogation
@@ -129,7 +123,7 @@ export const CustomProcessor = function (mgr: ConnectionManager) {
             change.fullDocument?.username, // just for documentation of user action
           originatorIpAddress: '',
           delivered: false,
-        } as ICommandsQueue)
+        })
       }
     })
   } catch (e) {
