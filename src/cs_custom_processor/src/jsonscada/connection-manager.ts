@@ -17,7 +17,7 @@
 
 import { MongoClient, Db } from 'mongodb'
 import Log from './logger.js'
-import LoadConfig, { IConfig } from './load-config.js'
+import LoadConfig, { IConfig } from './config.js'
 import Redundancy from './redundancy.js'
 import {
   CollectionNames,

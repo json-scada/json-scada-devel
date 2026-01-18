@@ -103,8 +103,6 @@ function LoadConfig (
 // prepare mongo connection options
 function getMongoConnectionOptions (configObj: IConfig): MongoClientOptions {
   let connOptions: MongoClientOptions = {
-    // useNewUrlParser: true,
-    // useUnifiedTopology: true,
     appName:
       NAME +
       ' Version:' +

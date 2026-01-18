@@ -20,9 +20,9 @@ import { Double, ObjectId, MongoClient, Db } from 'mongodb'
 export { Double, ObjectId, MongoClient, Db }
 export * from './types.js'
 export * from './logger.js'
-export * from './load-config.js'
+export * from './config.js'
 export * from './connection-manager.js'
 
 export { default as Log } from './logger.js'
-export { default as LoadConfig } from './load-config.js'
+export { default as LoadConfig } from './config.js'
 
