@@ -120,6 +120,7 @@ call %NPM% update
 cd %SRCPATH%\cs_custom_processor
 call %NPM% i --package-lock-only
 call %NPM% update
+call %NPM% run build
 cd %SRCPATH%\oshmi2json
 call %NPM% i --package-lock-only
 call %NPM% update

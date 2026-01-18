@@ -47,12 +47,12 @@ nssm set JSON_SCADA_cs_data_processor AppRotateOnline 1
 nssm set JSON_SCADA_cs_data_processor AppRotateBytes 10000000
 nssm set JSON_SCADA_cs_data_processor Start SERVICE_AUTO_START
 
-nssm install JSON_SCADA_cs_custom_processor "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\cs_custom_processor\cs_custom_processor.js" 1 1 "c:\json-scada\conf\json-scada.json"
+nssm install JSON_SCADA_cs_custom_processor "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\cs_custom_processor\dist\cs_custom_processor.js" 1 1 "c:\json-scada\conf\json-scada.json"
 nssm set JSON_SCADA_cs_custom_processor AppDirectory "C:\json-scada\src\cs_custom_processor"
 nssm set JSON_SCADA_cs_custom_processor AppStdout C:\json-scada\log\cs_custom_processor.log
 nssm set JSON_SCADA_cs_custom_processor AppRotateOnline 1
 nssm set JSON_SCADA_cs_custom_processor AppRotateBytes 10000000
-nssm set JSON_SCADA_cs_custom_processor Start SERVICE_AUTO_START
+nssm set JSON_SCADA_cs_custom_processor Start SERVICE_DEMAND_START
 
 
 REM server_realtime_auth (token based auth and RBAC)

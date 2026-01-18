@@ -116,6 +116,7 @@ call %NPM% install
 
 cd %SRCPATH%\cs_custom_processor
 call %NPM% install
+call %NPM% run build
 
 cd %SRCPATH%\oshmi2json
 call %NPM% install

@@ -150,7 +150,7 @@ services:
     container_name: js_nodejs_update
     command:  sh -c "apk add --update npm && npm install -g npm && 
                      cd /cs_data_processor && npm install && chmod -R 777 node_modules &&
-                     cd /cs_custom_processor && npm install && chmod -R 777 node_modules &&
+                     cd /cs_custom_processor && npm install && npm run build && chmod -R 777 node_modules &&
                      cd /config_server_for_excel && npm install && chmod -R 777 node_modules &&
                      cd /server_realtime_auth && npm install && chmod -R 777 node_modules &&
                      cd /alarm_beep && npm install && chmod -R 777 node_modules &&

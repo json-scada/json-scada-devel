@@ -107,6 +107,8 @@ cd ../cs_data_processor
 npm install
 cd ../cs_custom_processor
 npm install
+npm run build
+rm -rf ~/json-scada/src/cs_custom_processor/node_modules
 cd ../grafana_alert2event
 npm install
 cd ../demo_simul
