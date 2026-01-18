@@ -16,14 +16,14 @@
  */
 
 import { setInterval, clearInterval } from 'timers'
-import { Double, MongoClient, Db } from 'mongodb'
+import { Double } from 'mongodb'
 import Log from './logger.js'
-import { IConfig } from './load-config.js'
-import { IProtocolDriverInstance } from './types.js'
+import { IProcessInstance, ProcessName } from './types.js'
 import packageInfo from '../../package.json' with { type: 'json' };
+import type { ConnectionManager } from './connection-manager.js'
 
 const VERSION = packageInfo.version || '0.0.0'
-const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
+const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase() as ProcessName
 
 let redundancyIntervalHandle: NodeJS.Timeout | null = null // timer handle
 
@@ -40,36 +40,31 @@ const stats: RedundancyStats = {
 // start processing redundancy
 export function Start(
   interval: number,
-  clientMongo: MongoClient,
-  db: Db,
-  configObj: IConfig,
-  MongoStatus: { HintMongoIsConnected: boolean }
+  mgr: ConnectionManager
 ) {
   // check and update redundancy control
-  ProcessRedundancy(clientMongo, db, configObj)
+  ProcessRedundancy(mgr)
   if (redundancyIntervalHandle) clearInterval(redundancyIntervalHandle)
   redundancyIntervalHandle = setInterval(function () {
-    if (!MongoStatus.HintMongoIsConnected) {
+    if (!mgr.status.HintMongoIsConnected) {
       Redundancy.ProcessActive = false
       return
     }
 
-    ProcessRedundancy(clientMongo, db, configObj)
+    ProcessRedundancy(mgr)
   }, interval)
 }
 
 // process JSON-SCADA redundancy state for this driver module
 export async function ProcessRedundancy(
-  clientMongo: MongoClient | null,
-  db: Db | null,
-  configObj: IConfig
+  mgr: ConnectionManager
 ) {
-  if (!clientMongo || !db) {
+  if (!mgr.client || !mgr.db) {
     Redundancy.ProcessActive = false
     return
   }
 
-  Log.levelCurrent = configObj.LogLevel || 1
+  Log.levelCurrent = mgr.jsConfig.LogLevel || 1
 
   const countKeepAliveUpdatesLimit = 4
 
@@ -77,29 +72,28 @@ export async function ProcessRedundancy(
 
   try {
     // look for process instance entry, if not found create a new entry
-    const result = await db
-      .collection(configObj.ProcessInstancesCollectionName!)
-      .findOne({
-        processName: NAME,
-        processInstanceNumber: new Double(configObj.Instance!),
-      })
+    const collection = mgr.getProcessInstancesCollection()
+    const result = await collection.findOne({
+      processName: NAME,
+      processInstanceNumber: new Double(mgr.jsConfig.Instance!),
+    })
 
     if (!result) {
       // not found, then create
       Redundancy.ProcessActive = true
       Log.log('Redundancy - Instance config not found, creating one...')
-      db.collection(configObj.ProcessInstancesCollectionName!).insertOne({
+      collection.insertOne({
         processName: NAME,
-        processInstanceNumber: new Double(configObj.Instance!),
+        processInstanceNumber: new Double(mgr.jsConfig.Instance!),
         enabled: true,
         logLevel: new Double(1),
         nodeNames: [],
-        activeNodeName: configObj.nodeName,
+        activeNodeName: mgr.jsConfig.nodeName,
         activeNodeKeepAliveTimeTag: new Date(),
-      })
+      } as IProcessInstance)
     } else {
       // check for disabled or node not allowed
-      const instance = result as IProtocolDriverInstance
+      const instance = result as IProcessInstance
       let instKeepAliveTimeTag: string | null = null
 
       if (
@@ -117,12 +111,12 @@ export async function ProcessRedundancy(
         Array.isArray(instance.nodeNames) &&
         instance.nodeNames.length > 0
       ) {
-        if (!instance.nodeNames.includes(configObj.nodeName as string)) {
+        if (!instance.nodeNames.includes(mgr.jsConfig.nodeName as string)) {
           Log.log('Redundancy - Node name not allowed, exiting...')
           process.exit()
         }
       }
-      if (instance?.activeNodeName === configObj.nodeName) {
+      if (instance?.activeNodeName === mgr.jsConfig.nodeName) {
         if (!Redundancy.ProcessActive) Log.log('Redundancy - Node activated!')
         stats.countKeepAliveNotUpdated = 0
         Redundancy.ProcessActive = true
@@ -156,14 +150,14 @@ export async function ProcessRedundancy(
 
       if (Redundancy.ProcessActive) {
         // process active, then update keep alive
-        db.collection(configObj.ProcessInstancesCollectionName!).updateOne(
+        await collection.updateOne(
           {
             processName: NAME,
-            processInstanceNumber: new Double(configObj.Instance!),
+            processInstanceNumber: new Double(mgr.jsConfig.Instance!),
           },
           {
             $set: {
-              activeNodeName: configObj.nodeName,
+              activeNodeName: mgr.jsConfig.nodeName,
               activeNodeKeepAliveTimeTag: new Date(),
               softwareVersion: VERSION,
               stats: {},

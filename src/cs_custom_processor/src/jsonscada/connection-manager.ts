@@ -69,7 +69,7 @@ export class ConnectionManager {
           this.db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
           if (this.manageRedundancy) {
-            this.redundancy.Start(5000, this.client, this.db, this.jsConfig, this.status)
+            this.redundancy.Start(5000, this)
           }
           onConnect(this.client, this.db)
         } catch (err) {

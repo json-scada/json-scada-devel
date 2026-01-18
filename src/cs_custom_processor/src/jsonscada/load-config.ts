@@ -15,7 +15,6 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { CollectionNames } from './types.js'
 import fs from 'fs'
 import Log from './logger.js'
 import { ReadPreference, MongoClientOptions } from 'mongodb'
@@ -90,14 +89,6 @@ function LoadConfig (
     parseInt(process.env[ENV_PREFIX + 'INSTANCE'] || '1') ||
     1
 
-  configObj.GridFsCollectionName = CollectionNames.GridFs
-  configObj.RealtimeDataCollectionName = CollectionNames.RealtimeData
-  configObj.UsersCollectionName = CollectionNames.Users
-  configObj.SoeDataCollectionName = CollectionNames.SoeData
-  configObj.CommandsQueueCollectionName = CollectionNames.CommandsQueue
-  configObj.ProtocolDriverInstancesCollectionName = CollectionNames.ProtocolDriverInstances
-  configObj.ProtocolConnectionsCollectionName = CollectionNames.ProtocolConnections
-  configObj.ProcessInstancesCollectionName = CollectionNames.ProcessInstances
   configObj.GroupSep = '~'
   configObj.ConnectionNumber = 0
 
