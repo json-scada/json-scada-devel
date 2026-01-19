@@ -17,7 +17,7 @@
   "author": "Ricardo Lastra Olsen",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "mongodb": "^8.0.0"
+    "mongodb": "^7.0.0"
   },
   "devDependencies": {
     "@types/mongodb": "^4.0.6",
