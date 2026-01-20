@@ -6,6 +6,7 @@ import crypto from "node:crypto";
 import { registerPointsTools } from "./tools/points.js";
 import { registerCommandsTools } from "./tools/commands.js";
 import { registerCollectionsTools } from "./tools/collections.js";
+import { registerInspectTools } from "./tools/inspect.js";
 import { ConnectionManager } from "./jsonscada/connection-manager.js";
 import { Log } from "./jsonscada/index.js";
 
@@ -22,6 +23,7 @@ const mgr = new ConnectionManager({ manageRedundancy: false });
 registerPointsTools(server, mgr);
 registerCommandsTools(server, mgr);
 registerCollectionsTools(server, mgr);
+registerInspectTools(server, mgr);
 
 // Resource: Schema
 server.resource(
@@ -31,7 +33,15 @@ server.resource(
     return {
       contents: [{
         uri: uri.href,
-        text: "JSON-SCADA MongoDB Schema Documentation is available in the project's schema.md file."
+        text: `JSON-SCADA Database Schema Summary:
+- realtimeData: Contains the current state of all points (tags). Fields: _id (pointKey), tag, description, type, value, timeTag, unit, etc.
+- hist: Historical data for points. Fields: timeTag, tag, value, quality.
+- soeData: Sequence of Events. Fields: timeTag, tag, description, eventText, value.
+- commandsQueue: Queue for commands to be dispatched. Fields: tag, value, timeTag, delivered.
+- processInstances: Status and config of system processes.
+- protocolDriverInstances: Status and config of protocol drivers.
+- protocolConnections: Configuration of individual communication links.
+- userActions: Log of actions performed by users.`
       }]
     };
   }

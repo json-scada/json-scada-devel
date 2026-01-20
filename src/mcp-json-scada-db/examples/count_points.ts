@@ -1,7 +1,7 @@
 
-import { ConnectionManager } from "./src/jsonscada/connection-manager.js";
-import { CollectionNames } from "./src/jsonscada/types.js";
-import { Log } from "./src/jsonscada/index.js";
+import { ConnectionManager } from "../src/jsonscada/connection-manager.js";
+import { CollectionNames } from "../src/jsonscada/types.js";
+import { Log } from "../src/jsonscada/index.js";
 
 const mgr = new ConnectionManager({ manageRedundancy: false });
 

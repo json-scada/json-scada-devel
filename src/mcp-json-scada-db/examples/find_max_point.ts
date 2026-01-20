@@ -1,6 +1,6 @@
 
 import fs from 'fs';
-import { DataType, Log, ConnectionManager } from "./src/jsonscada/index.js";
+import { DataType, Log, ConnectionManager } from "../src/jsonscada/index.js";
 
 // suppress logs
 Log.log = () => {};
