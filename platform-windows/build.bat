@@ -118,6 +118,10 @@ cd %SRCPATH%\cs_custom_processor
 call %NPM% install
 call %NPM% run build
 
+cd %SRCPATH%\mcp-json-scada-db
+call %NPM% install
+call %NPM% run build
+
 cd %SRCPATH%\oshmi2json
 call %NPM% install
 

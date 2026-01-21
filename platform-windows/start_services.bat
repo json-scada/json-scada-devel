@@ -31,3 +31,5 @@ net start JSON_SCADA_metabase
 
 net start JSON_SCADA_php
 net start JSON_SCADA_nginx
+
+REM net start JSON_SCADA_mcp_server

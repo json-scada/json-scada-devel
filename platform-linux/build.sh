@@ -93,6 +93,10 @@ cd ../cs_data_processor
 npm install
 cd ../cs_custom_processor
 npm install
+npm run build
+cd ../mcp-json-scada-db
+npm install
+npm run build
 cd ../grafana_alert2event
 npm install
 cd ../demo_simul
