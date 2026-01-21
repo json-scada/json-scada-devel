@@ -2,13 +2,16 @@ import { z } from "zod";
 import { ConnectionManager } from "../jsonscada/connection-manager.js";
 
 export function registerPointsTools(server: any, mgr: ConnectionManager) {
-  server.tool(
+  server.registerTool(
     "search_points",
     {
-      filter: z.string().optional().describe("Regex filter for tag or description"),
-      group1: z.string().optional().describe("Filter by group1"),
-      limit: z.number().optional().default(10),
-      offset: z.number().optional().default(0),
+      description: "Search for database points by tag or description",
+      inputSchema: {
+        filter: z.string().optional().describe("Regex filter for tag or description"),
+        group1: z.string().optional().describe("Filter by group1"),
+        limit: z.number().optional().default(10),
+        offset: z.number().optional().default(0),
+      },
     },
     async ({ filter, group1, limit, offset }: any) => {
       if (!mgr.status.HintMongoIsConnected) {
@@ -42,10 +45,13 @@ export function registerPointsTools(server: any, mgr: ConnectionManager) {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "get_point",
     {
-      tag: z.string().describe("The tag name of the point"),
+      description: "Get current data for a specific point by tag",
+      inputSchema: {
+        tag: z.string().describe("The tag name of the point"),
+      },
     },
     async ({ tag }: any) => {
       if (!mgr.status.HintMongoIsConnected) {

@@ -2,9 +2,9 @@ import { z } from "zod";
 import { ConnectionManager } from "../jsonscada/connection-manager.js";
 
 export function registerCollectionsTools(server: any, mgr: ConnectionManager) {
-  server.tool(
+  server.registerTool(
     "list_collections",
-    {},
+    { description: "List all collections in the database" },
     async () => {
       if (!mgr.status.HintMongoIsConnected) {
          return {
@@ -19,12 +19,15 @@ export function registerCollectionsTools(server: any, mgr: ConnectionManager) {
     }
   );
 
-  server.tool(
+  server.registerTool(
     "query_collection",
     {
-      collection: z.string().describe("The collection name to query"),
-      query: z.string().optional().describe("JSON string representing the MongoDB query"),
-      limit: z.number().optional().default(5),
+      description: "Query a collection with a JSON filter",
+      inputSchema: {
+        collection: z.string().describe("The collection name to query"),
+        query: z.string().optional().describe("JSON string representing the MongoDB query"),
+        limit: z.number().optional().default(5),
+      },
     },
     async ({ collection, query, limit }: any) => {
       if (!mgr.status.HintMongoIsConnected) {

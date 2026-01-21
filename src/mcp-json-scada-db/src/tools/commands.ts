@@ -3,12 +3,15 @@ import { ConnectionManager } from "../jsonscada/connection-manager.js";
 import { Origin } from "../jsonscada/types.js";
 
 export function registerCommandsTools(server: any, mgr: ConnectionManager) {
-  server.tool(
+  server.registerTool(
     "send_command",
     {
-      tag: z.string().describe("The tag name of the command point"),
-      value: z.number().describe("The numeric value for the command"),
-      username: z.string().optional().default("mcp-agent"),
+      description: "Send a command to a point",
+      inputSchema: {
+        tag: z.string().describe("The tag name of the command point"),
+        value: z.number().describe("The numeric value for the command"),
+        username: z.string().optional().default("mcp-agent"),
+      },
     },
     async ({ tag, value, username }: any) => {
       if (!mgr.status.HintMongoIsConnected) {

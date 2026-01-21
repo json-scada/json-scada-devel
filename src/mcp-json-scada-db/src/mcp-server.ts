@@ -26,9 +26,10 @@ registerCollectionsTools(server, mgr);
 registerInspectTools(server, mgr);
 
 // Resource: Schema
-server.resource(
+server.registerResource(
   "schema",
   "json-scada://schema",
+  { description: "JSON-SCADA Database Schema Summary" },
   async (uri) => {
     return {
       contents: [{
@@ -57,7 +58,9 @@ async function main() {
 
   try {
     if (transportType === "http") {
-      const port = parseInt(process.env["PORT"] || "3000", 10);
+      const bind = process.env["BIND"] || (process.argv.find(arg => arg.startsWith("--bind="))?.split("=")[1]) || "127.0.0.1";
+      const portArg = process.argv.find(arg => arg.startsWith("--port="))?.split("=")[1];
+      const port = parseInt(portArg || process.env["PORT"] || "6001", 10);
       const transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => crypto.randomUUID(),
       });
@@ -73,8 +76,8 @@ async function main() {
         }
       });
 
-      httpServer.listen(port, () => {
-        Log.log(`MCP Server running on HTTP at http://localhost:${port}`);
+      httpServer.listen(port, bind, () => {
+        Log.log(`MCP Server running on HTTP at http://${bind}:${port}`);
       });
     } else {
       const transport = new StdioServerTransport();
