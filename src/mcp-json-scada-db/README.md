@@ -26,10 +26,15 @@ The server expects a MongoDB connection string. You can configure this via envir
 - **_2nd arg. - Log. Level_** \[Integer] - Log level (0=minimum,1=basic,2=detailed,3=debug). **Optional argument, default=1**. Env. variable: **JS_CSCUSTOMPROC_LOGLEVEL**.
 - **_3rd arg. - Config File Path/Name_** \[String] - Path/name of the JSON-SCADA config file. **Optional argument, default="../conf/json-scada.json"**. Env. variable: **JS_CONFIG_FILE**.
 - **_4th arg. - --http_** \[String] - MCP transport (http or stdio). **Optional argument, default=stdio**. Env. variable: **MCP_TRANSPORT**.
-- **_5th arg. - --bind_** \[String] - MCP bind address. **Optional argument, default=127.0.0.1**. Env. variable: **MCP_BIND**.
-- **_6th arg. - --port_** \[Integer] - MCP port. **Optional argument, default=6001**. Env. variable: **MCP_PORT**.
+- **_5th arg. - --bind=ADDRESS_** \[String] - MCP bind address. **Optional argument, default=127.0.0.1**. Env. variable: **BIND**.
+- **_6th arg. - --port=PORT_** \[Integer] - MCP port. **Optional argument, default=6001**. Env. variable: **PORT**.
 
 ## Usage
+
+### Connect to the server
+
+Via stdio, command:
+c:\json-scada\platform-windows\nodejs-runtime\node.exe c:\json-scada\src\mcp-json-scada-db\dist\mcp-server.js 1 1 c:\json-scada\conf\json-scada.json
 
 ### Registered Tools
 
