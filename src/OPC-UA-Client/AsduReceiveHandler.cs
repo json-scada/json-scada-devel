@@ -30,6 +30,7 @@ using System.Text.Json.Serialization;
 using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
+using System.Security.Cryptography.X509Certificates;
 
 partial class MainClass
 {
@@ -149,15 +150,13 @@ partial class MainClass
                 // load the application configuration.
                 Log(conn_name + " - " + "Load config from " + OPCUA_conn.configFileName);
                 config = await application.LoadApplicationConfiguration(OPCUA_conn.configFileName, false);
-                // config.SecurityConfiguration.AutoAcceptUntrustedCertificates = true;
 
                 // check the application certificate.
-                haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0);
+                haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0, 0);
 
                 if (!haveAppCertificate)
                 {
-                    Log(conn_name + " - " + "FATAL: Application instance certificate invalid!", LogLevelNoLog);
-                    Environment.Exit(1);
+                    Log(conn_name + " - " + "WARN: Application instance certificate invalid!");
                 }
 
                 if (haveAppCertificate)
@@ -179,11 +178,11 @@ partial class MainClass
                 Log(conn_name + " - WARN: " + e.Message);
             }
 
-            if (OPCUA_conn.useSecurity && config == null)
-            {
-                Log(conn_name + " - " + "FATAL: error in XML config file!", LogLevelNoLog);
-                Environment.Exit(1);
-            }
+            //if (OPCUA_conn.useSecurity && config == null)
+            //{
+            //    Log(conn_name + " - " + "FATAL: error in XML config file!", LogLevelNoLog);
+            //    Environment.Exit(1);
+            //}
 
             if (config == null)
             {
@@ -222,9 +221,52 @@ partial class MainClass
             {
                 try
                 {
-                    Log(conn_name + " - " + "Discover endpoints of " + OPCUA_conn.endpointURLs[0]);
-                    exitCode = ExitCode.ErrorDiscoverEndpoints;
-                    var selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
+                    EndpointDescription selectedEndpoint = null;
+                    if (OPCUA_conn.useSecurity)
+                    {
+                        config.SecurityConfiguration.AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates;
+
+                        if (OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
+                        {
+                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath);
+                            config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
+                        }
+
+                        try
+                        {
+                            using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
+                            {
+                                var endpoints = discoveryClient.GetEndpoints(null);
+                                // log endpoints
+                                Log(conn_name + " - " + "Discovered endpoints:");
+                                foreach (var ep in endpoints)
+                                {
+                                    Log(conn_name + " - " + "Endpoint: " +
+                                        ep.EndpointUrl +
+                                        " | SecurityMode: " + ep.SecurityMode +
+                                        " | SecurityPolicy: " + ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1)); 
+                                        // + " | TransportProfileUri: " + ep.TransportProfileUri);
+                                }
+                                var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                                var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+                                selectedEndpoint = endpoints.FirstOrDefault(
+                                    e =>
+                                    e.SecurityMode == mode && e.SecurityPolicyUri == policyUri);
+                            }
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(conn_name + " - Error matching endpoint: " + ex.Message);
+                        }
+                    }
+
+                    if (selectedEndpoint == null)
+                    {
+                        Log(conn_name + " - " + "Discover endpoints of " + OPCUA_conn.endpointURLs[0]);
+                        exitCode = ExitCode.ErrorDiscoverEndpoints;
+                        selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
+                    }
+
                     Log(conn_name + " - " + "Selected endpoint uses: " +
                         selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1));
 
@@ -233,7 +275,19 @@ partial class MainClass
                     var endpointConfiguration = EndpointConfiguration.Create(config);
                     var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
                     Thread.Sleep(50);
-                    session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60000, new UserIdentity(new AnonymousIdentityToken()), null);
+                    IUserIdentity identity = new UserIdentity(new AnonymousIdentityToken());
+                    if (!string.IsNullOrEmpty(OPCUA_conn.username))
+                    {
+                        Log(conn_name + " - " + "Using username/password authentication for user: " + OPCUA_conn.username);
+                        identity = new UserIdentity(OPCUA_conn.username, OPCUA_conn.password ?? "");
+                    }
+                    if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
+                    {
+                        Log(conn_name + " - " + "Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
+                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase);
+                        identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
+                    }
+                    session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60000, identity, null);
 
                     // Log("" + session.KeepAliveInterval); // default is 5000
                     session.KeepAliveInterval = System.Convert.ToInt32(OPCUA_conn.timeoutMs);
@@ -277,7 +331,7 @@ partial class MainClass
                         var keep = false;
                         foreach (var topic in OPCUA_conn.topics)
                         {
-                            if ((path+"/").Contains("/"+topic+"/"))
+                            if ((path + "/").Contains("/" + topic + "/"))
                             {
                                 keep = true;
                                 break;
@@ -628,7 +682,7 @@ partial class MainClass
                         }
                         else
                         {
-                             // Log(conn_name + " - " + value + " TYPE: ?????", LogLevelDetailed);
+                            // Log(conn_name + " - " + value + " TYPE: ?????", LogLevelDetailed);
                         }
 
                         try

@@ -363,6 +363,7 @@
                   'MQTT-SPARKPLUG-B', 
                   'IEC61850', 
                   'OPC-DA',
+                  'OPC-UA',
                   'ONVIF',
                 ].includes(
                   editedConnection.protocolDriver
@@ -400,6 +401,7 @@
                   'MQTT-SPARKPLUG-B', 
                   'IEC61850',
                   'OPC-DA',
+                  'OPC-UA',
                   'ONVIF',
                 ].includes(
                   editedConnection.protocolDriver
@@ -1828,6 +1830,7 @@
               'OPC-UA_SERVER',
               'IEC61850',
               'IEC61850_SERVER',
+              'OPC-UA',
               'OPC-DA',
               'ICCP',
               'ICCP_SERVER',
@@ -1858,6 +1861,7 @@
                   'MQTT-SPARKPLUG-B',
                   'OPC-UA_SERVER',
                   'OPC-DA',
+                  'OPC-UA',
                   'ICCP',
                   'ICCP_SERVER',
                 ].includes(editedConnection.protocolDriver)
@@ -1902,7 +1906,70 @@
 
             <v-list-item
               v-if="
-                ['MQTT-SPARKPLUG-B'].includes(editedConnection.protocolDriver)
+                ['OPC-UA'].includes(editedConnection.protocolDriver)
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <v-list-item-action>
+                      <v-select
+                        :items="securityModeItems"
+                        :input-value="active"
+                        hide-details="auto"
+                        v-model="editedConnection.securityMode"
+                        :label="$t('admin.protocolConnections.securityMode')"
+                      ></v-select>
+                    </v-list-item-action>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.securityModeTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.securityModeHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['OPC-UA'].includes(editedConnection.protocolDriver)
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <v-list-item-action>
+                      <v-select
+                        :items="securityPolicyItems"
+                        :input-value="active"
+                        hide-details="auto"
+                        v-model="editedConnection.securityPolicy"
+                        :label="$t('admin.protocolConnections.securityPolicy')"
+                      ></v-select>
+                    </v-list-item-action>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.securityPolicyTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.securityPolicyHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                [
+                  'MQTT-SPARKPLUG-B',
+                  'OPC-UA',
+                ].includes(editedConnection.protocolDriver)
               "
             >
               <template v-slot:default="{ active }">
@@ -1934,6 +2001,7 @@
               v-if="
                 [
                   'MQTT-SPARKPLUG-B',
+                  'OPC-UA',
                   'IEC60870-5-104_SERVER',
                   'IEC60870-5-104',
                   'IEC61850',
@@ -2361,8 +2429,8 @@
                 color="primary"
                 :label="`${$t('admin.protocolConnections.allowSpecificCerts')}${
                   editedConnection.allowOnlySpecificCertificates
-                    ? $t('admin.protocolConnections.allowSpecificCertsTrue')
-                    : $t('admin.protocolConnections.allowSpecificCertsFalse')
+                    ? $t('common.true')
+                    : $t('common.false')
                 }`"
                 class="mb-n6"
               ></v-switch>
@@ -2389,6 +2457,28 @@
                   'admin.protocolConnections.certChainValidation'
                 )}${
                   editedConnection.chainValidation
+                    ? $t('common.true')
+                    : $t('common.false')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                [
+                  'OPC-UA',
+                ].includes(editedConnection.protocolDriver)
+              "
+            >
+              <v-switch
+                v-model="editedConnection.autoAcceptUntrustedCertificates"
+                inset
+                color="primary"
+                :label="`${$t(
+                  'admin.protocolConnections.autoAcceptUntrustedCertificates'
+                )}${
+                  editedConnection.autoAcceptUntrustedCertificates
                     ? $t('common.true')
                     : $t('common.false')
                 }`"
@@ -3527,6 +3617,8 @@
   const stopBitsItems = ['One', 'One5', 'Two']
   const handshakeItems = ['None', 'Rts', 'Xon', 'RtsXon']
   const sizeOfLinkAddressItems = [0, 1, 2]
+  const securityModeItems = ['None', 'Sign', 'SignAndEncrypt']
+  const securityPolicyItems = ['None', 'Basic128', 'Basic128Rsa15', 'Basic256', 'Basic256Sha256', 'Aes128_Sha256_RsaOaep', 'Aes256_Sha256_RsaPss', 'ECC_brainpoolP256r1', 'ECC_brainpoolP384r1', 'ECC_curve25519', 'ECC_curve448', 'Https']
 
   // Lifecycle hooks
   onMounted(async () => {

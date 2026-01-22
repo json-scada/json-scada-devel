@@ -33,7 +33,7 @@ const ProtocolConnection = mongoose.model(
     topics: { type: [String], default: [] },
 
     // ICCP, ICCP_SERVER
-    domain : { type: String, default: '' },
+    domain: { type: String, default: '' },
     aeQualifier: { type: Double, default: 12 },
     localAppTitle: { type: String, default: '1.1.1.998' },
     localSelectors: { type: String, default: '0 0 0 2 0 2 0 2' },
@@ -45,7 +45,7 @@ const ProtocolConnection = mongoose.model(
     // MQTT-SPARKPLUG-B, OPC-UA_SERVER
     groupId: { type: String, default: '' },
 
-    // MQTT-SPARKPLUG-B, IEC60870-5-104, IEC60870-5-104_SERVER
+    // MQTT-SPARKPLUG-B, IEC60870-5-104, IEC60870-5-104_SERVER, OPC-UA
     passphrase: { type: String, default: '' },
 
     // MQTT-SPARKPLUG-B
@@ -56,9 +56,11 @@ const ProtocolConnection = mongoose.model(
     deviceId: { type: String, default: '' },
     scadaHostId: { type: String, default: '' },
     publishTopicRoot: { type: String, default: '' },
+
+    // MQTT-SPARKPLUG-B, OPC-UA
     pfxFilePath: { type: String, default: '' },
 
-    // MQTT-SPARKPLUG-B, IEC61850, IEC61850_SERVER, OPC-DA, ONVIF
+    // MQTT-SPARKPLUG-B, IEC61850, IEC61850_SERVER, OPC-DA, OPC-UA, ONVIF
     username: { type: String, default: '' },
     password: { type: String, default: '' },
 
@@ -67,7 +69,7 @@ const ProtocolConnection = mongoose.model(
 
     // OPC-UA, OPC-DA, OPC-DA_SERVER, ICCP, ICCP_SERVER
     autoCreateTagPublishingInterval: { type: Double, min: 0, default: 5.0 },
-    
+
     // OPC-UA, OPC-DA
     autoCreateTagSamplingInterval: { type: Double, min: 0, default: 5.0 },
     autoCreateTagQueueSize: { type: Double, min: 0, default: 5.0 },
@@ -121,11 +123,11 @@ const ProtocolConnection = mongoose.model(
 
     // IEC60870-5-104_SERVER,IEC60870-5-101_SERVER, IEC61850_SERVER
     maxQueueSize: { type: Double, min: 0, default: 5000.0 },
-    
+
     // OPC-UA, OPC-DA, DNP3_SERVER
     serverQueueSize: { type: Double, min: 0, default: 5000.0 },
 
-    // IEC60870-5-104, IEC60870-5-104_SERVER, DNP3, DNP3_SERVER, MQTT-SPARKPLUG-B, OPC-UA_SERVER, IEC61850, IEC61850_SERVER, OPC-DA, ICCP_SERVER, ICCP
+    // IEC60870-5-104, IEC60870-5-104_SERVER, DNP3, DNP3_SERVER, MQTT-SPARKPLUG-B, OPC-UA_SERVER, OPC-UA, IEC61850, IEC61850_SERVER, OPC-DA, ICCP_SERVER, ICCP
     localCertFilePath: { type: String, default: '' },
 
     // IEC60870-5-104, IEC60870-5-104_SERVER, DNP3, DNP3_SERVER, IEC61850, OPC-DA
@@ -140,6 +142,11 @@ const ProtocolConnection = mongoose.model(
 
     // IEC60870-5-104, IEC60870-5-104_SERVER, IEC61850, IEC61850_SERVER, ICCP_SERVER, ICCP
     allowOnlySpecificCertificates: { type: Boolean, default: false },
+
+    // OPC-UA
+    autoAcceptUntrustedCertificates: { type: Boolean, default: true },
+    securityMode: { type: String, default: 'None' },
+    securityPolicy: { type: String, default: 'None' },
 
     // DNP3, DNP3_SERVER, MQTT-SPARKPLUG-B, OPC-UA_SERVER, IEC61850, IEC61850_SERVER, ICCP_SERVER, ICCP
     privateKeyFilePath: { type: String, default: '' },
@@ -163,7 +170,7 @@ const ProtocolConnection = mongoose.model(
     rangeScans: { type: Array, default: [] },
 
     // ONVIF
-    options: { type: String, default: '' },    
+    options: { type: String, default: '' },
 
     // IEC60870-5-101, IEC60870-5-101_SERVER, DNP3, DNP3_SERVER
     portName: { type: String, default: '' },

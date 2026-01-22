@@ -322,6 +322,7 @@ exports.updateProtocolConnection = async (req, res) => {
   if (
     [
       'MQTT-SPARKPLUG-B',
+      'OPC-UA',
       'IEC60870-5-104_SERVER',
       'IEC60870-5-104',
       'IEC61850',
@@ -334,7 +335,9 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   if (
-    ['MQTT-SPARKPLUG-B', 'OPC-DA', 'ONVIF'].includes(req?.body?.protocolDriver)
+    ['MQTT-SPARKPLUG-B', 'OPC-DA', 'OPC-UA', 'ONVIF'].includes(
+      req?.body?.protocolDriver
+    )
   ) {
     if (!('username' in req.body)) {
       req.body.username = ''
@@ -366,6 +369,9 @@ exports.updateProtocolConnection = async (req, res) => {
     if (!('publishTopicRoot' in req.body)) {
       req.body.publishTopicRoot = ''
     }
+  }
+
+  if (['MQTT-SPARKPLUG-B', 'OPC-UA'].includes(req?.body?.protocolDriver)) {
     if (!('pfxFilePath' in req.body)) {
       req.body.pfxFilePath = ''
     }
@@ -614,6 +620,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3_SERVER',
       'MQTT-SPARKPLUG-B',
       'OPC-UA_SERVER',
+      'OPC-UA',
       'OPC-DA',
     ].includes(req?.body?.protocolDriver)
   ) {
@@ -662,6 +669,18 @@ exports.updateProtocolConnection = async (req, res) => {
   ) {
     if (!('allowOnlySpecificCertificates' in req.body)) {
       req.body.allowOnlySpecificCertificates = false
+    }
+  }
+
+  if (['OPC-UA'].includes(req?.body?.protocolDriver)) {
+    if (!('autoAcceptUntrustedCertificates' in req.body)) {
+      req.body.autoAcceptUntrustedCertificates = true
+    }
+    if (!('securityMode' in req.body)) {
+      req.body.securityMode = 'None'
+    }
+    if (!('securityPolicy' in req.body)) {
+      req.body.securityPolicy = 'None'
     }
   }
 
@@ -1068,8 +1087,11 @@ exports.openDisplay = (req, res) => {
 
   // Sanitize file path to prevent directory traversal
   const svgDir = path.resolve(__dirname, '..', '..', '..', '..', 'svg')
-  const requestedPath = path.resolve(svgDir, path.basename(req.query.file || ''))
-  
+  const requestedPath = path.resolve(
+    svgDir,
+    path.basename(req.query.file || '')
+  )
+
   if (!requestedPath.startsWith(svgDir)) {
     Log.log('openDisplay: Invalid file path attempted: ' + req.query.file)
     res.status(400).send({ error: 'Invalid file path' })
@@ -1094,7 +1116,7 @@ exports.saveDisplay = (req, res) => {
   // Sanitize file path to prevent directory traversal
   const svgDir = path.resolve(__dirname, '..', '..', '..', '..', 'svg')
   const requestedPath = path.resolve(svgDir, path.basename(req.body.file || ''))
-  
+
   if (!requestedPath.startsWith(svgDir)) {
     Log.log('saveDisplay: Invalid file path attempted: ' + req.body.file)
     res.status(400).send({ error: 'Invalid file path' })
@@ -1336,11 +1358,13 @@ exports.signin = async (req, res) => {
           rights.disableAlarms || user.roles[i].disableAlarms
       if ('group1List' in user.roles[i])
         rights.group1List =
-          i > 0 &&
-          (rights.group1List.length === 0 ||
-            user.roles[i].group1List.length === 0)
-            ? []
-            : rights.group1List.concat(user.roles[i].group1List)
+          (
+            i > 0 &&
+            (rights.group1List.length === 0 ||
+              user.roles[i].group1List.length === 0)
+          ) ?
+            []
+          : rights.group1List.concat(user.roles[i].group1List)
       if ('group1CommandList' in user.roles[i])
         rights.group1CommandList = rights.group1CommandList.concat(
           user.roles[i].group1CommandList
@@ -1535,7 +1559,9 @@ exports.exportProject = async (req, res) => {
       Log.log(`child process exited with code ${code}`)
       if (!fs.existsSync(dir + project.fileName) || code != 0) {
         Log.log('Project file not found! ' + dir + project.fileName)
-        res.status(200).send({ error: 'Project file not found! ' + dir + project.fileName })
+        res
+          .status(200)
+          .send({ error: 'Project file not found! ' + dir + project.fileName })
         return
       }
       registerUserAction(req, 'exportProject')

@@ -109,6 +109,22 @@ partial class MainClass
         [BsonDefaultValue(300.0)]
         public double giInterval { get; set; }
         public string[] topics { get; set; }
+        [BsonDefaultValue("")]
+        public string username { get; set; }
+        [BsonDefaultValue("")]
+        public string password { get; set; }
+        [BsonDefaultValue("")]
+        public string pfxFilePath { get; set; }
+        [BsonDefaultValue("")]
+        public string passphrase { get; set; }
+        [BsonDefaultValue("")]
+        public string localCertFilePath { get; set; }
+        [BsonDefaultValue("None")]
+        public string securityMode { get; set; }
+        [BsonDefaultValue("None")]
+        public string securityPolicy { get; set; }
+        [BsonDefaultValue(true)]
+        public bool autoAcceptUntrustedCertificates { get; set; }
         public double LastNewKeyCreated;
         public SortedSet<string> InsertedAddresses = new SortedSet<string>();
         public OPCUAClient connection;
