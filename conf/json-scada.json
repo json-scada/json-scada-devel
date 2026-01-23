@@ -1,5 +1,5 @@
 {
   "nodeName"  : "mainNode",
-  "mongoConnectionString": "mongodb://127.0.0.1/json_scada?tls=false&directConnection=true",
+  "mongoConnectionString": "mongodb://192.168.1.58/json_scada?tls=false&directConnection=true",
   "mongoDatabaseName": "json_scada"
 }

@@ -230,6 +230,7 @@ partial class MainClass
                         {
                             var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase);
                             config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
+                            config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
                         }
 
                         try
@@ -238,12 +239,36 @@ partial class MainClass
                             var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
                             var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
 
-                            selectedEndpoint = new EndpointDescription
+                            try
                             {
-                                EndpointUrl = OPCUA_conn.endpointURLs[0],
-                                SecurityMode = mode,
-                                SecurityPolicyUri = policyUri
-                            };
+                                Log(conn_name + " - Attempting to select endpoint via discovery...");
+                                selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
+                                if (selectedEndpoint != null)
+                                {
+                                    selectedEndpoint.EndpointUrl = OPCUA_conn.endpointURLs[0];
+                                    Log(conn_name + " - Endpoint selected and URL overridden.");
+                                }
+                            }
+                            catch (Exception dex)
+                            {
+                                Log(conn_name + " - Discovery failed during manual assembly: " + dex.Message);
+                            }
+
+                            if (selectedEndpoint == null)
+                            {
+                                selectedEndpoint = new EndpointDescription
+                                {
+                                    EndpointUrl = OPCUA_conn.endpointURLs[0],
+                                    SecurityMode = mode,
+                                    SecurityPolicyUri = policyUri,
+                                    UserIdentityTokens = new UserTokenPolicyCollection
+                                    {
+                                        new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
+                                    }
+                                };
+                            }
 
                             Log(conn_name + " - " + "Assembled endpoint: " +
                                 selectedEndpoint.EndpointUrl +

@@ -21,8 +21,8 @@ RequestExecutionLevel admin
 
 ;--------------------------------
 
-!define VERSION "v.0.58"
-!define VERSION_ "0.58.0.0"
+!define VERSION "v.0.59"
+!define VERSION_ "0.59.0.0"
 
 Function .onInit
  System::Call 'keexrnel32::CreateMutexA(p0, i1, t "MutexJsonScadaInstall")?e'
@@ -253,8 +253,11 @@ SetRegView 64
   File /a "..\platform-windows\nssm.exe"
   File /a "..\platform-windows\ffmpeg.exe"
   File /a "..\platform-windows\sounder.exe"
+  File /a "..\platform-windows\OpcWatch.exe"
   File /a "..\platform-windows\vc_redist.x64.exe"
-  File /a "..\platform-windows\dotnet-runtime-8.0.20-win-x64.exe"
+  File /a "..\platform-windows\aspnetcore-runtime-8.0.23-win-x64.exe"
+  File /a "..\platform-windows\dotnet-runtime-8.0.23-win-x64.exe"
+  File /a "..\platform-windows\dotnet-runtime-10.0.2-win-x64.exe"
   File /a "..\platform-windows\OPC Core Components Redistributable (x64) 3.00.108.msi"
   ;File /a "..\platform-windows\gbda_aut.dll"
   ;File /a "..\platform-windows\gbhda_aw.dll"
@@ -273,7 +276,9 @@ SetRegView 64
   Sleep 1000
   ExecWait '"$INSTDIR\platform-windows\vc_redist.x64.exe" /install /passive /quiet'
   Sleep 1000
-  ExecWait '"$INSTDIR\platform-windows\dotnet-runtime-8.0.20-win-x64.exe" /install /passive /quiet'
+  ExecWait '"$INSTDIR\platform-windows\aspnetcore-runtime-8.0.23-win-x64.exe" /install /passive /quiet'
+  ExecWait '"$INSTDIR\platform-windows\dotnet-runtime-8.0.23-win-x64.exe" /install /passive /quiet'
+  ExecWait '"$INSTDIR\platform-windows\dotnet-runtime-10.0.2-win-x64.exe" /install /passive /quiet'
   Sleep 1000
   ExecWait 'msiexec /i "$INSTDIR\platform-windows\OPC Core Components Redistributable (x64) 3.00.108.msi" /qn'
   Sleep 1000
@@ -411,12 +416,26 @@ SetRegView 64
   File /a /r "..\src\cs_data_processor\*.*"
 
   SetOutPath $INSTDIR\src\cs_custom_processor
+  File /a "..\src\cs_custom_processor\*.json"
   File /a "..\src\cs_custom_processor\README.md"
-  File /a "..\src\cs_custom_processor\*.js"
-  File /a "..\src\cs_custom_processor\package.json"
-  File /a "..\src\cs_custom_processor\package-lock.json"
+  SetOutPath $INSTDIR\src\cs_custom_processor\src
+  File /a /r "..\src\cs_custom_processor\src\*.*"
+  SetOutPath $INSTDIR\src\cs_custom_processor\dist
+  File /a /r "..\src\cs_custom_processor\dist\*.*"
   SetOutPath $INSTDIR\src\cs_custom_processor\node_modules
   File /a /r "..\src\cs_custom_processor\node_modules\*.*"
+
+  SetOutPath $INSTDIR\src\mcp-json-scada-db
+  File /a /r "..\src\mcp-json-scada-db\*.json"
+  File /a /r "..\src\mcp-json-scada-db\*.md"
+  SetOutPath $INSTDIR\src\mcp-json-scada-db\src
+  File /a /r "..\src\mcp-json-scada-db\src\*.*"
+  SetOutPath $INSTDIR\src\mcp-json-scada-db\dist
+  File /a /r "..\src\mcp-json-scada-db\dist\*.*"
+  SetOutPath $INSTDIR\src\mcp-json-scada-db\node_modules
+  File /a /r "..\src\mcp-json-scada-db\node_modules\*.*"
+  SetOutPath $INSTDIR\src\mcp-json-scada-db\examples
+  File /a /r "..\src\mcp-json-scada-db\examples\*.*"
 
   SetOutPath $INSTDIR\src\config_server_for_excel
   File /a "..\src\config_server_for_excel\README.md"
@@ -481,6 +500,10 @@ SetRegView 64
   SetOutPath $INSTDIR\platform-windows\browser-data
   File /a /r "..\platform-windows\browser-data\*.*"
 
+  ; ua-edge-translalor
+  SetOutPath $INSTDIR\platform-windows\ua-edge-translator-runtime
+  File /a /r "..\platform-windows\ua-edge-translator-runtime\*.*"
+
   ; Inkscape + SCADA extension
   SetOutPath $INSTDIR\platform-windows\inkscape-runtime
   File /a /r "..\platform-windows\inkscape-runtime\*.*"
@@ -508,9 +531,6 @@ SetRegView 64
 
   SetOutPath $INSTDIR\svg
   File /a "..\conf-templates\*.svg"
-
-  SetOutPath $INSTDIR\src\cs_custom_processor
-  File /a "..\src\cs_custom_processor\customized_module.js"
 
   SetOutPath $INSTDIR\conf
   File /a "..\conf-templates\php.ini"

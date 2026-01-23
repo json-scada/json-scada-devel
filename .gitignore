@@ -14,6 +14,10 @@ src/htdocs/htdocs
 src/clients/
 
 src/cs_custom_processor/dist/
+src/cs_custom_processor/src/*.js
+src/mcp-json-scada-db/dist/
+src/mcp-json-scada-db/examples/*.js
+src/mcp-json-scada-db/src/*.js
 src/backup-mongo/output/
 src/plc4x-client/
 src/calculations/calculations
