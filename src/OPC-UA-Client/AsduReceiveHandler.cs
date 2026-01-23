@@ -320,7 +320,8 @@ partial class MainClass
                     {
                         Log(conn_name + " - Using anonymous authentication.");
                     }
-                    session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60000, identity, null);
+                    var updateEndpoint = OPCUA_conn.useSecurity && (selectedEndpoint.ServerCertificate == null || selectedEndpoint.ServerCertificate.Length == 0);
+                    session = await Session.Create(config, endpoint, updateEndpoint, "OPC UA Console Client", 60000, identity, null);
 
                     // Log("" + session.KeepAliveInterval); // default is 5000
                     session.KeepAliveInterval = System.Convert.ToInt32(OPCUA_conn.timeoutMs);
