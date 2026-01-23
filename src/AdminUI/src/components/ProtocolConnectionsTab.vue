@@ -3618,7 +3618,7 @@
   const handshakeItems = ['None', 'Rts', 'Xon', 'RtsXon']
   const sizeOfLinkAddressItems = [0, 1, 2]
   const securityModeItems = ['None', 'Sign', 'SignAndEncrypt']
-  const securityPolicyItems = ['None', 'Basic128', 'Basic128Rsa15', 'Basic256', 'Basic256Sha256', 'Aes128_Sha256_RsaOaep', 'Aes256_Sha256_RsaPss', 'ECC_brainpoolP256r1', 'ECC_brainpoolP384r1', 'ECC_curve25519', 'ECC_curve448', 'Https']
+  const securityPolicyItems = ['None', 'Basic128', 'Basic128Rsa15', 'Basic256', 'Basic256Sha256', 'Aes128_Sha256_RsaOaep', 'Aes256_Sha256_RsaPss', 'ECC_brainpoolP256r1', 'ECC_brainpoolP384r1', 'ECC_curve25519', 'ECC_curve448']
 
   // Lifecycle hooks
   onMounted(async () => {

@@ -442,7 +442,7 @@ exports.updateProtocolConnection = async (req, res) => {
 
   if (['OPC-UA'].includes(req?.body?.protocolDriver)) {
     if (!('configFileName' in req.body)) {
-      req.body.configFileName = '../conf/Opc.Ua.DefaultClient.Config.xml'
+      req.body.configFileName = ''
     }
   }
   if (['ICCP', 'ICCP_SERVER'].includes(req?.body?.protocolDriver)) {

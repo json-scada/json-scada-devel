@@ -86,7 +86,7 @@ const ProtocolConnection = mongoose.model(
     // OPC-UA
     configFileName: {
       type: String,
-      default: '../conf/Opc.Ua.DefaultClient.Config.xml',
+      default: '',
     },
 
     // IEC60870-5-104, IEC60870-5-104_SERVER, DNP3, DNP3_SERVER, PLCTag, I104M

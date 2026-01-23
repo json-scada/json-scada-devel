@@ -57,6 +57,15 @@ Each instance for this driver can have many client connection defined that must 
         autoCreateTagQueueSize: 5.0,
         timeoutMs: 20000,
         useSecurity: false,
+        autoAcceptUntrustedCertificates: true,
+        username: "",
+        password: "",
+        pfxFilePath: "",
+        localCertFilePath: "../conf/opcua/js_opcua_client.pfx",
+        passphrase: "",
+        securityMode: "None",
+        securityPolicy: "None",
+        autoAcceptUntrustedCertificates: true,
         topics: [],
         giInterval: 300.0,
         hoursShift: 0.0,
@@ -73,13 +82,21 @@ Parameters for communication with OPC-UA servers.
 - _**enabled**_ [Boolean] - Controls the enabling of the connection. Use false here to disable the connection. **Mandatory parameter**.
 - _**commandsEnabled**_ [Boolean] - Allows to disable commands (messages in control direction) for a connection. Use false here to disable commands. **Mandatory parameter**.
 - _**endpointURLs**_ [Array of Strings] - Array of server endpoints URLs (only the first server is currently supported). **Mandatory parameter**.
-- _**configFileName**_ [String] - Name of the config file (with absolute path or relative to the bin folder). Default="../conf/Opc.Ua.DefaultClient.Config.xml". Use this file or crete new files to configure certificates and other OPC-UA parameters for a connection. **Optional parameter**.
+- _**configFileName**_ [String] - Name of the config file (with absolute path or relative to the bin folder). Example: "../conf/Opc.Ua.DefaultClient.Config.xml". Use this file or crete new files to configure certificates and other OPC-UA parameters for a connection. **Optional parameter**.
 - _**autoCreateTags**_ [Boolean] - When true the driver will create tags for every data point found in the server, all points will be subscribed. When false, only preconfigured tags will be updated. **Mandatory parameter**.
 - _**autoCreateTagPublishingInterval**_ [Double] - Default publishing interval in seconds for subscription of auto created tags. **Mandatory parameter**.
 - _**autoCreateTagSamplingInterval**_ [Double] - Default sampling interval in seconds for subscription of auto created tags. **Mandatory parameter**.
 - _**autoCreateTagQueueSize**_ [Double] - Default queue size for subscription of auto created tags. **Mandatory parameter**.
 - _**timeoutMs**_ [Double] - Timeout for keepalive messages. **Mandatory parameter**.
-- _**useSecurity**_ [Boolean] - Use (true) or not (false) secure encrypted connection. **Mandatory parameter**.
+- _**useSecurity**_ [Boolean] - Use (true) or not (false) to configure secure encrypted connection. Default false. **Mandatory parameter**.
+- _**username**_ [String] - Username for user authentication. **Mandatory parameter**.
+- _**password**_ [String] - Password for user authentication. **Mandatory parameter**.
+- _**pfxFilePath**_ [String] - Path to the PFX file for the user authentication. **Mandatory parameter**.
+- _**localCertFilePath**_ [String] - Path to the local client computer certificate file for authentication. **Mandatory parameter**.
+- _**passphrase**_ [String] - Passphrase for the PFX files. Must be the same for pfxFilePath and localCertFilePath. Leave empty if no passphrase is used. **Mandatory parameter**.
+- _**securityMode**_ [String] - Security mode for the connection. Use "None" for no security. **Mandatory parameter**.
+- _**securityPolicy**_ [String] - Security policy for the connection. Use "None" for no security. **Mandatory parameter**.
+- _**autoAcceptUntrustedCertificates**_ [Boolean] - Automatically accept untrusted certificates. Default true. **Mandatory parameter**.
 - _**hoursShift**_ [Double] - Time shift to be applied to server timestamps (hours). **Mandatory parameter**.
 - _**giInterval**_ [Double] - Integrity interval for items not on subscription (seconds). **Mandatory parameter**.
 - _**topics**_ [Array of Strings] - List of browse paths where to create tags automatically (e.g. "/Objects/Path", "Boiler"). **Mandatory parameter**.
@@ -108,7 +125,7 @@ Select a tag for a update on a connection as below.
     });
 
 - _**protocolConnectionNumber**_ [Double] - Number code for the protocol connection. Only this protocol connection can update the tag. **Mandatory parameter**.
-- _**protocolSourceCommonAddress**_ [String] -  Not used, keep as empty string. **Mandatory parameter**.
+- _**protocolSourceCommonAddress**_ [String] - Not used, keep as empty string. **Mandatory parameter**.
 - _**protocolSourceObjectAddress**_ [String] - OPC-UA Node Id. This address must be unique in a connection (for supervised points). **Mandatory parameter**.
 - _**protocolSourceASDU**_ [String] - Data type: Boolean | SByte | Byte | Int16 | UInt16 | Int32 | UInt32, | StatusCode | Int64 | UInt64 | DateTime | Guid | Float | Double | String | ByteString | XmlElement | NodeId | ExpandedNodeId | LocaleId | QualifiedName | LocalizedText | Number | Integer | UInteger | Enumeration | ExtensionObject | JSON (JSON in a string) | [, Array Range]. E.g. UInt64,0:10. **Mandatory parameter**.
 - _**protocolSourcePublishingInterval**_ [Double] - Publishing interval in seconds for the subscription group (repeat the same value for all members of a subscription). Leave at zero if not a subscription. **Mandatory parameter**.
@@ -151,4 +168,4 @@ This driver has the following command line arguments.
 
 ## Example of JSON-SCADA Protocol Driver Instances and Connections Numbering
 
-![Driver instances and connections](https://github.com/riclolsen/json-scada/raw/master/docs/JSON-SCADA_Connections.png 'Driver Instances and Connections Numbering')
+![Driver instances and connections](https://github.com/riclolsen/json-scada/raw/master/docs/JSON-SCADA_Connections.png "Driver Instances and Connections Numbering")

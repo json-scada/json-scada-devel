@@ -228,35 +228,31 @@ partial class MainClass
 
                         if (OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
                         {
-                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath);
+                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase);
                             config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
                         }
 
                         try
                         {
-                            using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
+                            Log(conn_name + " - " + "Assembling endpoint directly from configuration.");
+                            var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                            var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+
+                            selectedEndpoint = new EndpointDescription
                             {
-                                var endpoints = discoveryClient.GetEndpoints(null);
-                                // log endpoints
-                                Log(conn_name + " - " + "Discovered endpoints:");
-                                foreach (var ep in endpoints)
-                                {
-                                    Log(conn_name + " - " + "Endpoint: " +
-                                        ep.EndpointUrl +
-                                        " | SecurityMode: " + ep.SecurityMode +
-                                        " | SecurityPolicy: " + ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1)); 
-                                        // + " | TransportProfileUri: " + ep.TransportProfileUri);
-                                }
-                                var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
-                                var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
-                                selectedEndpoint = endpoints.FirstOrDefault(
-                                    e =>
-                                    e.SecurityMode == mode && e.SecurityPolicyUri == policyUri);
-                            }
+                                EndpointUrl = OPCUA_conn.endpointURLs[0],
+                                SecurityMode = mode,
+                                SecurityPolicyUri = policyUri
+                            };
+
+                            Log(conn_name + " - " + "Assembled endpoint: " +
+                                selectedEndpoint.EndpointUrl +
+                                " | SecurityMode: " + selectedEndpoint.SecurityMode +
+                                " | SecurityPolicy: " + selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1));
                         }
                         catch (Exception ex)
                         {
-                            Log(conn_name + " - Error matching endpoint: " + ex.Message);
+                            Log(conn_name + " - Error assembling endpoint: " + ex.Message);
                         }
                     }
 
@@ -278,14 +274,18 @@ partial class MainClass
                     IUserIdentity identity = new UserIdentity(new AnonymousIdentityToken());
                     if (!string.IsNullOrEmpty(OPCUA_conn.username))
                     {
-                        Log(conn_name + " - " + "Using username/password authentication for user: " + OPCUA_conn.username);
+                        Log(conn_name + " - Using username/password authentication for user: " + OPCUA_conn.username);
                         identity = new UserIdentity(OPCUA_conn.username, OPCUA_conn.password ?? "");
                     }
-                    if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
+                    else if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
                     {
-                        Log(conn_name + " - " + "Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
+                        Log(conn_name + " - Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
                         var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase);
                         identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
+                    }
+                    else
+                    {
+                        Log(conn_name + " - Using anonymous authentication.");
                     }
                     session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60000, identity, null);
 
@@ -297,7 +297,7 @@ partial class MainClass
                 }
                 catch (Exception e)
                 {
-                    Log(conn_name + " - WARN: " + e.Message);
+                    Log(conn_name + " - WARN: " + e);
                 }
 
                 if (session == null)

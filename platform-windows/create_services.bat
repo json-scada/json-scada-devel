@@ -120,7 +120,7 @@ REM Use environment variables to connect (for writing) to PostgreSQL historian (
 REM nssm set JSON_SCADA_process_hist AppEnvironmentExtra PGHOSTADDR=127.0.0.1 PGPORT=5432 PGDATABASE=json_scada PGUSER=json_scada PGPASSWORD=json_scada
 
 nssm install JSON_SCADA_php "c:\json-scada\platform-windows\nginx_php-runtime\php\php-cgi.exe" -b 127.0.0.1:9000 -c c:\json-scada\conf\php.ini
-nssm set JSON_SCADA_php Start SERVICE_AUTO_START
+nssm set JSON_SCADA_php Start SERVICE_DEMAND_START
 
 nssm install JSON_SCADA_nginx "c:\json-scada\platform-windows\nginx_php-runtime\nginx.exe" -c c:\json-scada\conf\nginx.conf
 nssm set JSON_SCADA_nginx Start SERVICE_AUTO_START
