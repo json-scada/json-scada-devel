@@ -228,9 +228,17 @@ partial class MainClass
 
                         if (OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
                         {
-                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase);
-                            config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
-                            config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
+                            try
+                            {
+                                var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet);
+                                config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
+                                config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
+                            }
+                            catch (Exception e)
+                            {
+                                Log(conn_name + " - " + "FATAL: error in local certificate file!", LogLevelNoLog);
+                                Environment.Exit(1);
+                            }
                         }
 
                         try
@@ -305,7 +313,7 @@ partial class MainClass
                     else if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
                     {
                         Log(conn_name + " - Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
-                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase);
+                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet);
                         identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
                     }
                     else
