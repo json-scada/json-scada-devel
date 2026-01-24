@@ -27,7 +27,6 @@ using System.Linq;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
-using System.Text.RegularExpressions;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Security.Cryptography.X509Certificates;
@@ -181,13 +180,18 @@ partial class MainClass
                     ApplicationUri = "urn:localhost:OPCUA:JSON_SCADA_OPCUAClient",
                     ApplicationName = "JSON-SCADA OPC-UA Client",
                     ApplicationType = ApplicationType.Client,
-                    CertificateValidator = new CertificateValidator(),
+                    CertificateValidator = new (),
                     ServerConfiguration = null,
-                    SecurityConfiguration = new SecurityConfiguration
+                    SecurityConfiguration = new ()
                     {
                         AutoAcceptUntrustedCertificates = true,
+                        ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = "MyApp" },
+                        TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
+                        TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
+                        RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
                     },
-                    TransportQuotas = new TransportQuotas
+                    TransportConfigurations = new (),
+                    TransportQuotas = new ()
                     {
                         OperationTimeout = 600000,
                         MaxStringLength = 1048576,
@@ -198,7 +202,8 @@ partial class MainClass
                         ChannelLifetime = 600000,
                         SecurityTokenLifetime = 3600000,
                     },
-                    ClientConfiguration = new ClientConfiguration
+                    TraceConfiguration = new (),
+                    ClientConfiguration = new ()
                     {
                         DefaultSessionTimeout = 60000,
                         MinSubscriptionLifetime = 10000,
@@ -221,7 +226,7 @@ partial class MainClass
                             try
                             {
                                 var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
-                                config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
+                                config.SecurityConfiguration.ApplicationCertificate = new (cert);
                                 config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
                             }
                             catch (Exception e)
@@ -260,6 +265,9 @@ partial class MainClass
                             Log(conn_name + " - Error assembling endpoint: " + ex.Message);
                         }
                     }
+                    config.Validate(ApplicationType.Client).GetAwaiter().GetResult();
+                    application.ApplicationConfiguration = config;
+
 
                     if (selectedEndpoint == null)
                     {
@@ -298,7 +306,7 @@ partial class MainClass
 
                     try
                     {
-                        session = await Session.Create(config, endpoint, updateEndpoint, "OPC UA Console Client", 60000, identity, null);
+                        session = await Session.Create(config, endpoint, updateEndpoint, false, config.ApplicationName, 60000, identity, null);
                         Log(conn_name + " - Session created successfully.");
                     }
                     catch (Exception sessionEx)
@@ -308,7 +316,7 @@ partial class MainClass
                         throw;
                     }
 
-                    session.KeepAliveInterval = System.Convert.ToInt32(OPCUA_conn.timeoutMs);
+                    session.KeepAliveInterval = Convert.ToInt32(OPCUA_conn.timeoutMs);
 
                     // register keep alive handler
                     session.KeepAlive += Client_KeepAlive;
@@ -323,7 +331,7 @@ partial class MainClass
                     Log(conn_name + " - " + "FATAL: error creating session!", LogLevelNoLog);
                     failed = true;
                     exitCode = ExitCode.ErrorCreateSession;
-                    Thread.Sleep(1000);
+                    Thread.Sleep(5000);
                 }
             }
             while (session == null || !session.Connected);
@@ -409,19 +417,19 @@ partial class MainClass
                             {
                                 try
                                 {
-                                    dblValue = System.Convert.ToDouble(value.Value);
+                                    dblValue = Convert.ToDouble(value.Value);
                                 }
                                 catch
                                 {
                                     try
                                     {
-                                        dblValue = System.Convert.ToInt64(value.Value);
+                                        dblValue = Convert.ToInt64(value.Value);
                                     }
                                     catch
                                     {
                                         try
                                         {
-                                            dblValue = System.Convert.ToInt32(value.Value);
+                                            dblValue = Convert.ToInt32(value.Value);
                                         }
                                         catch
                                         {
@@ -441,8 +449,8 @@ partial class MainClass
                             else
                             if ((base_type == "datetime" || base_type == "utctime") && !isArray)
                             {
-                                dblValue = ((DateTimeOffset)System.Convert.ToDateTime(value.Value)).ToUnixTimeMilliseconds();
-                                strValue = System.Convert.ToDateTime(value.Value).ToString("o");
+                                dblValue = ((DateTimeOffset)Convert.ToDateTime(value.Value)).ToUnixTimeMilliseconds();
+                                strValue = Convert.ToDateTime(value.Value).ToString("o");
                             }
                             else
                             if (base_type == "extensionobject" && !isArray)
@@ -493,7 +501,7 @@ partial class MainClass
                             if (base_type == "bytestring" && !isArray)
                             {
                                 dblValue = 0;
-                                strValue = System.Convert.ToBase64String(value.GetValue<byte[]>([]));
+                                strValue = Convert.ToBase64String(value.GetValue<byte[]>([]));
                             }
                             else
                             if (
@@ -518,7 +526,7 @@ partial class MainClass
                                 base_type == "guid")
                             {
                                 dblValue = 0;
-                                strValue = System.Convert.ToString(value.Value);
+                                strValue = Convert.ToString(value.Value);
                             }
                             else
                             if (isArray)
@@ -530,7 +538,7 @@ partial class MainClass
                             {
                                 try
                                 {
-                                    dblValue = System.Convert.ToDouble(value.Value);
+                                    dblValue = Convert.ToDouble(value.Value);
                                     strValue = value.Value.ToString();
                                 }
                                 catch
