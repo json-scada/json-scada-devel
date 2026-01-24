@@ -34,6 +34,8 @@ A portable and scalable SCADA/IIoT-I4.0 platform centered on the MongoDB databas
 ![](https://img.shields.io/badge/license-GPL-green 'License GPL')
 ![](https://img.shields.io/badge/contributors-welcome-green 'Contributors Welcome')
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/riclolsen/json-scada)
+
 ## Mission Statement
 
 To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.0 platform built by leveraging mainstream open-source IT tools.
@@ -120,7 +122,7 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [OSHMI2JSON Tool](https://github.com/riclolsen/json-scada/blob/master/src/oshmi2json/README.md)
 - [Report Generators](https://github.com/riclolsen/json-scada/blob/master/docs/report_generators.md)
 - [I104M Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/i104m/README.md)
-
+- [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
 ## Protocols Roadmap
 
 - [x] IEC 60870-5-104 Server TCP/TLS
