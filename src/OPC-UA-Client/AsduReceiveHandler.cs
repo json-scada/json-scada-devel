@@ -34,7 +34,7 @@ using System.Security.Cryptography.X509Certificates;
 
 partial class MainClass
 {
-    public static JsonSerializerOptions jsonSerOpts = new JsonSerializerOptions
+    public static JsonSerializerOptions jsonSerOpts = new()
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
@@ -94,7 +94,7 @@ partial class MainClass
                 return;
             }
 
-            ManualResetEvent quitEvent = new ManualResetEvent(false);
+            var quitEvent = new ManualResetEvent(false);
 
             try
             {
@@ -127,32 +127,28 @@ partial class MainClass
             Log(conn_name + " - " + "Create an Application Configuration...");
             exitCode = ExitCode.ErrorCreateApplication;
 
-            ApplicationInstance application = new ApplicationInstance
+            var application = new ApplicationInstance
             {
                 ApplicationName = "JSON-SCADA OPC-UA Client",
                 ApplicationType = ApplicationType.Client,
                 ConfigSectionName = "",
             };
 
-            bool haveAppCertificate = false;
             ApplicationConfiguration config = null;
-
             try
             {
                 if (!File.Exists(OPCUA_conn.configFileName))
                 {
                     if (File.Exists(Path.Join("..", "conf", "Opc.Ua.DefaultClient.Config.xml")))
                         OPCUA_conn.configFileName = Path.Join("..", "conf", "Opc.Ua.DefaultClient.Config.xml");
-                    else
-                    if (File.Exists(Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml")))
+                    else if (File.Exists(Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml")))
                         OPCUA_conn.configFileName = Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml");
                 }
-                // load the application configuration.
+
                 Log(conn_name + " - " + "Load config from " + OPCUA_conn.configFileName);
                 config = await application.LoadApplicationConfiguration(OPCUA_conn.configFileName, false);
 
-                // check the application certificate.
-                haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0, 0);
+                var haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0, 0);
 
                 if (!haveAppCertificate)
                 {
@@ -177,12 +173,6 @@ partial class MainClass
             {
                 Log(conn_name + " - WARN: " + e.Message);
             }
-
-            //if (OPCUA_conn.useSecurity && config == null)
-            //{
-            //    Log(conn_name + " - " + "FATAL: error in XML config file!", LogLevelNoLog);
-            //    Environment.Exit(1);
-            //}
 
             if (config == null)
             {
@@ -230,7 +220,7 @@ partial class MainClass
                         {
                             try
                             {
-                                var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet);
+                                var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
                                 config.SecurityConfiguration.ApplicationCertificate = new CertificateIdentifier(cert);
                                 config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
                             }
@@ -247,36 +237,18 @@ partial class MainClass
                             var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
                             var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
 
-                            try
+                            selectedEndpoint = new EndpointDescription
                             {
-                                Log(conn_name + " - Attempting to select endpoint via discovery...");
-                                selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
-                                if (selectedEndpoint != null)
+                                EndpointUrl = OPCUA_conn.endpointURLs[0],
+                                SecurityMode = mode,
+                                SecurityPolicyUri = policyUri,
+                                UserIdentityTokens = new UserTokenPolicyCollection
                                 {
-                                    selectedEndpoint.EndpointUrl = OPCUA_conn.endpointURLs[0];
-                                    Log(conn_name + " - Endpoint selected and URL overridden.");
+                                    new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
+                                    new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
+                                    new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
                                 }
-                            }
-                            catch (Exception dex)
-                            {
-                                Log(conn_name + " - Discovery failed during manual assembly: " + dex.Message);
-                            }
-
-                            if (selectedEndpoint == null)
-                            {
-                                selectedEndpoint = new EndpointDescription
-                                {
-                                    EndpointUrl = OPCUA_conn.endpointURLs[0],
-                                    SecurityMode = mode,
-                                    SecurityPolicyUri = policyUri,
-                                    UserIdentityTokens = new UserTokenPolicyCollection
-                                    {
-                                        new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
-                                        new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
-                                        new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
-                                    }
-                                };
-                            }
+                            };
 
                             Log(conn_name + " - " + "Assembled endpoint: " +
                                 selectedEndpoint.EndpointUrl +
@@ -291,9 +263,10 @@ partial class MainClass
 
                     if (selectedEndpoint == null)
                     {
-                        Log(conn_name + " - " + "Discover endpoints of " + OPCUA_conn.endpointURLs[0]);
+                        Log(conn_name + " - " + "FATAL: Unable to assemble endpoint.");
                         exitCode = ExitCode.ErrorDiscoverEndpoints;
-                        selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
+                        failed = true;
+                        return;
                     }
 
                     Log(conn_name + " - " + "Selected endpoint uses: " +
@@ -304,7 +277,7 @@ partial class MainClass
                     var endpointConfiguration = EndpointConfiguration.Create(config);
                     var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
                     Thread.Sleep(50);
-                    IUserIdentity identity = new UserIdentity(new AnonymousIdentityToken());
+                    var identity = new UserIdentity(new AnonymousIdentityToken());
                     if (!string.IsNullOrEmpty(OPCUA_conn.username))
                     {
                         Log(conn_name + " - Using username/password authentication for user: " + OPCUA_conn.username);
@@ -313,17 +286,28 @@ partial class MainClass
                     else if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
                     {
                         Log(conn_name + " - Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
-                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet);
+                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
                         identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
                     }
                     else
                     {
                         Log(conn_name + " - Using anonymous authentication.");
                     }
-                    var updateEndpoint = OPCUA_conn.useSecurity && (selectedEndpoint.ServerCertificate == null || selectedEndpoint.ServerCertificate.Length == 0);
-                    session = await Session.Create(config, endpoint, updateEndpoint, "OPC UA Console Client", 60000, identity, null);
 
-                    // Log("" + session.KeepAliveInterval); // default is 5000
+                    var updateEndpoint = OPCUA_conn.useSecurity && (selectedEndpoint.ServerCertificate == null || selectedEndpoint.ServerCertificate.Length == 0);
+
+                    try
+                    {
+                        session = await Session.Create(config, endpoint, updateEndpoint, "OPC UA Console Client", 60000, identity, null);
+                        Log(conn_name + " - Session created successfully.");
+                    }
+                    catch (Exception sessionEx)
+                    {
+                        Log(conn_name + " - ERROR: Failed to create session: " + sessionEx.Message);
+                        Log(conn_name + " - StackTrace: " + sessionEx.StackTrace);
+                        throw;
+                    }
+
                     session.KeepAliveInterval = System.Convert.ToInt32(OPCUA_conn.timeoutMs);
 
                     // register keep alive handler
@@ -343,306 +327,6 @@ partial class MainClass
                 }
             }
             while (session == null || !session.Connected);
-
-            if (OPCUA_conn.autoCreateTags)
-            {
-                Log(conn_name + " - " + "Browsing the OPC UA server namespace.");
-                exitCode = ExitCode.ErrorBrowseNamespace;
-
-                var uac = new UAClient(session);
-                var refDescr = await BrowseFullAddressSpaceAsync(uac, Objects.ObjectsFolder).ConfigureAwait(false);
-                var regexp = new Regex("/Objects/");
-                IList<NodeId> nodesList = [];
-
-                // filter out the nodes in refDescr without any topic (OPCUA_conn.topics) in the path
-                if (OPCUA_conn.topics.Length > 0)
-                {
-                    Log(conn_name + " - " + "Filtering nodes by topics: " + string.Join(", ", OPCUA_conn.topics));
-                    foreach (var (reference, path) in refDescr.Values)
-                    {
-                        if (reference.NodeClass == NodeClass.Object) continue;
-                        if (reference.NodeClass == NodeClass.Method && !OPCUA_conn.commandsEnabled) continue;
-                        var keep = false;
-                        foreach (var topic in OPCUA_conn.topics)
-                        {
-                            if ((path + "/").Contains("/" + topic + "/"))
-                            {
-                                keep = true;
-                                break;
-                            }
-                        }
-                        if (!keep)
-                        {
-                            refDescr.Remove(reference.NodeId);
-                        }
-                    }
-                }
-                Log(conn_name + " - " + refDescr.Count + " nodes found in the namespace.");
-
-                foreach (var (reference, path) in refDescr.Values)
-                {
-                    if (reference.NodeClass == NodeClass.Object) continue;
-                    if (reference.NodeClass == NodeClass.Method && !OPCUA_conn.commandsEnabled) continue;
-                    nodesList.Add(reference.NodeId.ToString());
-                }
-
-                const int maxNodesToRead = 100;
-                for (var j = 0; j < nodesList.Count; j = j + maxNodesToRead)
-                {
-                    try
-                    {
-                        var nodesToRead = nodesList.Skip(j).Take(maxNodesToRead).ToList();
-                        (IList<Node> sourceNodes, IList<ServiceResult> readErrors) = await session.ReadNodesAsync(nodesToRead);
-                        DataValueCollection dataValues = []; IList<ServiceResult> readErrorsDv = [];
-                        try
-                        {
-                            (dataValues, readErrorsDv) = await session.ReadValuesAsync(nodesToRead);
-                        }
-                        catch (Exception)
-                        {
-                            Log(conn_name + " - Error reading values " + j, LogLevelDetailed);
-                        }
-                        Log(conn_name + " - " + " Autotag - Read " + sourceNodes.Count + " nodes at offset " + j + " from a total of " + nodesList.Count);
-                        for (int i = 0; i < sourceNodes.Count; i++)
-                        {
-                            if (OPCUA_conn.InsertedAddresses.Contains(sourceNodes[i].NodeId.ToString())) continue;
-                            if (!StatusCode.IsGood(readErrors[i].StatusCode)) continue;
-                            var reference = refDescr[sourceNodes[i].NodeId];
-                            var pathMinusLastName = Path.GetDirectoryName(reference.Path).Replace('\\', '/');
-                            var parentName = Path.GetFileName(pathMinusLastName);
-                            var path = regexp.Replace(pathMinusLastName, "", 1); // remove initial /Objects from the path,
-
-                            if (sourceNodes[i].NodeClass == NodeClass.Method && OPCUA_conn.commandsEnabled)
-                            {
-                                var res = (MethodNode)sourceNodes[i];
-                                if (res.Executable && res.UserExecutable)
-                                {
-                                    Log(conn_name + " - " + string.Format("NodeId {0} {1} {2} Path: {3}", sourceNodes[i].NodeId, sourceNodes[i].NodeClass, sourceNodes[i].BrowseName, reference.Path), LogLevelDetailed);
-
-                                    OPCUA_conn.NodeIdsDetails[sourceNodes[i].NodeId.ToString()] = new NodeDetails
-                                    {
-                                        BrowseName = sourceNodes[i].BrowseName.Name,
-                                        DisplayName = sourceNodes[i].DisplayName.Text,
-                                        ParentName = parentName,
-                                        Path = path,
-                                    };
-                                    // if not created, create a new command/method tag
-                                    // Console.WriteLine(res);
-                                    OPC_Value ov =
-                                        new OPC_Value()
-                                        {
-                                            createCommandForMethod = true,
-                                            createCommandForSupervised = false,
-                                            accessLevels = AccessLevels.CurrentWrite,
-                                            valueJson = "",
-                                            selfPublish = true,
-                                            address = sourceNodes[i].NodeId.ToString(),
-                                            isArray = false,
-                                            asdu = "method",
-                                            value = 0,
-                                            valueString = "",
-                                            hasSourceTimestamp = false,
-                                            sourceTimestamp = DateTime.MinValue,
-                                            serverTimestamp = DateTime.Now,
-                                            quality = false,
-                                            cot = 0,
-                                            conn_number = conn_number,
-                                            conn_name = conn_name,
-                                            common_address = "",
-                                            display_name = sourceNodes[i].DisplayName.Text,
-                                            parentName = parentName,
-                                            path = path,
-                                        };
-                                    OPCDataQueue.Enqueue(ov);
-                                }
-                                continue;
-                            }
-                            if (sourceNodes.Count != readErrorsDv.Count) continue; // must have read all the values to proceed
-                            if (sourceNodes.Count != dataValues.Count) continue;
-                            if (!StatusCode.IsGood(readErrorsDv[i].StatusCode)) continue;
-
-                            var addToMonitoring = false;
-                            if (OPCUA_conn.topics.Length == 0) addToMonitoring = true;
-                            foreach (var topic in OPCUA_conn.topics)
-                            {
-                                if (reference.Path.Contains(topic))
-                                {
-                                    addToMonitoring = true;
-                                    break;
-                                }
-                            }
-                            if (!addToMonitoring) continue;
-
-                            Log(conn_name + " - " + string.Format("NodeId {0} {1} {2} Path: {3}", sourceNodes[i].NodeId, sourceNodes[i].NodeClass, sourceNodes[i].BrowseName, reference.Path), LogLevelDetailed);
-                            OPCUA_conn.NodeIdsDetails[sourceNodes[i].NodeId.ToString()] = new NodeDetails
-                            {
-                                BrowseName = sourceNodes[i].BrowseName.Name,
-                                DisplayName = sourceNodes[i].DisplayName.Text,
-                                ParentName = parentName,
-                                Path = path,
-                            };
-                            var mi = new MonitoredItem()
-                            {
-                                DisplayName = sourceNodes[i].BrowseName.Name,
-                                StartNodeId = sourceNodes[i].NodeId.ToString(),
-                                SamplingInterval = System.Convert.ToInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagSamplingInterval) * 1000),
-                                QueueSize = System.Convert.ToUInt32(OPCUA_conn.autoCreateTagQueueSize),
-                                MonitoringMode = MonitoringMode.Reporting,
-                                DiscardOldest = true,
-                                AttributeId = Attributes.Value
-                            };
-                            mi.Filter = new DataChangeFilter()
-                            {
-                                Trigger = DataChangeTrigger.StatusValueTimestamp,
-                                DeadbandType = (uint)DeadbandType.None,
-                                DeadbandValue = 0
-                            };
-                            OPCUA_conn.ListMon.Add(mi);
-
-                            if (dataValues[i].Value == null) continue;
-
-                            ConvertOpcValue(dataValues[i], out string tp, out double dblValue, out string strValue, out string jsonValue, out bool isArray);
-
-                            var createCommandForSupervised = false;
-                            if (OPCUA_conn.commandsEnabled &&
-                                ((sourceNodes[i] as VariableNode).UserAccessLevel == AccessLevels.CurrentReadOrWrite ||
-                                (sourceNodes[i] as VariableNode).UserAccessLevel == AccessLevels.CurrentWrite))
-                                createCommandForSupervised = true; // variable can be written, create a command for it
-                            OPC_Value iv =
-                                    new OPC_Value()
-                                    {
-                                        createCommandForMethod = false,
-                                        createCommandForSupervised = createCommandForSupervised,
-                                        accessLevels = (sourceNodes[i] as VariableNode).UserAccessLevel,
-                                        valueJson = jsonValue,
-                                        selfPublish = true,
-                                        address = sourceNodes[i].NodeId.ToString(),
-                                        isArray = isArray,
-                                        asdu = tp,
-                                        value = dblValue,
-                                        valueString = strValue,
-                                        hasSourceTimestamp = dataValues[i].SourceTimestamp != DateTime.MinValue,
-                                        sourceTimestamp = dataValues[i].SourceTimestamp.AddHours(OPCUA_conn.hoursShift),
-                                        serverTimestamp = DateTime.Now,
-                                        quality = StatusCode.IsGood(dataValues[i].StatusCode),
-                                        cot = 20,
-                                        conn_number = conn_number,
-                                        conn_name = conn_name,
-                                        common_address = "",
-                                        display_name = sourceNodes[i].DisplayName.Text,
-                                        parentName = parentName,
-                                        path = path,
-                                    };
-                            OPCDataQueue.Enqueue(iv);
-                        }
-                    }
-                    catch (Exception e)
-                    {
-                        Log(conn_name + " - Error reading nodes " + j);
-                        Log(e);
-                    }
-                }
-
-                await Task.Delay(50);
-                Log(conn_name + " - " + "Add a list of items (server current time and status) to the subscription.");
-                exitCode = ExitCode.ErrorMonitoredItem;
-                OPCUA_conn.ListMon.ForEach(i => i.Notification += OnNotification);
-                //OPCUA_conn.connection.session.Notification += OnSessionNotification;
-                OPCUA_conn.ListMon.ForEach(i => i.SamplingInterval = System.Convert.ToInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagSamplingInterval) * 1000));
-                OPCUA_conn.ListMon.ForEach(i => i.QueueSize = System.Convert.ToUInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagQueueSize)));
-                Log(conn_name + " - " + OPCUA_conn.ListMon.Count + " variables added to monitoring.");
-
-                Log(conn_name + " - " + "Create a subscription with publishing interval of " + System.Convert.ToDouble(OPCUA_conn.autoCreateTagPublishingInterval) + " seconds");
-                exitCode = ExitCode.ErrorCreateSubscription;
-                var subscription =
-                    new Subscription(session.DefaultSubscription)
-                    {
-                        PublishingInterval = System.Convert.ToInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagPublishingInterval) * 1000),
-                        PublishingEnabled = true,
-                        TimestampsToReturn = TimestampsToReturn.Both,
-                        // MaxNotificationsPerPublish = 1,
-                        SequentialPublishing = false,
-                    };
-
-                await Task.Delay(50);
-                subscription.AddItems(OPCUA_conn.ListMon);
-
-                await Task.Delay(50);
-                Log(conn_name + " - " + "Add the subscription to the session.");
-                Log(conn_name + " - " + subscription.MonitoredItemCount + " Monitored items");
-                exitCode = ExitCode.ErrorAddSubscription;
-                try
-                {
-                    session.AddSubscription(subscription);
-                    subscription.Create();
-                    subscription.ApplyChanges();
-                }
-                catch (Exception e)
-                {
-                    Log(conn_name + " - Error creating subscription: " + e.Message);
-                }
-            }
-            else
-            {
-                Log(conn_name + " - " + "Create subscription for inserted tags.");
-                exitCode = ExitCode.ErrorBrowseNamespace;
-
-                foreach (var sub in OPCUA_conn.OpcSubscriptions)
-                {
-                    List<MonitoredItem> lm = new List<MonitoredItem>();
-                    foreach (var tm in sub.Value)
-                    {
-                        var mi = new MonitoredItem()
-                        {
-                            DisplayName = tm.ungroupedDescription,
-                            StartNodeId = tm.protocolSourceObjectAddress,
-                            SamplingInterval = (int)(tm.protocolSourceSamplingInterval * 1000),
-                            QueueSize = (uint)OPCUA_conn.autoCreateTagQueueSize,
-                            MonitoringMode = MonitoringMode.Reporting,
-                            DiscardOldest = true,
-                            AttributeId = Attributes.Value,
-                        };
-                        mi.Filter = new DataChangeFilter()
-                        {
-                            Trigger = DataChangeTrigger.StatusValueTimestamp,
-                            DeadbandType = (uint)DeadbandType.None,
-                            DeadbandValue = 0
-                        };
-                        lm.Add(mi);
-                    }
-                    lm.ForEach(i => i.Notification += OnNotification);
-
-                    Log(conn_name + " - " + "Create a subscription with publishing interval of " + sub.Key + " seconds");
-                    exitCode = ExitCode.ErrorCreateSubscription;
-                    var subscription =
-                        new Subscription(session.DefaultSubscription)
-                        {
-                            PublishingInterval = (int)(sub.Key * 1000),
-                            PublishingEnabled = true,
-                            TimestampsToReturn = TimestampsToReturn.Both,
-                            // MaxNotificationsPerPublish = 1,
-                            SequentialPublishing = false,
-                        };
-
-                    await Task.Delay(50);
-                    subscription.AddItems(lm);
-
-                    await Task.Delay(50);
-                    Log(conn_name + " - " + "Add the subscription to the session.");
-                    Log(conn_name + " - " + subscription.MonitoredItemCount + " Monitored items");
-                    exitCode = ExitCode.ErrorAddSubscription;
-                    try
-                    {
-                        session.AddSubscription(subscription);
-                        subscription.Create();
-                        subscription.ApplyChanges();
-                    }
-                    catch (Exception e)
-                    {
-                        Log(conn_name + " - Error creating subscription: " + e.Message);
-                    }
-                }
-            }
 
             Log(conn_name + " - " + "Running...");
             exitCode = ExitCode.ErrorRunning;
@@ -897,7 +581,7 @@ partial class MainClass
                         //     path = details.Path;
                         // }
 
-                        OPC_Value iv =
+                        var iv =
                         new OPC_Value()
                         {
                             createCommandForMethod = false,
@@ -1029,7 +713,7 @@ partial class MainClass
             BrowseDescription browseDescription = null,
             CancellationToken ct = default)
         {
-            Stopwatch stopWatch = new Stopwatch();
+            var stopWatch = new Stopwatch();
             stopWatch.Start();
 
             // Browse template
@@ -1059,12 +743,12 @@ partial class MainClass
                 Utils.LogInfo("{0}: Browse {1} nodes after {2}ms",
                     searchDepth, browseDescriptionCollection.Count, stopWatch.ElapsedMilliseconds);
 
-                BrowseResultCollection allBrowseResults = new BrowseResultCollection();
+                var allBrowseResults = new BrowseResultCollection();
                 bool repeatBrowse;
-                BrowseResultCollection browseResultCollection = new BrowseResultCollection();
-                BrowseDescriptionCollection unprocessedOperations = new BrowseDescriptionCollection();
+                var browseResultCollection = new BrowseResultCollection();
+                var unprocessedOperations = new BrowseDescriptionCollection();
                 DiagnosticInfoCollection diagnosticsInfoCollection;
-                BrowseDescriptionCollection browseCollection = new BrowseDescriptionCollection();
+                var browseCollection = new BrowseDescriptionCollection();
                 do
                 {
                     browseCollection = (maxNodesPerBrowse == 0) ?
