@@ -239,15 +239,15 @@ partial class MainClass
                     try
                     {
                         Log(conn_name + " - " + "Discovering endpoints from server...");
-                        
+
                         using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
                         {
                             var discoveredEndpoints = discoveryClient.GetEndpoints(null);
-                            
+
                             if (discoveredEndpoints != null && discoveredEndpoints.Count > 0)
                             {
                                 Log(conn_name + " - " + "Found " + discoveredEndpoints.Count + " endpoints from server.");
-                                
+
                                 var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
                                 var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
 
@@ -257,8 +257,8 @@ partial class MainClass
                                     if (ep.SecurityPolicyUri == policyUri && ep.SecurityMode == mode)
                                     {
                                         selectedEndpoint = ep;
-                                        Log(conn_name + " - " + "Selected discovered endpoint matching security policy: " + 
-                                            ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1) + 
+                                        Log(conn_name + " - " + "Selected discovered endpoint matching security policy: " +
+                                            ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1) +
                                             " and mode: " + ep.SecurityMode);
                                         break;
                                     }
@@ -282,8 +282,8 @@ partial class MainClass
                                 if (selectedEndpoint == null && discoveredEndpoints.Count > 0)
                                 {
                                     selectedEndpoint = discoveredEndpoints[0];
-                                    Log(conn_name + " - " + "Using first discovered endpoint: " + 
-                                        selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1) + 
+                                    Log(conn_name + " - " + "Using first discovered endpoint: " +
+                                        selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1) +
                                         " | Mode: " + selectedEndpoint.SecurityMode);
                                 }
                             }
@@ -294,20 +294,33 @@ partial class MainClass
                         Log(conn_name + " - " + "Warning: Could not discover endpoints: " + ex.Message);
                     }
 
+
                     // If discovery failed, fall back to manual assembly
-                    if (selectedEndpoint == null)
+                    if (selectedEndpoint == null ||
+                        OPCUA_conn.useSecurity == false &&
+                        (
+                        selectedEndpoint.SecurityMode != MessageSecurityMode.None ||
+                        selectedEndpoint.SecurityPolicyUri != "http://opcfoundation.org/UA/SecurityPolicy#None"
+                        )
+                    )
                     {
                         try
                         {
                             Log(conn_name + " - " + "Assembling endpoint directly from configuration.");
-                            var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
-                            var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+                            var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#None";
+                            var mode = MessageSecurityMode.None;
+                            if (OPCUA_conn.useSecurity)
+                            {
+                                policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                                mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+                            }
 
                             selectedEndpoint = new EndpointDescription
                             {
                                 EndpointUrl = OPCUA_conn.endpointURLs[0],
                                 SecurityMode = mode,
                                 SecurityPolicyUri = policyUri,
+                                // SecurityLevel = 0,
                                 UserIdentityTokens = new UserTokenPolicyCollection
                                     {
                                         new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
@@ -464,7 +477,7 @@ partial class MainClass
                     nodesList.Add(reference.NodeId.ToString());
                 }
 
-                const int maxNodesToRead = 100;
+                const int maxNodesToRead = 500;
                 for (var j = 0; j < nodesList.Count; j = j + maxNodesToRead)
                 {
                     try
