@@ -70,7 +70,7 @@ partial class MainClass
         string conn_name;
         int clientRunTime = Timeout.Infinite;
         bool autoAccept = true;
-        static ExitCode exitCode;
+        protected static ExitCode exitCode;
         OPCUA_connection OPCUA_conn;
 
         public OPCUAClient(OPCUA_connection _OPCUA_conn)
@@ -148,7 +148,7 @@ partial class MainClass
                 Log(conn_name + " - " + "Load config from " + OPCUA_conn.configFileName);
                 config = await application.LoadApplicationConfiguration(OPCUA_conn.configFileName, false);
 
-                var haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0, 0);
+                var haveAppCertificate = await application.CheckApplicationInstanceCertificates(true);
 
                 if (!haveAppCertificate)
                 {
