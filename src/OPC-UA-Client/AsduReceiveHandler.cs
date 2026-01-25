@@ -183,7 +183,7 @@ partial class MainClass
                     ApplicationType = ApplicationType.Client,
                     CertificateValidator = new CertificateValidator() { AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates },
                     ServerConfiguration = null,
-                    SecurityConfiguration = new ()
+                    SecurityConfiguration = new()
                     {
                         AutoAcceptUntrustedCertificates = true,
                         ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = "MyApp" },
@@ -191,8 +191,8 @@ partial class MainClass
                         TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
                         RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
                     },
-                    TransportConfigurations = new (),
-                    TransportQuotas = new ()
+                    TransportConfigurations = new(),
+                    TransportQuotas = new()
                     {
                         OperationTimeout = 600000,
                         MaxStringLength = 1048576,
@@ -203,8 +203,8 @@ partial class MainClass
                         ChannelLifetime = 600000,
                         SecurityTokenLifetime = 3600000,
                     },
-                    TraceConfiguration = new (),
-                    ClientConfiguration = new ()
+                    TraceConfiguration = new(),
+                    ClientConfiguration = new()
                     {
                         DefaultSessionTimeout = 60000,
                         MinSubscriptionLifetime = 10000,
@@ -218,25 +218,85 @@ partial class MainClass
                 try
                 {
                     EndpointDescription selectedEndpoint = null;
-                    if (OPCUA_conn.useSecurity)
-                    {
-                        config.SecurityConfiguration.AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates;
+                    config.SecurityConfiguration.AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates;
 
-                        if (OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
+                    if (OPCUA_conn.useSecurity && OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
+                    {
+                        try
                         {
-                            try
+                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                            config.SecurityConfiguration.ApplicationCertificate = new(cert);
+                            config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
+                        }
+                        catch (Exception)
+                        {
+                            Log(conn_name + " - " + "FATAL: error in local certificate file!", LogLevelNoLog);
+                            Environment.Exit(1);
+                        }
+                    }
+
+                    // First, try to discover endpoints from the server
+                    try
+                    {
+                        Log(conn_name + " - " + "Discovering endpoints from server...");
+                        
+                        using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
+                        {
+                            var discoveredEndpoints = discoveryClient.GetEndpoints(null);
+                            
+                            if (discoveredEndpoints != null && discoveredEndpoints.Count > 0)
                             {
-                                var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
-                                config.SecurityConfiguration.ApplicationCertificate = new (cert);
-                                config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
-                            }
-                            catch (Exception e)
-                            {
-                                Log(conn_name + " - " + "FATAL: error in local certificate file!", LogLevelNoLog);
-                                Environment.Exit(1);
+                                Log(conn_name + " - " + "Found " + discoveredEndpoints.Count + " endpoints from server.");
+                                
+                                var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                                var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+
+                                // Try to find an endpoint that matches our security requirements
+                                foreach (var ep in discoveredEndpoints)
+                                {
+                                    if (ep.SecurityPolicyUri == policyUri && ep.SecurityMode == mode)
+                                    {
+                                        selectedEndpoint = ep;
+                                        Log(conn_name + " - " + "Selected discovered endpoint matching security policy: " + 
+                                            ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1) + 
+                                            " and mode: " + ep.SecurityMode);
+                                        break;
+                                    }
+                                }
+
+                                // If no exact match, try to find endpoint with matching security mode
+                                if (selectedEndpoint == null)
+                                {
+                                    foreach (var ep in discoveredEndpoints)
+                                    {
+                                        if (ep.SecurityMode == mode)
+                                        {
+                                            selectedEndpoint = ep;
+                                            Log(conn_name + " - " + "Selected discovered endpoint with matching security mode: " + ep.SecurityMode);
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // If still no match, use the first endpoint
+                                if (selectedEndpoint == null && discoveredEndpoints.Count > 0)
+                                {
+                                    selectedEndpoint = discoveredEndpoints[0];
+                                    Log(conn_name + " - " + "Using first discovered endpoint: " + 
+                                        selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1) + 
+                                        " | Mode: " + selectedEndpoint.SecurityMode);
+                                }
                             }
                         }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(conn_name + " - " + "Warning: Could not discover endpoints: " + ex.Message);
+                    }
 
+                    // If discovery failed, fall back to manual assembly
+                    if (selectedEndpoint == null)
+                    {
                         try
                         {
                             Log(conn_name + " - " + "Assembling endpoint directly from configuration.");
@@ -249,11 +309,11 @@ partial class MainClass
                                 SecurityMode = mode,
                                 SecurityPolicyUri = policyUri,
                                 UserIdentityTokens = new UserTokenPolicyCollection
-                                {
-                                    new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
-                                    new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
-                                    new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
-                                }
+                                    {
+                                        new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
+                                    }
                             };
 
                             Log(conn_name + " - " + "Assembled endpoint: " +
@@ -266,6 +326,7 @@ partial class MainClass
                             Log(conn_name + " - Error assembling endpoint: " + ex.Message);
                         }
                     }
+
                     config.Validate(ApplicationType.Client).GetAwaiter().GetResult();
                     application.ApplicationConfiguration = config;
 
@@ -281,12 +342,28 @@ partial class MainClass
                     Log(conn_name + " - " + "Selected endpoint uses: " +
                         selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1));
 
+                    // Log supported authentication methods
+                    if (selectedEndpoint.UserIdentityTokens != null && selectedEndpoint.UserIdentityTokens.Count > 0)
+                    {
+                        Log(conn_name + " - " + "Endpoint supports the following authentication methods:");
+                        foreach (var token in selectedEndpoint.UserIdentityTokens)
+                        {
+                            Log(conn_name + " - " + "  - " + token.TokenType + " (PolicyId: " + token.PolicyId + ")");
+                        }
+                    }
+                    else
+                    {
+                        Log(conn_name + " - " + "WARNING: Endpoint has no UserIdentityTokens defined!");
+                    }
+
+
                     Log(conn_name + " - " + "Create a session with OPC UA server.");
                     exitCode = ExitCode.ErrorCreateSession;
                     var endpointConfiguration = EndpointConfiguration.Create(config);
                     var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
                     Thread.Sleep(50);
-                    var identity = new UserIdentity(new AnonymousIdentityToken());
+                    var identity = new UserIdentity(new AnonymousIdentityToken()); // Default to anonymous authentication
+
                     if (!string.IsNullOrEmpty(OPCUA_conn.username))
                     {
                         Log(conn_name + " - Using username/password authentication for user: " + OPCUA_conn.username);
@@ -295,8 +372,16 @@ partial class MainClass
                     else if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
                     {
                         Log(conn_name + " - Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
-                        var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
-                        identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
+                        try
+                        {
+                            var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                            identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(conn_name + " - ERROR: Failed to load certificate: " + ex.Message);
+                            throw;
+                        }
                     }
                     else
                     {
