@@ -240,6 +240,13 @@ partial class MainClass
                     {
                         Log(conn_name + " - " + "Discovering endpoints from server...");
 
+                        if (OPCUA_conn.useSecurity == false)
+                        {
+                            Log(conn_name + " - " + "Warning: Security is disabled, will attempt to use unsecure endpoint.");
+                            OPCUA_conn.securityMode = "None";
+                            OPCUA_conn.securityPolicy = "None";
+                        }
+
                         using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
                         {
                             var discoveredEndpoints = discoveryClient.GetEndpoints(null);
@@ -296,13 +303,7 @@ partial class MainClass
 
 
                     // If discovery failed, fall back to manual assembly
-                    if (selectedEndpoint == null ||
-                        OPCUA_conn.useSecurity == false &&
-                        (
-                        selectedEndpoint.SecurityMode != MessageSecurityMode.None ||
-                        selectedEndpoint.SecurityPolicyUri != "http://opcfoundation.org/UA/SecurityPolicy#None"
-                        )
-                    )
+                    if (selectedEndpoint == null)
                     {
                         try
                         {
