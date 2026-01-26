@@ -1,6 +1,6 @@
     {json:scada} 
     
-    © 2008-2025 Ricardo L. Olsen 
+    © 2008-2026 Ricardo L. Olsen 
     (https://www.linkedin.com/in/ricardo-olsen/)
 
     This program is free software: you can redistribute it and/or modify
@@ -140,6 +140,7 @@ Notes for version 0.59:
 
 * Added MCP Server for access to JSON-SCADA data structures from MongoDB.
 * Added UA-EdgeTranslator runtime with support for multiple protocols.
+* OPC-UA Client driver can now be fully configured from the Admin UI.
 * New refactored cs_custom_processor with typescript submodule for JSON-SCADA data structures.
 * NPM packages updated.
 * Nodejs runtime updated to 24.13.0.
