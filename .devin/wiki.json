@@ -1,0 +1,304 @@
+{
+  "repo_notes": [
+    {
+      "content": ""
+    }
+  ],
+  "pages": [
+    {
+      "title": "Introduction to JSON-SCADA",
+      "purpose": "Provide a comprehensive introduction to the JSON-SCADA platform, explaining its purpose as a SCADA/IIoT system, core philosophy, and target use cases",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Key Features and Capabilities",
+      "purpose": "Detail the main features including protocol support, horizontal scalability, multi-platform deployment, visualization capabilities, and security features",
+      "parent": "Introduction to JSON-SCADA",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "System Requirements",
+      "purpose": "Document hardware and software requirements for different deployment scenarios (Windows, Linux, Docker) including minimum and recommended specifications",
+      "parent": "Introduction to JSON-SCADA",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "System Architecture",
+      "purpose": "Explain the overall system architecture including the layered design, microservices approach, and how components interact",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Data Flow Architecture",
+      "purpose": "Document how data flows through the system from protocol drivers through processing layers to storage and visualization",
+      "parent": "System Architecture",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Database Schema",
+      "purpose": "Detail the MongoDB collections (realtimeData, commandsQueue, soeData, etc.) and PostgreSQL/TimescaleDB tables with field definitions and relationships",
+      "parent": "System Architecture",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Security Model",
+      "purpose": "Explain authentication mechanisms (JWT, LDAP), role-based access control, API security, and protocol-level security (TLS)",
+      "parent": "System Architecture",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Redundancy and High Availability",
+      "purpose": "Document the redundancy control mechanism for protocol drivers and data processors, including active/standby failover",
+      "parent": "System Architecture",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Installation and Deployment",
+      "purpose": "Overview of deployment options and general installation workflow",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Windows Installation",
+      "purpose": "Step-by-step guide for Windows installation using the NSIS installer, including service management with NSSM and embedded runtime components",
+      "parent": "Installation and Deployment",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Linux Installation",
+      "purpose": "Installation guide for RHEL 9 and Ubuntu 24.04 using installation scripts, systemd configuration, and Supervisor process management",
+      "parent": "Installation and Deployment",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Docker Deployment",
+      "purpose": "Guide for deploying JSON-SCADA using Docker Compose, including demo environment setup and production considerations",
+      "parent": "Installation and Deployment",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "One-Way Replication Setup",
+      "purpose": "Configure mongofw and mongowr services for one-way MongoDB replication between JSON-SCADA instances",
+      "parent": "Installation and Deployment",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Core Components",
+      "purpose": "Overview of the core application components and their responsibilities",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Realtime Server and Authentication",
+      "purpose": "Document the server_realtime_auth service including opcApi, GraphQL API, WebSocket connections, JWT authentication, and LDAP integration",
+      "parent": "Core Components",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Data Processors",
+      "purpose": "Explain cs_data_processor (change stream processing, value conversion, alarm detection), calculations engine, and cs_custom_processor",
+      "parent": "Core Components",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Alarm System",
+      "purpose": "Detail alarm and event generation, SOE (Sequence of Events), acknowledgment workflow, beep mechanism, and priority handling",
+      "parent": "Core Components",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Historian and Data Retention",
+      "purpose": "Document PostgreSQL/TimescaleDB integration, historical data archival, dead-band logic, and retention policies",
+      "parent": "Core Components",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Protocol Drivers",
+      "purpose": "Overview of the protocol driver architecture, driver lifecycle, and configuration model",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "IEC 60870-5-104 Client/Server",
+      "purpose": "Document IEC 104 protocol driver including client/server modes, link addressing, ASDU types, command execution, and configuration parameters",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "OPC-UA Client/Server",
+      "purpose": "Comprehensive guide to OPC-UA driver including auto-tag creation, namespace browsing, subscription management, certificate handling, and command execution",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "DNP3 Client/Server",
+      "purpose": "Document DNP3 protocol driver including client/server modes, class scans, unsolicited responses, TLS security, and address mapping",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "MQTT-Sparkplug Driver",
+      "purpose": "Detail MQTT-Sparkplug B driver including device birth/death certificates, metric handling, auto-tag creation, topic filtering, and scripted payloads",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "PLC and Industrial Protocols",
+      "purpose": "Cover PLC4X (Modbus, S7, Allen-Bradley), IEC 61850, PLCTags, and IEC 60870-5-101 drivers",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Telegraf Integration",
+      "purpose": "Explain Telegraf metrics collection, UDP listener, and integration with system monitoring",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Other Protocol Drivers",
+      "purpose": "Document additional drivers including ONVIF cameras, OPC-DA client, and i104m monitor",
+      "parent": "Protocol Drivers",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "User Interfaces",
+      "purpose": "Overview of the web-based user interfaces and visualization tools",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Web HMI Interface",
+      "purpose": "Document the HMI viewers (Display, Events, Tabular, Alarms, Trend, Curves) and their functionality",
+      "parent": "User Interfaces",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Admin UI",
+      "purpose": "Detail the Vue.js AdminUI including configuration management, authentication, theme customization, and multi-language support",
+      "parent": "User Interfaces",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    },
+    {
+      "title": "Grafana Integration",
+      "purpose": "Configure Grafana dashboards, data sources, embedded mode, and authentication proxy integration",
+      "parent": "User Interfaces",
+      "page_notes": [
+        {
+          "content": ""
+        }
+      ]
+    }
+  ]
+}
+
