@@ -1,7 +1,5 @@
-'use strict'
-
 /*
- * {json:scada} - Copyright (c) 2020-2023 - Ricardo L. Olsen
+ * {json:scada} - Copyright (c) 2020-2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,9 +15,28 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-module.exports = {
-  NAME: 'CS_CUSTOM_PROCESSOR',
-  ENV_PREFIX: 'JS_CSCUSTOMPROC_',
-  MSG: '{json:scada} - Change Stream Custom Processor',
-  VERSION: '0.1.2',
+export interface ILog {
+  levelMin: number;
+  levelNormal: number;
+  levelDetailed: number;
+  levelDebug: number;
+  levelCurrent: number;
+  log: (msg: string, level?: number) => void;
 }
+
+const Log: ILog = {
+  // simple message logger
+  levelMin: 0,
+  levelNormal: 1,
+  levelDetailed: 2,
+  levelDebug: 3,
+  levelCurrent: 1,
+  log: function (msg: string, level: number = 1) {
+    if (level <= this.levelCurrent) {
+      let dt = new Date()
+      console.log(dt.toISOString() + ' - ' + msg)
+    }
+  },
+}
+
+export default Log

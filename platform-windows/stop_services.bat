@@ -21,6 +21,7 @@ REM STOP OTHER PROCESSES
 net stop JSON_SCADA_calculations 
 net stop JSON_SCADA_cs_data_processor
 net stop JSON_SCADA_cs_custom_processor
+net stop JSON_SCADA_mcp_server
 ping -n 2
 net stop JSON_SCADA_process_rtdata
 net stop JSON_SCADA_process_hist 

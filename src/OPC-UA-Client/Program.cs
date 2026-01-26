@@ -29,9 +29,9 @@ using Opc.Ua;
 
 partial class MainClass
 {
-    public static String CopyrightMessage = "{json:scada} OPC-UA Client Driver - Copyright 2021-2025 RLO";
+    public static String CopyrightMessage = "{json:scada} OPC-UA Client Driver - Copyright 2021-2026 RLO";
     public static String ProtocolDriverName = "OPC-UA";
-    public static String DriverVersion = "0.4.0";
+    public static String DriverVersion = "0.5.0";
     public static bool Active = false; // indicates this driver instance is the active node in the moment
     public static UInt32 DataBufferLimit = 50000; // limit to start dequeuing and discarding data from the acquisition buffer
     public static UInt32 CntNotificEvents = 0; // count events of data updates (on notification)

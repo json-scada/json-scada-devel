@@ -39,6 +39,7 @@ net stop JSON_SCADA_cs_data_processor
 net stop JSON_SCADA_cs_custom_processor
 net stop JSON_SCADA_process_rtdata
 net stop JSON_SCADA_process_hist 
+net stop JSON_SCADA_mcp_server
 REM STOP GRAFANA/METABASE AND DATABASE SERVERS
 net stop JSON_SCADA_grafana
 net stop JSON_SCADA_metabase
@@ -87,6 +88,7 @@ REM net start JSON_SCADA_iec61850client
 REM net start JSON_SCADA_i104m
 REM net start JSON_SCADA_plctags
 net start JSON_SCADA_opcuaserver
+REM net start JSON_SCADA_mcp_server
 
 net start JSON_SCADA_php
 net start JSON_SCADA_nginx

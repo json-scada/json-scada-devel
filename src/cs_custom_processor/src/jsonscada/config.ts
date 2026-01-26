@@ -1,5 +1,5 @@
 /*
- * {json:scada} - Copyright (c) 2020-2024 - Ricardo L. Olsen
+ * {json:scada} - Copyright (c) 2020-2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
  *
  * This program is free software: you can redistribute it and/or modify
@@ -15,17 +15,50 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-'use strict'
+import fs from 'fs'
+import Log from './logger.js'
+import { ReadPreference, MongoClientOptions } from 'mongodb'
+import packageInfo from '../../package.json' with { type: 'json' };
 
-const fs = require('fs')
-const Log = require('./simple-logger')
-const AppDefs = require('./app-defs')
-const { ReadPreference } = require('mongodb')
+const ENV_PREFIX = packageInfo.config.envPrefix || 'JS_CSCUSTOMPROC_'
+const MSG = packageInfo.description || '{json:scada} - Change Stream Custom Processor.'
+const VERSION = packageInfo.version || '0.0.0'
+const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
+
+export interface IConfig {
+  mongoConnectionString: string
+  mongoDatabaseName: string
+  MongoConnectionOptions?: MongoClientOptions
+  LogLevel?: number
+  Instance?: number
+  GridFsCollectionName?: string
+  RealtimeDataCollectionName?: string
+  UsersCollectionName?: string
+  SoeDataCollectionName?: string
+  CommandsQueueCollectionName?: string
+  ProtocolDriverInstancesCollectionName?: string
+  ProtocolConnectionsCollectionName?: string
+  ProcessInstancesCollectionName?: string
+  GroupSep?: string
+  ConnectionNumber?: number
+  tlsCaPemFile?: string
+  tlsClientPemFile?: string
+  tlsClientKeyPassword?: string
+  tlsAllowInvalidHostnames?: boolean
+  tlsAllowChainErrors?: boolean
+  tlsInsecure?: boolean
+  nodeName?: string
+  [key: string]: any
+}
 
 // load and parse config file
-function LoadConfig(confFileArg, logLevelArg, instArg) {
+function LoadConfig (
+  confFileArg?: string,
+  logLevelArg?: string,
+  instArg?: number
+): IConfig {
   let configFile =
-    confFileArg || process.env.JS_CONFIG_FILE || '../../conf/json-scada.json'
+    confFileArg || process.env['JS_CONFIG_FILE'] || '../../conf/json-scada.json'
   Log.log('Config - Config File: ' + configFile)
 
   if (!fs.existsSync(configFile)) {
@@ -33,8 +66,8 @@ function LoadConfig(confFileArg, logLevelArg, instArg) {
     process.exit()
   }
 
-  let rawFileContents = fs.readFileSync(configFile)
-  let configObj = JSON.parse(rawFileContents)
+  let rawFileContents = fs.readFileSync(configFile, 'utf8')
+  let configObj: IConfig = JSON.parse(rawFileContents)
   if (
     typeof configObj.mongoConnectionString != 'string' ||
     configObj.mongoConnectionString === ''
@@ -44,26 +77,22 @@ function LoadConfig(confFileArg, logLevelArg, instArg) {
   }
 
   Log.levelCurrent = Log.levelNormal
-  if (AppDefs.ENV_PREFIX + 'LOGLEVEL' in process.env)
-    Log.levelCurrent = parseInt(process.env[AppDefs.ENV_PREFIX + 'LOGLEVEL'])
+  if (ENV_PREFIX + 'LOGLEVEL' in process.env)
+    Log.levelCurrent = parseInt(
+      process.env[ENV_PREFIX + 'LOGLEVEL'] || '1'
+    )
   if (logLevelArg) Log.levelCurrent = parseInt(logLevelArg)
   configObj.LogLevel = Log.levelCurrent
 
   configObj.Instance =
-    instArg || parseInt(process.env[AppDefs.ENV_PREFIX + 'INSTANCE']) || 1
+    instArg ||
+    parseInt(process.env[ENV_PREFIX + 'INSTANCE'] || '1') ||
+    1
 
-  configObj.GridFsCollectionName = 'files'
-  configObj.RealtimeDataCollectionName = 'realtimeData'
-  configObj.UsersCollectionName = 'users'
-  configObj.SoeDataCollectionName = 'soeData'
-  configObj.CommandsQueueCollectionName = 'commandsQueue'
-  configObj.ProtocolDriverInstancesCollectionName = 'protocolDriverInstances'
-  configObj.ProtocolConnectionsCollectionName = 'protocolConnections'
-  configObj.ProcessInstancesCollectionName = 'processInstances'
   configObj.GroupSep = '~'
   configObj.ConnectionNumber = 0
 
-  Log.log('Config - ' + AppDefs.MSG + ' Version ' + AppDefs.VERSION)
+  Log.log('Config - ' + MSG + ' Version ' + VERSION)
   Log.log('Config - Instance: ' + configObj.Instance)
   Log.log('Config - Log level: ' + Log.levelCurrent)
 
@@ -72,14 +101,12 @@ function LoadConfig(confFileArg, logLevelArg, instArg) {
 }
 
 // prepare mongo connection options
-function getMongoConnectionOptions(configObj) {
-  let connOptions = {
-    // useNewUrlParser: true,
-    // useUnifiedTopology: true,
-    appname:
-      AppDefs.NAME +
+function getMongoConnectionOptions (configObj: IConfig): MongoClientOptions {
+  let connOptions: MongoClientOptions = {
+    appName:
+      NAME +
       ' Version:' +
-      AppDefs.VERSION +
+      VERSION +
       ' Instance:' +
       configObj.Instance,
     maxPoolSize: 20,
@@ -107,4 +134,4 @@ function getMongoConnectionOptions(configObj) {
   return connOptions
 }
 
-module.exports = LoadConfig
+export default LoadConfig

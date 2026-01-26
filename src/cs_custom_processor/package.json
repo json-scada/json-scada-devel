@@ -1,15 +1,28 @@
 {
   "name": "cs_custom_processor",
-  "version": "1.0.0",
-  "description": "Customizable processor of mongodb changes.",
-  "main": "cs_custom_processor",
+  "version": "0.2.0",
+  "description": "{json:scada} - Change Stream Custom Processor.",
+  "type": "module",
+  "main": "dist/cs_custom_processor.js",
+  "config": {
+    "envPrefix": "JS_CSCUSTOMPROC_"
+  },
   "scripts": {
-    "test": "echo \"Error: no test specified\" && exit 1"
+    "build": "tsc",
+    "start": "node dist/cs_custom_processor.js",
+    "dev": "tsx src/cs_custom_processor.ts",
+    "test": "echo \"Error: no test specified\" && exit 1",
+    "clean": "rm -rf dist"
   },
   "author": "Ricardo Lastra Olsen",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "fs": "0.0.1-security",
     "mongodb": "^7.0.0"
+  },
+  "devDependencies": {
+    "@types/mongodb": "^4.0.6",
+    "@types/node": "^25.0.8",
+    "tsx": "^4.21.0",
+    "typescript": "^5.9.3"
   }
 }

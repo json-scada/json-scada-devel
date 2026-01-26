@@ -136,7 +136,7 @@ Example document.
 * _**_group2_**_ [String] - Secondary grouping. E.g. bay or area name. **Mandatory parameter**.
 * _**_group3_**_ [String] - Lowest level grouping. E.g. device ir equipment name. **Mandatory parameter**.
 * _**_valueDefault_**_ [Double] - Numeric default value. **Mandatory parameter**.
-* _**_priority_**_ [String] - Alarm priority: 0=highest, 9=lowest. **Mandatory parameter**.
+* _**_priority_**_ [Double] - Alarm priority: 0=highest, 9=lowest. **Mandatory parameter**.
 * _**_frozenDetectTimeout_**_ [Double] -  Time in seconds to detect frozen (not changing) analog value. Use zero to never detect. **Mandatory parameter**.
 * _**_invalidDetectTimeout_**_ [Double] - Time in seconds to detect invalid/old value when not updating. All supervised values expire, do not use zero for supervised values. This timeout should be at least more than the station integrity interrogation period. **Mandatory parameter**.
 * _**_historianDeadBand_**_ [Double] - Absolute dead band parameter for historian. Does not affect non analog tags. **Mandatory parameter**.

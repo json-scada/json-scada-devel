@@ -212,7 +212,7 @@ services:
   cs_custom_processor:
     image: node:22-alpine
     container_name: jsdemo_cs_custom_processor
-    command:  sh -c "cd /cs_custom_processor && sleep 50 && node cs_custom_processor.js"
+    command:  sh -c "cd /cs_custom_processor && sleep 50 && node dist/cs_custom_processor.js"
     restart: unless-stopped
     volumes:
       - ../src/cs_custom_processor:/cs_custom_processor

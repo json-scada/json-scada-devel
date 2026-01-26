@@ -33,7 +33,8 @@ dotnet publish --no-self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c 
 
 sleep 1
 cd ../lib60870.netcore
-dotnet publish --no-self-contained --runtime $ARG1   -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet restore
+dotnet publish --no-self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
 
 cd ../OPC-UA-Client
 dotnet restore
@@ -92,6 +93,10 @@ cd ../cs_data_processor
 npm install
 cd ../cs_custom_processor
 npm install
+npm run build
+cd ../mcp-json-scada-db
+npm install
+npm run build
 cd ../grafana_alert2event
 npm install
 cd ../demo_simul

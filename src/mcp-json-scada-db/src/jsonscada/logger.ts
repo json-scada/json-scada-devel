@@ -1,7 +1,5 @@
-'use strict'
-
 /*
- * {json:scada} - Copyright (c) 2020-2023 - Ricardo L. Olsen
+ * {json:scada} - Copyright (c) 2020-2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
  *
  * This program is free software: you can redistribute it and/or modify
@@ -17,14 +15,23 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-const Log = {
+export interface ILog {
+  levelMin: number;
+  levelNormal: number;
+  levelDetailed: number;
+  levelDebug: number;
+  levelCurrent: number;
+  log: (msg: string, level?: number) => void;
+}
+
+const Log: ILog = {
   // simple message logger
   levelMin: 0,
   levelNormal: 1,
   levelDetailed: 2,
   levelDebug: 3,
   levelCurrent: 1,
-  log: function (msg, level = 1) {
+  log: function (msg: string, level: number = 1) {
     if (level <= this.levelCurrent) {
       let dt = new Date()
       console.log(dt.toISOString() + ' - ' + msg)
@@ -32,4 +39,4 @@ const Log = {
   },
 }
 
-module.exports = Log
+export default Log

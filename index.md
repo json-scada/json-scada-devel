@@ -34,6 +34,8 @@ A portable and scalable SCADA/IIoT-I4.0 platform centered on the MongoDB databas
 ![](https://img.shields.io/badge/license-GPL-green 'License GPL')
 ![](https://img.shields.io/badge/contributors-welcome-green 'Contributors Welcome')
 
+[![Ask DeepWiki](https://deepwiki.com/badge.svg)](https://deepwiki.com/riclolsen/json-scada)
+
 ## Mission Statement
 
 To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.0 platform built by leveraging mainstream open-source IT tools.
@@ -48,7 +50,7 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - MongoDB as the real-time core database, persistence layer, config store, SOE historian.
 - Event-based realtime async data processing with MongoDB Change Streams.
 - Portability and modular interoperability over Linux, Windows, Mac OSX, x86/64, ARM.
-- Windows installer available in the [releases section](https://github.com/riclolsen/json-scada/releases/tag/V0.58-alpha).
+- Windows installer available in the [releases section](https://github.com/riclolsen/json-scada/releases/tag/V0.59-alpha).
 - Unlimited tags, servers, and users.
 - Horizontal scalability, from a single computer to big clusters (MongoDB-sharding), Docker containers, VMs, Kubernetes, cloud, or hybrid deployments.
 - Modular distributed architecture. Lightweight redundant data acquisition nodes can connect securely over TLS to the database server. E.g. a Raspberry PI can be a data acquisition node.
@@ -90,7 +92,7 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 ## Documentation
 
 - [Generic Install Guide](docs/install.md)
-- [Windows Installer](https://github.com/riclolsen/json-scada/releases/tag/V0.58-alpha)
+- [Windows Installer](https://github.com/riclolsen/json-scada/releases/tag/V0.59-alpha)
 - [RedHat/Rocky Linux Installer Script](docs/install.md#rhel94-and-compatible-systems-automated-installation)
 - [Ubuntu Linux Installer Script](docs/install.md#ubuntu-2404-scripted-installation)
 - [Generic Install Guide](docs/install.md)
@@ -120,6 +122,7 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [OSHMI2JSON Tool](src/oshmi2json/README.md)
 - [Report Generators](docs/report_generators.md)
 - [I104M Client Driver](src/i104m/README.md)
+- [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
 
 ## Protocols Roadmap
 
@@ -133,11 +136,12 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [ ] IEC 61850 GOOSE/SV Client
 - [x] DNP3 Client TCP/UDP/TLS/Serial - Windows x64 only!
 - [x] DNP3 Server TCP/UDP/TLS/Serial
-- [x] MQTT/Sparkplug-B PUB/SUB TCP/TLS
 - [x] Modbus Client via PLC4X-GO
 - [ ] ICCP Client TCP/TLS
 - [ ] ICCP Server TCP/TLS
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
+- [x] MQTT/Sparkplug-B PUB/SUB TCP/TLS
+- [x] OPC UA PubSub over MQTT with JSON payloads client
 - [x] OPC UA Client TCP/Secure
 - [x] OPC UA Server TCP/Secure
 - [ ] OPC UA Historical Data Server
@@ -160,6 +164,8 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [x] LDAP/AD Authorization
 - [x] Inkscape-based SVG Synoptic Display Editor
 - [x] Web-based SVG Synoptic Display Editor
+- [x] MCP Server to help with AI query, development and testing
+- [x] Template nodejs app with Typescript submodule to access JSON-SCADA data structures, manage connections and redundancy
 - [x] Compiled Cyclic Calculations Engine
 - [ ] Low-latency/Asynchronous Calculations Engine
 - [x] Customizable Change-Stream Processor (for user implemented scripts)
@@ -191,10 +197,10 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 
 ## Enterprise Services (available on request)
 
-- [ ] Customizations
-- [ ] Linux Image / VM
-- [ ] Managed Cloud Service
-- [ ] Supported LTS versions
+- [x] Customizations
+- [x] Linux Image / VM
+- [x] Managed Cloud Service
+- [x] Supported LTS versions
 
 ## Spin up a free private instance on Google's Firebase Studio
 

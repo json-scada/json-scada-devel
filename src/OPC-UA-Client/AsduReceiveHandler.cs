@@ -24,6 +24,7 @@ using System.Collections.Generic;
 using System.Diagnostics;
 using System.IO;
 using System.Linq;
+using System.Security.Cryptography.X509Certificates;
 using System.Text.Json;
 using System.Text.Json.Nodes;
 using System.Text.Json.Serialization;
@@ -33,7 +34,7 @@ using System.Threading.Tasks;
 
 partial class MainClass
 {
-    public static JsonSerializerOptions jsonSerOpts = new JsonSerializerOptions
+    public static JsonSerializerOptions jsonSerOpts = new()
     {
         NumberHandling = JsonNumberHandling.AllowReadingFromString,
     };
@@ -69,7 +70,7 @@ partial class MainClass
         string conn_name;
         int clientRunTime = Timeout.Infinite;
         bool autoAccept = true;
-        static ExitCode exitCode;
+        protected static ExitCode exitCode;
         OPCUA_connection OPCUA_conn;
 
         public OPCUAClient(OPCUA_connection _OPCUA_conn)
@@ -93,7 +94,7 @@ partial class MainClass
                 return;
             }
 
-            ManualResetEvent quitEvent = new ManualResetEvent(false);
+            var quitEvent = new ManualResetEvent(false);
 
             try
             {
@@ -126,38 +127,32 @@ partial class MainClass
             Log(conn_name + " - " + "Create an Application Configuration...");
             exitCode = ExitCode.ErrorCreateApplication;
 
-            ApplicationInstance application = new ApplicationInstance
+            var application = new ApplicationInstance
             {
                 ApplicationName = "JSON-SCADA OPC-UA Client",
                 ApplicationType = ApplicationType.Client,
                 ConfigSectionName = "",
             };
 
-            bool haveAppCertificate = false;
             ApplicationConfiguration config = null;
-
             try
             {
                 if (!File.Exists(OPCUA_conn.configFileName))
                 {
                     if (File.Exists(Path.Join("..", "conf", "Opc.Ua.DefaultClient.Config.xml")))
                         OPCUA_conn.configFileName = Path.Join("..", "conf", "Opc.Ua.DefaultClient.Config.xml");
-                    else
-                    if (File.Exists(Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml")))
+                    else if (File.Exists(Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml")))
                         OPCUA_conn.configFileName = Path.Combine("\\", "json-scada", "conf", "Opc.Ua.DefaultClient.Config.xml");
                 }
-                // load the application configuration.
+
                 Log(conn_name + " - " + "Load config from " + OPCUA_conn.configFileName);
                 config = await application.LoadApplicationConfiguration(OPCUA_conn.configFileName, false);
-                // config.SecurityConfiguration.AutoAcceptUntrustedCertificates = true;
 
-                // check the application certificate.
-                haveAppCertificate = await application.CheckApplicationInstanceCertificate(false, 0);
+                var haveAppCertificate = await application.CheckApplicationInstanceCertificates(true);
 
                 if (!haveAppCertificate)
                 {
-                    Log(conn_name + " - " + "FATAL: Application instance certificate invalid!", LogLevelNoLog);
-                    Environment.Exit(1);
+                    Log(conn_name + " - " + "WARN: Application instance certificate invalid!");
                 }
 
                 if (haveAppCertificate)
@@ -179,12 +174,6 @@ partial class MainClass
                 Log(conn_name + " - WARN: " + e.Message);
             }
 
-            if (OPCUA_conn.useSecurity && config == null)
-            {
-                Log(conn_name + " - " + "FATAL: error in XML config file!", LogLevelNoLog);
-                Environment.Exit(1);
-            }
-
             if (config == null)
             {
                 config = new ApplicationConfiguration
@@ -192,13 +181,18 @@ partial class MainClass
                     ApplicationUri = "urn:localhost:OPCUA:JSON_SCADA_OPCUAClient",
                     ApplicationName = "JSON-SCADA OPC-UA Client",
                     ApplicationType = ApplicationType.Client,
-                    CertificateValidator = new CertificateValidator(),
+                    CertificateValidator = new CertificateValidator() { AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates },
                     ServerConfiguration = null,
-                    SecurityConfiguration = new SecurityConfiguration
+                    SecurityConfiguration = new()
                     {
                         AutoAcceptUntrustedCertificates = true,
+                        ApplicationCertificate = new CertificateIdentifier { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\MachineDefault", SubjectName = "MyApp" },
+                        TrustedIssuerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Certificate Authorities" },
+                        TrustedPeerCertificates = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\UA Applications" },
+                        RejectedCertificateStore = new CertificateTrustList { StoreType = @"Directory", StorePath = @"%CommonApplicationData%\OPC Foundation\CertificateStores\RejectedCertificates" },
                     },
-                    TransportQuotas = new TransportQuotas
+                    TransportConfigurations = new(),
+                    TransportQuotas = new()
                     {
                         OperationTimeout = 600000,
                         MaxStringLength = 1048576,
@@ -209,7 +203,8 @@ partial class MainClass
                         ChannelLifetime = 600000,
                         SecurityTokenLifetime = 3600000,
                     },
-                    ClientConfiguration = new ClientConfiguration
+                    TraceConfiguration = new(),
+                    ClientConfiguration = new()
                     {
                         DefaultSessionTimeout = 60000,
                         MinSubscriptionLifetime = 10000,
@@ -222,28 +217,213 @@ partial class MainClass
             {
                 try
                 {
-                    Log(conn_name + " - " + "Discover endpoints of " + OPCUA_conn.endpointURLs[0]);
-                    exitCode = ExitCode.ErrorDiscoverEndpoints;
-                    var selectedEndpoint = CoreClientUtils.SelectEndpoint(config, OPCUA_conn.endpointURLs[0], haveAppCertificate && OPCUA_conn.useSecurity, 15000);
+                    EndpointDescription selectedEndpoint = null;
+                    config.SecurityConfiguration.AutoAcceptUntrustedCertificates = OPCUA_conn.autoAcceptUntrustedCertificates;
+
+                    if (OPCUA_conn.useSecurity && OPCUA_conn.securityMode != "None" && File.Exists(OPCUA_conn.localCertFilePath))
+                    {
+                        try
+                        {
+                            var cert = new X509Certificate2(OPCUA_conn.localCertFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                            config.SecurityConfiguration.ApplicationCertificate = new(cert);
+                            config.ApplicationUri = X509Utils.GetApplicationUriFromCertificate(cert);
+                        }
+                        catch (Exception)
+                        {
+                            Log(conn_name + " - " + "FATAL: error in local certificate file!", LogLevelNoLog);
+                            Environment.Exit(1);
+                        }
+                    }
+
+                    // First, try to discover endpoints from the server
+                    try
+                    {
+                        Log(conn_name + " - " + "Discovering endpoints from server...");
+
+                        if (OPCUA_conn.useSecurity == false)
+                        {
+                            Log(conn_name + " - " + "Warning: Security is disabled, will attempt to use unsecure endpoint.");
+                            OPCUA_conn.securityMode = "None";
+                            OPCUA_conn.securityPolicy = "None";
+                        }
+
+                        using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
+                        {
+                            var discoveredEndpoints = discoveryClient.GetEndpoints(null);
+
+                            if (discoveredEndpoints != null && discoveredEndpoints.Count > 0)
+                            {
+                                Log(conn_name + " - " + "Found " + discoveredEndpoints.Count + " endpoints from server.");
+
+                                var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                                var mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+
+                                // Try to find an endpoint that matches our security requirements
+                                foreach (var ep in discoveredEndpoints)
+                                {
+                                    if (ep.SecurityPolicyUri == policyUri && ep.SecurityMode == mode)
+                                    {
+                                        selectedEndpoint = ep;
+                                        Log(conn_name + " - " + "Selected discovered endpoint matching security policy: " +
+                                            ep.SecurityPolicyUri.Substring(ep.SecurityPolicyUri.LastIndexOf('#') + 1) +
+                                            " and mode: " + ep.SecurityMode);
+                                        break;
+                                    }
+                                }
+
+                                // If no exact match, try to find endpoint with matching security mode
+                                if (selectedEndpoint == null)
+                                {
+                                    foreach (var ep in discoveredEndpoints)
+                                    {
+                                        if (ep.SecurityMode == mode)
+                                        {
+                                            selectedEndpoint = ep;
+                                            Log(conn_name + " - " + "Selected discovered endpoint with matching security mode: " + ep.SecurityMode);
+                                            break;
+                                        }
+                                    }
+                                }
+
+                                // If still no match, use the first endpoint
+                                if (selectedEndpoint == null && discoveredEndpoints.Count > 0)
+                                {
+                                    selectedEndpoint = discoveredEndpoints[0];
+                                    Log(conn_name + " - " + "Using first discovered endpoint: " +
+                                        selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1) +
+                                        " | Mode: " + selectedEndpoint.SecurityMode);
+                                }
+                            }
+                        }
+                    }
+                    catch (Exception ex)
+                    {
+                        Log(conn_name + " - " + "Warning: Could not discover endpoints: " + ex.Message);
+                    }
+
+
+                    // If discovery failed, fall back to manual assembly
+                    if (selectedEndpoint == null)
+                    {
+                        try
+                        {
+                            Log(conn_name + " - " + "Assembling endpoint directly from configuration.");
+                            var policyUri = "http://opcfoundation.org/UA/SecurityPolicy#None";
+                            var mode = MessageSecurityMode.None;
+                            if (OPCUA_conn.useSecurity)
+                            {
+                                policyUri = "http://opcfoundation.org/UA/SecurityPolicy#" + OPCUA_conn.securityPolicy;
+                                mode = (MessageSecurityMode)Enum.Parse(typeof(MessageSecurityMode), OPCUA_conn.securityMode);
+                            }
+
+                            selectedEndpoint = new EndpointDescription
+                            {
+                                EndpointUrl = OPCUA_conn.endpointURLs[0],
+                                SecurityMode = mode,
+                                SecurityPolicyUri = policyUri,
+                                // SecurityLevel = 0,
+                                UserIdentityTokens = new UserTokenPolicyCollection
+                                    {
+                                        new UserTokenPolicy { TokenType = UserTokenType.Anonymous, PolicyId = "Anonymous" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.UserName, PolicyId = "UserName" },
+                                        new UserTokenPolicy { TokenType = UserTokenType.Certificate, PolicyId = "Certificate" }
+                                    }
+                            };
+
+                            Log(conn_name + " - " + "Assembled endpoint: " +
+                                selectedEndpoint.EndpointUrl +
+                                " | SecurityMode: " + selectedEndpoint.SecurityMode +
+                                " | SecurityPolicy: " + selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1));
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(conn_name + " - Error assembling endpoint: " + ex.Message);
+                        }
+                    }
+
+                    config.Validate(ApplicationType.Client).GetAwaiter().GetResult();
+                    application.ApplicationConfiguration = config;
+
+
+                    if (selectedEndpoint == null)
+                    {
+                        Log(conn_name + " - " + "FATAL: Unable to assemble endpoint.");
+                        exitCode = ExitCode.ErrorDiscoverEndpoints;
+                        failed = true;
+                        return;
+                    }
+
                     Log(conn_name + " - " + "Selected endpoint uses: " +
                         selectedEndpoint.SecurityPolicyUri.Substring(selectedEndpoint.SecurityPolicyUri.LastIndexOf('#') + 1));
+
+                    // Log supported authentication methods
+                    if (selectedEndpoint.UserIdentityTokens != null && selectedEndpoint.UserIdentityTokens.Count > 0)
+                    {
+                        Log(conn_name + " - " + "Endpoint supports the following authentication methods:");
+                        foreach (var token in selectedEndpoint.UserIdentityTokens)
+                        {
+                            Log(conn_name + " - " + "  - " + token.TokenType + " (PolicyId: " + token.PolicyId + ")");
+                        }
+                    }
+                    else
+                    {
+                        Log(conn_name + " - " + "WARNING: Endpoint has no UserIdentityTokens defined!");
+                    }
+
 
                     Log(conn_name + " - " + "Create a session with OPC UA server.");
                     exitCode = ExitCode.ErrorCreateSession;
                     var endpointConfiguration = EndpointConfiguration.Create(config);
                     var endpoint = new ConfiguredEndpoint(null, selectedEndpoint, endpointConfiguration);
                     Thread.Sleep(50);
-                    session = await Session.Create(config, endpoint, false, "OPC UA Console Client", 60000, new UserIdentity(new AnonymousIdentityToken()), null);
+                    var identity = new UserIdentity(new AnonymousIdentityToken()); // Default to anonymous authentication
 
-                    // Log("" + session.KeepAliveInterval); // default is 5000
-                    session.KeepAliveInterval = System.Convert.ToInt32(OPCUA_conn.timeoutMs);
+                    if (!string.IsNullOrEmpty(OPCUA_conn.username))
+                    {
+                        Log(conn_name + " - Using username/password authentication for user: " + OPCUA_conn.username);
+                        identity = new UserIdentity(OPCUA_conn.username, OPCUA_conn.password ?? "");
+                    }
+                    else if (!string.IsNullOrEmpty(OPCUA_conn.pfxFilePath))
+                    {
+                        Log(conn_name + " - Using certificate authentication for subject name: " + OPCUA_conn.pfxFilePath);
+                        try
+                        {
+                            var cert = new X509Certificate2(OPCUA_conn.pfxFilePath, OPCUA_conn.passphrase, X509KeyStorageFlags.MachineKeySet | X509KeyStorageFlags.Exportable);
+                            identity = new UserIdentity(new X509IdentityToken() { CertificateData = cert.RawData });
+                        }
+                        catch (Exception ex)
+                        {
+                            Log(conn_name + " - ERROR: Failed to load certificate: " + ex.Message);
+                            throw;
+                        }
+                    }
+                    else
+                    {
+                        Log(conn_name + " - Using anonymous authentication.");
+                    }
+
+                    var updateEndpoint = OPCUA_conn.useSecurity && (selectedEndpoint.ServerCertificate == null || selectedEndpoint.ServerCertificate.Length == 0);
+
+                    try
+                    {
+                        session = await Session.Create(config, endpoint, updateEndpoint, false, config.ApplicationName, 60000, identity, null);
+                        Log(conn_name + " - Session created successfully.");
+                    }
+                    catch (Exception sessionEx)
+                    {
+                        Log(conn_name + " - ERROR: Failed to create session: " + sessionEx.Message);
+                        Log(conn_name + " - StackTrace: " + sessionEx.StackTrace);
+                        throw;
+                    }
+
+                    session.KeepAliveInterval = Convert.ToInt32(OPCUA_conn.timeoutMs);
 
                     // register keep alive handler
                     session.KeepAlive += Client_KeepAlive;
                 }
                 catch (Exception e)
                 {
-                    Log(conn_name + " - WARN: " + e.Message);
+                    Log(conn_name + " - WARN: " + e);
                 }
 
                 if (session == null)
@@ -251,7 +431,7 @@ partial class MainClass
                     Log(conn_name + " - " + "FATAL: error creating session!", LogLevelNoLog);
                     failed = true;
                     exitCode = ExitCode.ErrorCreateSession;
-                    Thread.Sleep(1000);
+                    Thread.Sleep(5000);
                 }
             }
             while (session == null || !session.Connected);
@@ -277,7 +457,7 @@ partial class MainClass
                         var keep = false;
                         foreach (var topic in OPCUA_conn.topics)
                         {
-                            if ((path+"/").Contains("/"+topic+"/"))
+                            if ((path + "/").Contains("/" + topic + "/"))
                             {
                                 keep = true;
                                 break;
@@ -298,7 +478,7 @@ partial class MainClass
                     nodesList.Add(reference.NodeId.ToString());
                 }
 
-                const int maxNodesToRead = 100;
+                const int maxNodesToRead = 500;
                 for (var j = 0; j < nodesList.Count; j = j + maxNodesToRead)
                 {
                     try
@@ -628,7 +808,7 @@ partial class MainClass
                         }
                         else
                         {
-                             // Log(conn_name + " - " + value + " TYPE: ?????", LogLevelDetailed);
+                            // Log(conn_name + " - " + value + " TYPE: ?????", LogLevelDetailed);
                         }
 
                         try
@@ -637,19 +817,19 @@ partial class MainClass
                             {
                                 try
                                 {
-                                    dblValue = System.Convert.ToDouble(value.Value);
+                                    dblValue = Convert.ToDouble(value.Value);
                                 }
                                 catch
                                 {
                                     try
                                     {
-                                        dblValue = System.Convert.ToInt64(value.Value);
+                                        dblValue = Convert.ToInt64(value.Value);
                                     }
                                     catch
                                     {
                                         try
                                         {
-                                            dblValue = System.Convert.ToInt32(value.Value);
+                                            dblValue = Convert.ToInt32(value.Value);
                                         }
                                         catch
                                         {
@@ -669,8 +849,8 @@ partial class MainClass
                             else
                             if ((base_type == "datetime" || base_type == "utctime") && !isArray)
                             {
-                                dblValue = ((DateTimeOffset)System.Convert.ToDateTime(value.Value)).ToUnixTimeMilliseconds();
-                                strValue = System.Convert.ToDateTime(value.Value).ToString("o");
+                                dblValue = ((DateTimeOffset)Convert.ToDateTime(value.Value)).ToUnixTimeMilliseconds();
+                                strValue = Convert.ToDateTime(value.Value).ToString("o");
                             }
                             else
                             if (base_type == "extensionobject" && !isArray)
@@ -721,7 +901,7 @@ partial class MainClass
                             if (base_type == "bytestring" && !isArray)
                             {
                                 dblValue = 0;
-                                strValue = System.Convert.ToBase64String(value.GetValue<byte[]>([]));
+                                strValue = Convert.ToBase64String(value.GetValue<byte[]>([]));
                             }
                             else
                             if (
@@ -746,7 +926,7 @@ partial class MainClass
                                 base_type == "guid")
                             {
                                 dblValue = 0;
-                                strValue = System.Convert.ToString(value.Value);
+                                strValue = Convert.ToString(value.Value);
                             }
                             else
                             if (isArray)
@@ -758,7 +938,7 @@ partial class MainClass
                             {
                                 try
                                 {
-                                    dblValue = System.Convert.ToDouble(value.Value);
+                                    dblValue = Convert.ToDouble(value.Value);
                                     strValue = value.Value.ToString();
                                 }
                                 catch
@@ -809,7 +989,7 @@ partial class MainClass
                         //     path = details.Path;
                         // }
 
-                        OPC_Value iv =
+                        var iv =
                         new OPC_Value()
                         {
                             createCommandForMethod = false,
@@ -941,7 +1121,7 @@ partial class MainClass
             BrowseDescription browseDescription = null,
             CancellationToken ct = default)
         {
-            Stopwatch stopWatch = new Stopwatch();
+            var stopWatch = new Stopwatch();
             stopWatch.Start();
 
             // Browse template
@@ -971,12 +1151,12 @@ partial class MainClass
                 Utils.LogInfo("{0}: Browse {1} nodes after {2}ms",
                     searchDepth, browseDescriptionCollection.Count, stopWatch.ElapsedMilliseconds);
 
-                BrowseResultCollection allBrowseResults = new BrowseResultCollection();
+                var allBrowseResults = new BrowseResultCollection();
                 bool repeatBrowse;
-                BrowseResultCollection browseResultCollection = new BrowseResultCollection();
-                BrowseDescriptionCollection unprocessedOperations = new BrowseDescriptionCollection();
+                var browseResultCollection = new BrowseResultCollection();
+                var unprocessedOperations = new BrowseDescriptionCollection();
                 DiagnosticInfoCollection diagnosticsInfoCollection;
-                BrowseDescriptionCollection browseCollection = new BrowseDescriptionCollection();
+                var browseCollection = new BrowseDescriptionCollection();
                 do
                 {
                     browseCollection = (maxNodesPerBrowse == 0) ?

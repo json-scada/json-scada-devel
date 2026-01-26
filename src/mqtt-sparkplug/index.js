@@ -19,6 +19,7 @@
 
 'use strict'
 
+const zlib = require('zlib')
 const RJSON = require('relaxed-json')
 const { JSONPath } = require('jsonpath-plus')
 const { VM } = require('vm2')
@@ -942,6 +943,7 @@ async function processMongoUpdates(
           if (topicSplit.length > 0) data.group2 = topicSplit[0]
           if (topicSplit.length > 1 && topicSplit[0] === SparkplugNS)
             data.group2 = topicSplit[1]
+          if (topicSplit.length > 2) data.group3 = topicSplit[2]
           await AutoTag.AutoCreateTag(
             data,
             jsConfig.ConnectionNumber,
@@ -1417,16 +1419,34 @@ async function sparkplugProcess(
                 // test if published topic matches subscribed element
                 if (topic == elem) {
                   const JsonValue = TryPayloadAsRJson(payload)
-                  EnqueueJsonValue(JsonValue, topic)
+                  if (
+                    typeof JsonValue === 'object' &&
+                    JsonValue?.MessageType &&
+                    JsonValue.MessageType === 'ua-data'
+                  ) {
+                    ProcessOpcUaPubSubMessage(JsonValue, topic)
+                    return
+                  } else {
+                    EnqueueJsonValue(JsonValue, topic)
+                  }
                 }
 
                 if (
-                  jscadaConnection.autoCreateTags &&
+                  // jscadaConnection.autoCreateTags &&
                   elem.endsWith('#') &&
                   topic.startsWith(elem.substring(0, elem.length - 1))
                 ) {
                   const JsonValue = TryPayloadAsRJson(payload)
-                  EnqueueJsonValue(JsonValue, topic)
+                  if (
+                    typeof JsonValue === 'object' &&
+                    JsonValue?.MessageType &&
+                    JsonValue.MessageType === 'ua-data'
+                  ) {
+                    ProcessOpcUaPubSubMessage(JsonValue, topic)
+                    return
+                  } else {
+                    EnqueueJsonValue(JsonValue, topic)
+                  }
                 }
 
                 // keep testing for match when JSONPathPlus syntax is used
@@ -2085,14 +2105,13 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
       } else {
         // metric does have a value
         value = castSparkplugValue(metric.type, metric.value)
-        if (('toNumber' in value)){
+        if ('toNumber' in value) {
           value = value.toNumber() // warning number may be truncated
           valueString = value.toString()
-          valueJson = JSON.stringify(metric)  
-        }
-        else {
+          valueJson = JSON.stringify(metric)
+        } else {
           valueString = value.toString()
-          valueJson = JSON.stringify(metric)  
+          valueJson = JSON.stringify(metric)
           value = new Date(value).getTime()
         }
       }
@@ -2419,8 +2438,13 @@ function TryPayloadAsRJson(payload) {
     try {
       JsonValue = RJSON.parse(payloadStr)
     } catch (e) {
-      // NOT JSON NOR RJSON, consider as string
-      JsonValue = payloadStr
+      // try to decompress gzipped payload
+      try {
+        JsonValue = JSON.parse(zlib.gunzipSync(payload))
+      } catch (e) {
+        // NOT JSON NOR RJSON, consider as string
+        JsonValue = payloadStr
+      }
     }
   }
   return JsonValue
@@ -2452,4 +2476,176 @@ async function checkConnectedMongo(client) {
     MongoStatus.HintMongoIsConnected = false
     return false
   }
+}
+
+// Detect and process OPC-UA PubSub JSON messages
+// Implements OPC UA Part 14 (PubSub) JSON message mapping
+function ProcessOpcUaPubSubMessage(opcMsgObj, topic) {
+  // Check for OPC-UA PubSub message type
+  if (opcMsgObj?.MessageType !== 'ua-data') {
+    return false
+  }
+  Log.log(
+    'OPC-UA PubSub - Detected ua-data message on topic: ' + topic,
+    Log.levelDetailed
+  )
+
+  const publisherId = opcMsgObj.PublisherId || 'unknown'
+  const messages = opcMsgObj.Messages
+
+  if (!Array.isArray(messages)) {
+    Log.log(
+      'OPC-UA PubSub - Invalid message format: Messages is not an array',
+      Log.levelDebug
+    )
+    return false
+  }
+
+  messages.forEach((dataSetMessage) => {
+    const dataSetWriterId = dataSetMessage?.DataSetWriterId || 'unknown'
+    const messageTimestamp = dataSetMessage?.Timestamp
+      ? new Date(dataSetMessage.Timestamp)
+      : new Date()
+    const messageStatus = dataSetMessage?.Status
+    const payload = dataSetMessage?.Payload
+
+    // Check for message-level status indicating bad quality
+    let messageInvalid = false
+    if (messageStatus && !messageStatus?.Symbol?.includes('Good')) {
+      // Non-zero status indicates bad quality at message level
+      messageInvalid = true
+    }
+
+    if (payload && typeof payload === 'object') {
+      // Explode each field in the payload
+      Object.entries(payload).forEach(([fieldName, fieldValue]) => {
+        const objectAddress = `${topic}/${publisherId}/${dataSetWriterId}/${fieldName}`
+
+        let extractedValue = null
+        let fieldTimestamp = messageTimestamp
+        let fieldTimestampOk = !!dataSetMessage.Timestamp
+        let fieldInvalid = messageInvalid
+        let valueType = 'json'
+        let value = 0
+        let valueString = ''
+
+        // OPC-UA can encode values as objects with Value/SourceTimestamp/StatusCode or as raw values
+        if (fieldValue !== null && typeof fieldValue === 'object') {
+          if ('Value' in fieldValue) {
+            // DataValue format with Value, SourceTimestamp, StatusCode
+            // Extract the actual value - may be in Body for complex types
+            extractedValue = fieldValue.Value?.Body ?? fieldValue.Value
+
+            // Extract source timestamp if available
+            if (fieldValue.SourceTimestamp) {
+              fieldTimestamp = new Date(fieldValue.SourceTimestamp)
+              fieldTimestampOk = true
+            } else if (fieldValue.ServerTimestamp) {
+              fieldTimestamp = new Date(fieldValue.ServerTimestamp)
+              fieldTimestampOk = true
+            }
+
+            // Extract quality/status - StatusCode 0 or absent means Good
+            if ('StatusCode' in fieldValue) {
+              const statusCode = fieldValue.StatusCode
+              // StatusCode can be a number or an object with Code property
+              const codeValue =
+                typeof statusCode === 'object' ? statusCode.Code : statusCode
+              // In OPC UA, StatusCode high bits indicate severity:
+              // 0x00000000 = Good, 0x40000000 = Uncertain, 0x80000000 = Bad
+              if (
+                codeValue !== undefined &&
+                codeValue !== null &&
+                codeValue !== 0
+              ) {
+                // Check if it's Bad (high bit set) or Uncertain
+                if ((codeValue & 0x80000000) !== 0) {
+                  fieldInvalid = true
+                } else if ((codeValue & 0x40000000) !== 0) {
+                  // Uncertain - could mark as invalid or handle differently
+                  fieldInvalid = true
+                }
+              }
+            }
+          } else if ('Body' in fieldValue) {
+            // Variant format with Type and Body
+            extractedValue = fieldValue.Body
+          } else {
+            // Direct value object (JSON structure)
+            extractedValue = fieldValue
+          }
+        } else {
+          // Raw value (number, string, boolean, null)
+          extractedValue = fieldValue
+        }
+
+        // Convert extracted value to proper types for enqueuing
+        switch (typeof extractedValue) {
+          case 'boolean':
+            valueType = 'digital'
+            value = extractedValue ? 1 : 0
+            valueString = extractedValue.toString()
+            break
+          case 'number':
+            valueType = 'analog'
+            value = extractedValue
+            valueString = extractedValue.toString()
+            break
+          case 'string':
+            valueType = 'string'
+            value = parseFloat(extractedValue)
+            if (isNaN(value)) value = 0
+            valueString = extractedValue
+            break
+          case 'object':
+            if (extractedValue === null) {
+              valueType = 'json'
+              value = 0
+              valueString = ''
+              fieldInvalid = true
+            } else if (Array.isArray(extractedValue)) {
+              valueType = 'json'
+              value = 0
+              valueString = JSON.stringify(extractedValue)
+            } else {
+              valueType = 'json'
+              value = 0
+              valueString = JSON.stringify(extractedValue)
+            }
+            break
+          default:
+            valueType = 'json'
+            value = 0
+            valueString = ''
+            break
+        }
+
+        // Enqueue the value for MongoDB update
+        ValuesQueue.enqueue({
+          protocolSourceObjectAddress: objectAddress,
+          value: value,
+          valueString: valueString,
+          valueJson: JSON.stringify(fieldValue),
+          invalid: fieldInvalid,
+          transient: false,
+          causeOfTransmissionAtSource: '3',
+          timeTagAtSource: fieldTimestamp,
+          timeTagAtSourceOk: fieldTimestampOk,
+          asduAtSource: 'opcua-pubsub',
+          type: valueType,
+        })
+
+        Log.log(
+          'OPC-UA PubSub - Enqueued: ' +
+            objectAddress +
+            ' = ' +
+            valueString +
+            (fieldInvalid ? ' [INVALID]' : ''),
+          Log.levelDebug
+        )
+      })
+    }
+  })
+
+  return true // Indicate message was processed
 }

@@ -3,7 +3,7 @@
  *
  * THIS FILE IS INTENDED TO BE CUSTOMIZED BY USERS TO DO SPECIAL PROCESSING
  *
- * {json:scada} - Copyright (c) 2020-2024 - Ricardo L. Olsen
+ * {json:scada} - Copyright (c) 2020-2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
  *
  * This program is free software: you can redistribute it and/or modify
@@ -19,31 +19,18 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-'use strict'
+import { setInterval, clearInterval } from 'timers'
+import {
+  Log,
+  Double,
+  ConnectionManager,
+} from './jsonscada/index.js'
 
-const Log = require('./simple-logger')
-const { Double } = require('mongodb')
-const { setInterval } = require('timers')
-
-const UserActionsCollectionName = 'userActions'
-const RealtimeDataCollectionName = 'realtimeData'
-const CommandsQueueCollectionName = 'commandsQueue'
-const SoeDataCollectionName = 'soeData'
-const ProcessInstancesCollectionName = 'processInstances'
-const ProtocolDriverInstancesCollectionName = 'protocolDriverInstances'
-const ProtocolConnectionsCollectionName = 'protocolConnections'
-
-let CyclicIntervalHandle = null
+let CyclicIntervalHandle: NodeJS.Timeout | null = null
 
 // this will be called by the main module when mongo is connected (or reconnected)
-module.exports.CustomProcessor = function (
-  clientMongo,
-  jsConfig,
-  Redundancy,
-  MongoStatus
-) {
-  if (clientMongo === null) return
-  const db = clientMongo.db(jsConfig.mongoDatabaseName)
+export const CustomProcessor = function (mgr: ConnectionManager) {
+  if (mgr.client === null) return
 
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CYCLIC PROCESSING AT INTERVALS
@@ -52,66 +39,64 @@ module.exports.CustomProcessor = function (
   let CyclicProcess = async function () {
     // do cyclic processing at each CyclicInterval ms
 
-    if (!Redundancy.ProcessStateIsActive() || !MongoStatus.HintMongoIsConnected)
+    if (!mgr.redundancy.ProcessStateIsActive() || !mgr.status.HintMongoIsConnected)
       return // do nothing if process is inactive
 
     try {
-      let res = await db
-        .collection(RealtimeDataCollectionName)
+      let res = await mgr.getRealtimeDataCollection()
         .findOne({ _id: -2 }) // id of point tag with number of digital updates
 
-      Log.log(
-        'Custom Process - Checking number of digital updates: ' +
-          res.valueString
-      )
+      if (res) {
+        Log.log(
+          'Custom Process - Checking number of digital updates: ' +
+            res.valueString
+        )
+      }
     } catch (err) {
-      Log.log(err)
+      Log.log(err as string)
     }
 
     return
   }
   const CyclicInterval = 5000 // interval time in ms
-  clearInterval(CyclicIntervalHandle) // clear older instances if any
+  if (CyclicIntervalHandle) clearInterval(CyclicIntervalHandle) // clear older instances if any
   CyclicIntervalHandle = setInterval(CyclicProcess, CyclicInterval) // start a cyclic processing
 
   // EXAMPLE OF CYCLIC PROCESSING AT INTERVALS
   // END EXAMPLE
   // -------------------------------------------------------------------------------------------
 
-  /*
+  
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // BEGIN EXAMPLE
 
-  const changeStreamUserActions = db
-    .collection(UserActionsCollectionName)
+  const changeStreamUserActions = mgr.getUserActionsCollection()
     .watch(
-      { $match: { operationType: 'insert' } }, // will listen only for insert operations
+      [{ $match: { operationType: 'insert' } }], // will listen only for insert operations
       {
-        fullDocument: 'updateLookup'
+        fullDocument: 'updateLookup',
       }
     )
 
   try {
-    changeStreamUserActions.on('error', change => {
-      if (clientMongo) clientMongo.close()
-      clientMongo = null
+    changeStreamUserActions.on('error', () => {
+      if (mgr.client) mgr.client.close()
       Log.log('Custom Process - Error on changeStreamUserActions!')
     })
-    changeStreamUserActions.on('close', change => {
+    changeStreamUserActions.on('close', () => {
       Log.log('Custom Process - Closed changeStreamUserActions!')
     })
-    changeStreamUserActions.on('end', change => {
-      if (clientMongo) clientMongo.close()
-      clientMongo = null
+    changeStreamUserActions.on('end', () => {
+      if (mgr.client) mgr.client.close()
       Log.log('Custom Process - Ended changeStreamUserActions!')
     })
 
     // start listen to changes
-    changeStreamUserActions.on('change', change => {
+    changeStreamUserActions.on('change', (change) => {
       // Log.log(change.fullDocument)
 
-      if (!Redundancy.ProcessStateIsActive()) return // do nothing if process is inactive
+      if (!mgr.redundancy.ProcessStateIsActive()) return // do nothing if process is inactive
       if (change.operationType != 'insert') return // do nothing if operation is not insert
 
       // when operator acks all alarms
@@ -119,7 +104,7 @@ module.exports.CustomProcessor = function (
         Log.log('Custom Process - Generating Interrogation Request')
 
         // insert a command for requesting general interrogation on a IEC 104 connection
-        db.collection(CommandsQueueCollectionName).insertOne({
+        mgr.getCommandsQueueCollection().insertOne({
           protocolSourceConnectionNumber: new Double(61), // put here number of connection (101/104 client)
           protocolSourceCommonAddress: new Double(1), // put here common address to interrogate
           protocolSourceObjectAddress: new Double(0), // should be 0 for general interrogation
@@ -137,7 +122,7 @@ module.exports.CustomProcessor = function (
             '" of user: ' +
             change.fullDocument?.username, // just for documentation of user action
           originatorIpAddress: '',
-          delivered: false
+          delivered: false,
         })
       }
     })
@@ -148,5 +133,9 @@ module.exports.CustomProcessor = function (
   // -------------------------------------------------------------------------------------------
   // EXAMPLE OF CHANGE STREAM PROCESSING (MONITORING OF CHANGES IN MONGODB COLLECTIONS)
   // END EXAMPLE
-  */
+  
+}
+
+export default {
+  CustomProcessor,
 }

@@ -47,12 +47,12 @@ nssm set JSON_SCADA_cs_data_processor AppRotateOnline 1
 nssm set JSON_SCADA_cs_data_processor AppRotateBytes 10000000
 nssm set JSON_SCADA_cs_data_processor Start SERVICE_AUTO_START
 
-nssm install JSON_SCADA_cs_custom_processor "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\cs_custom_processor\cs_custom_processor.js" 1 1 "c:\json-scada\conf\json-scada.json"
+nssm install JSON_SCADA_cs_custom_processor "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\cs_custom_processor\dist\cs_custom_processor.js" 1 1 "c:\json-scada\conf\json-scada.json"
 nssm set JSON_SCADA_cs_custom_processor AppDirectory "C:\json-scada\src\cs_custom_processor"
 nssm set JSON_SCADA_cs_custom_processor AppStdout C:\json-scada\log\cs_custom_processor.log
 nssm set JSON_SCADA_cs_custom_processor AppRotateOnline 1
 nssm set JSON_SCADA_cs_custom_processor AppRotateBytes 10000000
-nssm set JSON_SCADA_cs_custom_processor Start SERVICE_AUTO_START
+nssm set JSON_SCADA_cs_custom_processor Start SERVICE_DEMAND_START
 
 
 REM server_realtime_auth (token based auth and RBAC)
@@ -120,7 +120,7 @@ REM Use environment variables to connect (for writing) to PostgreSQL historian (
 REM nssm set JSON_SCADA_process_hist AppEnvironmentExtra PGHOSTADDR=127.0.0.1 PGPORT=5432 PGDATABASE=json_scada PGUSER=json_scada PGPASSWORD=json_scada
 
 nssm install JSON_SCADA_php "c:\json-scada\platform-windows\nginx_php-runtime\php\php-cgi.exe" -b 127.0.0.1:9000 -c c:\json-scada\conf\php.ini
-nssm set JSON_SCADA_php Start SERVICE_AUTO_START
+nssm set JSON_SCADA_php Start SERVICE_DEMAND_START
 
 nssm install JSON_SCADA_nginx "c:\json-scada\platform-windows\nginx_php-runtime\nginx.exe" -c c:\json-scada\conf\nginx.conf
 nssm set JSON_SCADA_nginx Start SERVICE_AUTO_START
@@ -264,6 +264,12 @@ nssm set JSON_SCADA_telegraf_runtime AppDirectory "C:\json-scada\platform-window
 nssm set JSON_SCADA_telegraf_runtime Start SERVICE_AUTO_START
 REM cd \json-scada\platform-windows\telegraf-runtime
 REM c:\json-scada\platform-windows\telegraf-runtime\telegraf --service-display-name JSON_SCADA_telegraf_runtime --service-name JSON_SCADA_telegraf_runtime --config C:\json-scada\conf\telegraf.conf service install
+
+REM service for MCP Server
+nssm install JSON_SCADA_mcp_server "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\mcp-json-scada-db\dist\mcp-server.js" 1 1 "c:\json-scada\conf\json-scada.json"
+nssm set JSON_SCADA_mcp_server AppDirectory "C:\json-scada\src\mcp-json-scada-db"
+nssm set JSON_SCADA_mcp_server AppEnvironmentExtra MCP_TRANSPORT=http BIND=127.0.0.1 PORT=6001
+nssm set JSON_SCADA_mcp_server Start SERVICE_DEMAND_START
 
 REM Create scheduled task for log rotation (alternative log rotator), configure with logrotate.conf
 REM Should stop services to force log file to close. See https://sourceforge.net/p/logrotatewin/wiki/LogRotate/
