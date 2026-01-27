@@ -11,9 +11,6 @@ LABEL description="Multi-service container with Node.js, .NET, Go, PostgreSQL/Ti
 ENV DEBIAN_FRONTEND=noninteractive
 ENV TZ=UTC
 
-# Build arguments (secrets/config handled in supervisord.conf)
-ARG POSTGRES_HOST_AUTH_METHOD=trust
-
 # ==============================================================================
 # BASE SYSTEM PACKAGES AND BUILD TOOLS
 # ==============================================================================
@@ -307,6 +304,11 @@ ENV PGDATABASE=json_scada
 ENV PGUSER=json_scada
 ENV PGHOST=localhost
 ENV PGPORT=5432
+#check=skip=SecretsUsedInArgOrEnv
+ENV POSTGRES_HOST_AUTH_METHOD=trust
+ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
+COPY ./platform-ubuntu-2404/postgresql.conf /etc/postgresql/18/main/postgresql.conf
+COPY ./platform-ubuntu-2404/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf
 
 # Create necessary directories
 RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
@@ -337,7 +339,7 @@ if [ -f /app/db_initialized ]; then\n\
   exit 0\n\
 fi\n\
 # Wait for PostgreSQL to be ready\n\
-until psql -h localhost -U "$POSTGRES_USER" -d template1 -c "select 1" > /dev/null 2>&1; do\n\
+until psql -h localhost -U "$POSTGRES_USER" -w -d template1 -c "select 1" > /dev/null 2>&1; do\n\
   echo "Waiting for PostgreSQL..."\n\
   sleep 2\n\
 done\n\
