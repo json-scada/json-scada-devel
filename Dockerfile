@@ -36,6 +36,7 @@ RUN apt-get update && apt-get install -y \
     supervisor \
     unzip \
     git \
+    nano \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
@@ -318,6 +319,7 @@ RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
 
 # Copy initialization scripts and data (relative to project root context)
 COPY ./demo-docker/mongo_seed/files/ /docker-entrypoint-initdb.d/mongo/
+COPY ./mongo_seed/ /docker-entrypoint-initdb.d/mongo/
 COPY ./demo-docker/postgres_seed/ /docker-entrypoint-initdb.d/postgres/
 COPY ./demo-docker/sql_data/ /sql_data/
 COPY ./demo-docker/sql/ /sql/
@@ -330,6 +332,10 @@ RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
+if [ -f /app/db_initialized ]; then\n\
+  echo "Database already initialized."\n\
+  exit 0\n\
+fi\n\
 # Wait for PostgreSQL to be ready\n\
 until psql -h localhost -U "$POSTGRES_USER" -d template1 -c "select 1" > /dev/null 2>&1; do\n\
   echo "Waiting for PostgreSQL..."\n\
@@ -347,13 +353,16 @@ until mongosh --host localhost --port 27017 --eval "db.adminCommand(\"ping\")" >
 done\n\
 echo "MongoDB is ready, running init scripts..."\n\
 # Run mongo initialization\n\
-cd /docker-entrypoint-initdb.d/mongo && ./init.sh\n\
+cd /docker-entrypoint-initdb.d/mongo && ./init.sh && ./init-demo.sh && touch /app/db_initialized\n\
 ' > /app/init_databases.sh && chmod +x /app/init_databases.sh
 
 # ==============================================================================
 # SUPERVISOR CONFIGURATION
 # ==============================================================================
-COPY supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY supervisord.conf /etc/supervisor/supervisord.conf
+    
+# Add swappiness to /etc/sysctl.conf for mongodb
+RUN echo "vm.swappiness=1" >> /etc/sysctl.conf
 
 # ==============================================================================
 # EXPOSE PORTS
@@ -389,4 +398,4 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
 # ==============================================================================
 WORKDIR /app
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/supervisord.conf"]
