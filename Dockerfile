@@ -164,6 +164,7 @@ RUN mkdir -p /var/log/supervisor \
 # Copy the entire project into /app/json-scada
 # We assume the context is the project root (one level up from demo-docker)
 COPY ./src/ /app/json-scada/src/
+COPY ./svg/ /app/json-scada/svg/
 
 # Set environment for builds
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
