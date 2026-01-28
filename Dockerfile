@@ -277,15 +277,15 @@ RUN cd src/plc4x-client/ && \
 # ==============================================================================
 # BUILD NODE.JS PROJECTS
 # ==============================================================================
-RUN cd src/cs_data_processor && npm install && rm -rf node_modules \
+RUN cd src/cs_data_processor && npm install \
     && cd ../cs_custom_processor && npm install && npm run build \
-    && cd ../config_server_for_excel && npm install && rm -rf node_modules \
-    && cd ../server_realtime_auth && npm install && rm -rf node_modules \
-    && cd ../alarm_beep && npm install && rm -rf node_modules \
-    && cd ../oshmi2json && npm install && rm -rf node_modules \
-    && cd ../telegraf-listener && npm install && rm -rf node_modules \
-    && cd ../OPC-UA-Server && npm install && rm -rf node_modules \
-    && cd ../mqtt-sparkplug && npm install && rm -rf node_modules \
+    && cd ../config_server_for_excel && npm install \
+    && cd ../server_realtime_auth && npm install \
+    && cd ../alarm_beep && npm install \
+    && cd ../oshmi2json && npm install \
+    && cd ../telegraf-listener && npm install \
+    && cd ../OPC-UA-Server && npm install \
+    && cd ../mqtt-sparkplug && npm install \
     && cd ../AdminUI && npm install && npm run build && rm -rf node_modules \
     && cd ../svgedit && npm install && npm run build && rm -rf node_modules \
     && cd ../custom-developments/basic_bargraph \
@@ -308,9 +308,7 @@ ENV PGDATABASE=json_scada
 ENV PGUSER=postgres
 ENV PGHOST=localhost
 ENV PGPORT=5432
-#ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
 
-COPY ./conf-templates/json-scada.json /app/json-scada/conf/json-scada.json
 COPY ./platform-ubuntu-2404/postgresql.conf /etc/postgresql/18/main/postgresql.conf
 COPY ./platform-ubuntu-2404/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf
 COPY ./platform-ubuntu-2404/telegraf-input-opcua.conf /etc/telegraf/telegraf.d/telegraf-input-opcua.conf
@@ -353,6 +351,7 @@ COPY ./demo-docker/postgres_seed/ /docker-entrypoint-initdb.d/postgres/
 COPY ./demo-docker/sql_data/ /app/json-scada/sql_data/
 COPY ./demo-docker/sql/ /app/json-scada/sql/
 COPY ./demo-docker/conf/ /app/json-scada/conf/
+COPY ./conf-templates/json-scada.json /app/json-scada/conf/json-scada.json
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
