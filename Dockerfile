@@ -1,6 +1,7 @@
 # Based on Ubuntu 24.04 with all required services for JSON-SCADA
 # Build context should be the PROJECT ROOT (one level up from demo-docker)
-# Build command: sudo docker build --pull --no-cache -t json-scada -f Dockerfile .
+# Build command: sudo docker build --pull --no-cache -t json-scada:latest -f Dockerfile .
+# Run command: sudo docker run -p 80:80 -i -t json-scada:latest
 # ==============================================================================
 FROM ubuntu:24.04
 
