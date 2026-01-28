@@ -299,14 +299,11 @@ RUN cd src/cs_data_processor && npm install && rm -rf node_modules \
 # ==============================================================================
 # Set database environment variables
 ENV MONGO_INITDB_DATABASE=json_scada
-ENV POSTGRES_USER=postgres
 ENV PGDATABASE=json_scada
-ENV PGUSER=json_scada
+ENV PGUSER=postgres
 ENV PGHOST=localhost
 ENV PGPORT=5432
-#check=skip=SecretsUsedInArgOrEnv
-ENV POSTGRES_HOST_AUTH_METHOD=trust
-ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
+#ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
 COPY ./platform-ubuntu-2404/postgresql.conf /etc/postgresql/18/main/postgresql.conf
 COPY ./platform-ubuntu-2404/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf
 
@@ -334,6 +331,7 @@ RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
+export POSTGRES_HOST_AUTH_METHOD=trust\n\
 if [ -f /app/db_initialized ]; then\n\
   echo "Database already initialized."\n\
   exit 0\n\
