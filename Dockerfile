@@ -335,7 +335,7 @@ COPY ./platform-ubuntu-2404/process_pg_rtdata.ini /etc/supervisor/conf.d/process
 COPY ./platform-ubuntu-2404/server_realtime_auth.ini /etc/supervisor/conf.d/server_realtime_auth.ini
 COPY ./platform-ubuntu-2404/telegraf_listener.ini /etc/supervisor/conf.d/telegraf_listener.ini
 COPY ./platform-ubuntu-2404/nginx.conf /etc/nginx/nginx.conf
-COPY ./platform-ubuntu-2404/json_scada_http.conf /etc/nginx/conf.d/json_scada_http.conf
+COPY ./platform-ubuntu-2404/json_scada_http_open.conf /etc/nginx/conf.d/json_scada_http.conf
 COPY ./platform-ubuntu-2404/json_scada_https.conf /etc/nginx/conf.d/json_scada_https.conf
 
 # Create necessary directories
