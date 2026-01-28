@@ -16,6 +16,7 @@ ENV TZ=UTC
 # ==============================================================================
 RUN apt-get update && apt-get install -y \
     build-essential \
+    openjdk-21-jdk \
     cmake \
     sasl2-bin \
     libsasl2-dev \
@@ -173,8 +174,8 @@ ENV CGO_ENABLED=1
 RUN mkdir -p /app/json-scada/bin
 RUN mkdir -p /app/json-scada/log
 RUN ln -s /app /home/jsonscada
-RUN useradd postgres
 RUN useradd nginx
+RUN useradd jsonscada
 
 # ==============================================================================
 # BUILD .NET PROJECTS
@@ -309,6 +310,7 @@ ENV PGHOST=localhost
 ENV PGPORT=5432
 #ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
 
+COPY ./conf-templates/json-scada.conf /app/json-scada/conf/json-scada.conf
 COPY ./platform-ubuntu-2404/postgresql.conf /etc/postgresql/18/main/postgresql.conf
 COPY ./platform-ubuntu-2404/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf
 COPY ./platform-ubuntu-2404/telegraf-input-opcua.conf /etc/telegraf/telegraf.d/telegraf-input-opcua.conf
