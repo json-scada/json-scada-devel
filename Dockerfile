@@ -170,7 +170,11 @@ ENV GO111MODULE=auto
 ENV CGO_ENABLED=1
 
 # Create publish directory
-RUN mkdir -p /app/bin
+RUN mkdir -p /app/json-scada/bin
+RUN mkdir -p /app/json-scada/log
+RUN ln -s /app /home/jsonscada
+RUN useradd postgres
+RUN useradd nginx
 
 # ==============================================================================
 # BUILD .NET PROJECTS
@@ -178,7 +182,7 @@ RUN mkdir -p /app/bin
 WORKDIR /app/json-scada
 
 # Build lib60870
-RUN cd src/lib60870.netcore/ && dotnet publish --no-self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/bin/
+RUN cd src/lib60870.netcore/ && dotnet publish --no-self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
 
 # Cleanup lib60870
 RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
@@ -190,7 +194,7 @@ RUN cd src/lib60870.netcore/lib60870.netcore/ && rm -rf obj bin
 # Build OPC-UA Client
 RUN cd src/OPC-UA-Client/ && \
     rm -rf obj bin && dotnet clean && \
-    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/bin/ && \
+    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
     rm -rf obj bin
 
 # Build libiec61850 (C library)
@@ -200,7 +204,7 @@ RUN cd src/libiec61850 && \
     cd build && \
     cmake .. && \
     make && \
-    cp src/libiec61850.so src/libiec61850.so.* /app/bin/ || true
+    cp src/libiec61850.so src/libiec61850.so.* /app/json-scada/bin/ || true
 
 # Build IEC61850.NET.core
 RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
@@ -208,7 +212,7 @@ RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
 
 # Build IEC 61850 Client
 RUN cd src/iec61850_client && \
-    dotnet publish --no-self-contained -p:PublishReadyToRun=true -c Release -o /app/bin/ && \
+    dotnet publish --no-self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
     rm -rf obj bin || true
 
 # Cleanup libiec61850
@@ -232,7 +236,7 @@ RUN cd src/dnp3/opendnp3 && \
     cd build && \
     cmake -DDNP3_EXAMPLES=OFF -DDNP3_TLS=ON .. && \
     make && \
-    cp cpp/lib/libopendnp3.so /app/bin/ || true
+    cp cpp/lib/libopendnp3.so /app/json-scada/bin/ || true
 
 # Build DNP3 Server
 RUN cd src/dnp3/Dnp3Server/ && \
@@ -243,7 +247,7 @@ RUN cd src/dnp3/Dnp3Server/ && \
     cd build && \
     cmake .. && \
     make && \
-    cp Dnp3Server /app/bin/ || true
+    cp Dnp3Server /app/json-scada/bin/ || true
 
 # ==============================================================================
 # BUILD GO PROJECTS
@@ -255,19 +259,19 @@ RUN apt-get update && apt-get install -y libpcap-dev && rm -rf /var/lib/apt/list
 RUN cd src/calculations/ && \
     go mod tidy && \
     go build && \
-    cp calculations /app/bin/
+    cp calculations /app/json-scada/bin/
 
 # Build i104m
 RUN cd src/i104m/ && \
     go mod tidy && \
     go build && \
-    cp i104m /app/bin/
+    cp i104m /app/json-scada/bin/
 
 # Build plc4x-client
 RUN cd src/plc4x-client/ && \
     go mod tidy && \
     CGO_ENABLED=1 go build && \
-    cp plc4x-client /app/bin/ || true
+    cp plc4x-client /app/json-scada/bin/ || true
 
 # ==============================================================================
 # BUILD NODE.JS PROJECTS
@@ -318,6 +322,8 @@ COPY ./platform-ubuntu-2404/cs_data_processor.ini /etc/supervisor/conf.d/cs_data
 COPY ./platform-ubuntu-2404/iec104client.ini /etc/supervisor/conf.d/iec104client.ini
 COPY ./platform-ubuntu-2404/iec104server.ini /etc/supervisor/conf.d/iec104server.ini
 COPY ./platform-ubuntu-2404/metabase.ini /etc/supervisor/conf.d/metabase.ini
+COPY ./platform-ubuntu-2404/grafana_server.ini /etc/supervisor/conf.d/grafana_server.ini
+COPY ./platform-ubuntu-2404/dnp3_server.ini /etc/supervisor/conf.d/dnp3_server.ini
 COPY ./platform-ubuntu-2404/mongofw.ini /etc/supervisor/conf.d/mongofw.ini
 COPY ./platform-ubuntu-2404/mongowr.ini /etc/supervisor/conf.d/mongowr.ini
 COPY ./platform-ubuntu-2404/mqtt-sparkplug.ini /etc/supervisor/conf.d/mqtt-sparkplug.ini
@@ -332,24 +338,24 @@ COPY ./platform-ubuntu-2404/telegraf_listener.ini /etc/supervisor/conf.d/telegra
 # Create necessary directories
 RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
     && mkdir -p /docker-entrypoint-initdb.d/postgres \
-    && mkdir -p /sql_data \
-    && mkdir -p /sql \
-    && mkdir -p /conf \
-    && mkdir -p /log \
-    && mkdir -p /files
+    && mkdir -p /app/json-scada/sql_data \
+    && mkdir -p /app/json-scada/sql \
+    && mkdir -p /app/json-scada/conf \
+    && mkdir -p /app/json-scada/log \
+    && mkdir -p /app/json-scada/files
 
 # Copy initialization scripts and data (relative to project root context)
 COPY ./demo-docker/mongo_seed/files/ /docker-entrypoint-initdb.d/mongo/
 COPY ./mongo_seed/ /docker-entrypoint-initdb.d/mongo/
 COPY ./demo-docker/postgres_seed/ /docker-entrypoint-initdb.d/postgres/
-COPY ./demo-docker/sql_data/ /sql_data/
-COPY ./demo-docker/sql/ /sql/
-COPY ./demo-docker/conf/ /conf/
+COPY ./demo-docker/sql_data/ /app/json-scada/sql_data/
+COPY ./demo-docker/sql/ /app/json-scada/sql/
+COPY ./demo-docker/conf/ /app/json-scada/conf/
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
     && chmod +x /docker-entrypoint-initdb.d/postgres/*.sh \
-    && chmod +x /sql/*.sh
+    && chmod +x /app/json-scada/sql/*.sh
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
@@ -413,7 +419,7 @@ VOLUME ["/data/db", "/var/lib/postgresql", "/var/lib/grafana", "/app"]
 # HEALTHCHECK
 # ==============================================================================
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:3000/api/health || exit 1
+    CMD curl -f http://localhost:8080/login || exit 1
 
 # ==============================================================================
 # ENTRYPOINT
