@@ -310,7 +310,7 @@ ENV PGHOST=localhost
 ENV PGPORT=5432
 #ENV POSTGRES_INITDB_ARGS="--auth-host-validation-override=*"
 
-COPY ./conf-templates/json-scada.conf /app/json-scada/conf/json-scada.conf
+COPY ./conf-templates/json-scada.json /app/json-scada/conf/json-scada.json
 COPY ./platform-ubuntu-2404/postgresql.conf /etc/postgresql/18/main/postgresql.conf
 COPY ./platform-ubuntu-2404/pg_hba.conf /etc/postgresql/18/main/pg_hba.conf
 COPY ./platform-ubuntu-2404/telegraf-input-opcua.conf /etc/telegraf/telegraf.d/telegraf-input-opcua.conf
