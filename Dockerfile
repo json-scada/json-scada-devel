@@ -351,7 +351,6 @@ COPY ./sql/ /app/json-scada/sql/
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
-    && chmod +x /docker-entrypoint-initdb.d/postgres/*.sh \
     && chmod +x /app/json-scada/sql/*.sh 
 
 # Create a master database initialization script
