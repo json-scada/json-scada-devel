@@ -339,7 +339,6 @@ RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
     && mkdir -p /app/json-scada/conf \
     && mkdir -p /app/json-scada/log \
     && mkdir -p /app/json-scada/files \
-    && mkdir -p /app/json-scada/sql_data \
     && mkdir -p /app/json-scada/sql \
     && chmod o+x /app/json-scada/sql
 
@@ -353,9 +352,7 @@ COPY ./sql/ /app/json-scada/sql/
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
     && chmod +x /docker-entrypoint-initdb.d/postgres/*.sh \
-    && chmod +x /app/json-scada/sql/*.sh \
-    && ln -s /app/json-scada/sql /sql_data
-
+    && chmod +x /app/json-scada/sql/*.sh 
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
