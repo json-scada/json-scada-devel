@@ -120,8 +120,7 @@ RUN mkdir -p /etc/apt/keyrings/ \
     && echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" > /etc/apt/sources.list.d/grafana.list \
     && apt-get update \
     && apt-get install -y grafana \
-    && rm -rf /var/lib/apt/lists/* \
-    && chmod o+w /usr/share/grafana
+    && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
 # TELEGRAF (Latest)
