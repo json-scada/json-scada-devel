@@ -185,7 +185,7 @@ RUN useradd jsonscada
 WORKDIR /app/json-scada
 
 # Build lib60870
-RUN cd src/lib60870.netcore/ && dotnet publish --no-self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
+RUN cd src/lib60870.netcore/ && dotnet publish --self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
 
 # Cleanup lib60870
 RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
@@ -211,11 +211,11 @@ RUN cd src/libiec61850 && \
 
 # Build IEC61850.NET.core
 RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
-    dotnet publish --no-self-contained -c Release || true
+    dotnet publish --self-contained -c Release || true
 
 # Build IEC 61850 Client
 RUN cd src/iec61850_client && \
-    dotnet publish --no-self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
+    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
     rm -rf obj bin || true
 
 # Cleanup libiec61850
