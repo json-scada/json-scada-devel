@@ -120,7 +120,8 @@ RUN mkdir -p /etc/apt/keyrings/ \
     && echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" > /etc/apt/sources.list.d/grafana.list \
     && apt-get update \
     && apt-get install -y grafana \
-    && rm -rf /var/lib/apt/lists/*
+    && rm -rf /var/lib/apt/lists/* \
+    && chmod o+w /usr/share/grafana
 
 # ==============================================================================
 # TELEGRAF (Latest)
@@ -340,7 +341,7 @@ RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
     && mkdir -p /app/json-scada/log \
     && mkdir -p /app/json-scada/files \
     && mkdir -p /app/json-scada/sql \
-    && chmod o+x /app/json-scada/sql
+    && chmod o+w /app/json-scada/sql
 
 # Copy initialization scripts and data (relative to project root context)
 COPY ./demo-docker/mongo_seed/files/ /docker-entrypoint-initdb.d/mongo/
