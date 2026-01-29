@@ -140,13 +140,6 @@ RUN apt-get update \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
-# DOZZLE (Latest) - Docker log viewer
-# ==============================================================================
-#ENV DOZZLE_VERSION=v8.10.6
-#RUN wget -q https://github.com/amir20/dozzle/releases/download/${DOZZLE_VERSION}/dozzle_linux_amd64 -O /usr/local/bin/dozzle \
-#    && chmod +x /usr/local/bin/dozzle
-
-# ==============================================================================
 # CREATE DIRECTORIES AND SET PERMISSIONS
 # ==============================================================================
 RUN mkdir -p /var/log/supervisor \
@@ -343,25 +336,26 @@ COPY ./platform-ubuntu-2404/json_scada_https.conf /etc/nginx/conf.d/json_scada_h
 # Create necessary directories
 RUN mkdir -p /docker-entrypoint-initdb.d/mongo \
     && mkdir -p /docker-entrypoint-initdb.d/postgres \
-    && mkdir -p /app/json-scada/sql_data \
-    && mkdir -p /app/json-scada/sql \
     && mkdir -p /app/json-scada/conf \
     && mkdir -p /app/json-scada/log \
-    && mkdir -p /app/json-scada/files
+    && mkdir -p /app/json-scada/files \
+    && mkdir -p /app/json-scada/sql_data \
+    && mkdir -p /app/json-scada/sql \
+    && chmod o+x /app/json-scada/sql
 
 # Copy initialization scripts and data (relative to project root context)
 COPY ./demo-docker/mongo_seed/files/ /docker-entrypoint-initdb.d/mongo/
 COPY ./mongo_seed/ /docker-entrypoint-initdb.d/mongo/
-COPY ./demo-docker/postgres_seed/ /docker-entrypoint-initdb.d/postgres/
-COPY ./demo-docker/sql_data/ /app/json-scada/sql_data/
-COPY ./demo-docker/sql/ /app/json-scada/sql/
 COPY ./demo-docker/conf/ /app/json-scada/conf/
 COPY ./conf-templates/json-scada.json /app/json-scada/conf/json-scada.json
+COPY ./sql/ /app/json-scada/sql/
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
     && chmod +x /docker-entrypoint-initdb.d/postgres/*.sh \
-    && chmod +x /app/json-scada/sql/*.sh
+    && chmod +x /app/json-scada/sql/*.sh \
+    && ln -s /app/json-scada/sql /sql_data
+
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
@@ -376,9 +370,9 @@ until psql -h localhost -U "$POSTGRES_USER" -w -d template1 -c "select 1" > /dev
   sleep 2\n\
 done\n\
 echo "PostgreSQL is ready, running init scripts..."\n\
-for f in /docker-entrypoint-initdb.d/postgres/*.sh; do\n\
-  [ -x "$f" ] && "$f"\n\
-done\n\
+/bin/psql -U postgres -h localhost -d template1 -w -f /app/json-scada/sql/create_tables.sql template1 \n\
+/bin/psql -U postgres -h localhost -w -f /app/json-scada/sql/grafanaappdb.sql grafanaappdb \n\
+/bin/psql -U postgres -h localhost -w -f /app/json-scada/sql/metabaseappdb.sql metabaseappdb \n\
 \n\
 # Wait for MongoDB to be ready\n\
 until mongosh --host localhost --port 27017 --eval "db.adminCommand(\"ping\")" > /dev/null 2>&1; do\n\
