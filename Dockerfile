@@ -123,6 +123,13 @@ RUN mkdir -p /etc/apt/keyrings/ \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
+# METABASE
+# ==============================================================================
+RUN mkdir -p /app/json-scada/metabase/ \
+    && wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O /app/json-scada/metabase/metabase.jar \
+    && chmod +x /app/json-scada/metabase/metabase.jar 
+
+# ==============================================================================
 # TELEGRAF (Latest)
 # ==============================================================================
 RUN mkdir -p /etc/apt/keyrings \
@@ -329,6 +336,7 @@ COPY ./platform-ubuntu-2404/process_pg_hist.ini /etc/supervisor/conf.d/process_p
 COPY ./platform-ubuntu-2404/process_pg_rtdata.ini /etc/supervisor/conf.d/process_pg_rtdata.ini
 COPY ./platform-ubuntu-2404/server_realtime_auth.ini /etc/supervisor/conf.d/server_realtime_auth.ini
 COPY ./platform-ubuntu-2404/telegraf_listener.ini /etc/supervisor/conf.d/telegraf_listener.ini
+COPY ./platform-ubuntu-2404/telegraf.ini /etc/supervisor/conf.d/telegraf.ini
 COPY ./platform-ubuntu-2404/nginx.conf /etc/nginx/nginx.conf
 COPY ./platform-ubuntu-2404/json_scada_http_open.conf /etc/nginx/conf.d/json_scada_http.conf
 COPY ./platform-ubuntu-2404/json_scada_https.conf /etc/nginx/conf.d/json_scada_https.conf
@@ -391,6 +399,8 @@ RUN echo "vm.swappiness=1" >> /etc/sysctl.conf
 # ==============================================================================
 # EXPOSE PORTS
 # ==============================================================================
+# Nginx
+EXPOSE 80 443
 # Node.js application ports (customize as needed)
 EXPOSE 8080
 # PostgreSQL
@@ -399,12 +409,8 @@ EXPOSE 5432
 EXPOSE 27017
 # Grafana
 EXPOSE 3000
-# Nginx
-EXPOSE 80 443
-# Dozzle
-EXPOSE 8888
-# Telegraf (if using HTTP input)
-EXPOSE 8186
+# Supervisor UI
+EXPOSE 9000
 
 # ==============================================================================
 # VOLUMES
@@ -415,7 +421,7 @@ VOLUME ["/data/db", "/var/lib/postgresql", "/var/lib/grafana", "/app"]
 # HEALTHCHECK
 # ==============================================================================
 HEALTHCHECK --interval=30s --timeout=10s --start-period=60s --retries=3 \
-    CMD curl -f http://localhost:8080/login || exit 1
+    CMD curl -f http://localhost:8080 || exit 1
 
 # ==============================================================================
 # ENTRYPOINT
