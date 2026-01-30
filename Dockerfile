@@ -1,12 +1,12 @@
 # Based on Ubuntu 24.04 with all required services for JSON-SCADA
 # Build context should be the PROJECT ROOT (one level up from demo-docker)
 # Build command: sudo docker build --pull --no-cache -t json-scada:latest -f Dockerfile .
-# Run command: sudo docker run -p 80:80 -i -t json-scada:latest
+# Run command: sudo docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -i -t json-scada:latest
 # ==============================================================================
 FROM ubuntu:24.04
 
 LABEL maintainer="JSON-SCADA"
-LABEL description="Multi-service container with Node.js, .NET, Go, PostgreSQL/TimescaleDB, MongoDB, Grafana, Telegraf, Nginx, Dozzle"
+LABEL description="Multi-service container with Node.js, .NET, Go, PostgreSQL/TimescaleDB, MongoDB, Grafana, Telegraf, Nginx"
 
 # Prevent interactive prompts during package installation
 ENV DEBIAN_FRONTEND=noninteractive
@@ -165,6 +165,7 @@ RUN mkdir -p /var/log/supervisor \
 # We assume the context is the project root (one level up from demo-docker)
 COPY ./src/ /app/json-scada/src/
 COPY ./svg/ /app/json-scada/svg/
+RUN chmod o+w -R /app/json-scada/svg
 
 # Set environment for builds
 ENV DOTNET_CLI_TELEMETRY_OPTOUT=1
@@ -411,6 +412,12 @@ EXPOSE 27017
 EXPOSE 3000
 # Supervisor UI
 EXPOSE 9000
+# OPC-UA Server
+EXPOSE 4840
+# IEC104 Server
+EXPOSE 2404
+# DNP3 Server
+EXPOSE 20000
 
 # ==============================================================================
 # VOLUMES
