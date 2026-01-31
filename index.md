@@ -44,6 +44,12 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 
 ![screenshots](https://github.com/riclolsen/json-scada/raw/master/docs/screenshots/anim-screenshots.gif '{json:scada} Screenshots')
 
+## Running Via Docker
+
+    docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -i -t ricardolo/json-scada:v0.59
+
+Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See details here: [Docker Image](docs/docker_image.md). Other installation options and instructions are available in the [Installation Guide](docs/installation.md).
+
 ## Major features and characteristics
 
 - Standard IT tools applied to SCADA/IoT (MongoDB, PostgreSQL/TimescaleDB, Node.js, C#, Golang, Grafana, etc.).
@@ -96,7 +102,8 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [RedHat/Rocky Linux Installer Script](docs/install.md#rhel94-and-compatible-systems-automated-installation)
 - [Ubuntu Linux Installer Script](docs/install.md#ubuntu-2404-scripted-installation)
 - [Generic Install Guide](docs/install.md)
-- [Docker Demo](demo-docker/README.md)
+- [Docker Image](docs/docker_image.md)
+- [Docker Compose Demo](demo-docker/README.md)
 - [Schema Documentation](docs/schema.md)
 - [Config File](conf/README.md)
 - [SVG Synoptic Display Editor](src/svg-display-editor/README.md)
@@ -176,10 +183,11 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 - [x] Metabase Integration (via PostgreSQL/MongoDB connectors)
 - [x] One-way realtime replication (over eth diode/tap device) w/ point db sync and historical backfill
 - [x] Windows Installer
-- [x] Online Demo
-- [x] Docker Demo (docker-compose.yaml scripts)
+- [x] Docker Image
+- [x] Docker Compose Demo (docker-compose.yaml scripts)
 - [x] Install Script for RedHat/Rocky 9.7 Linux x86-64 and arm64
 - [x] Install Script for Ubuntu 24.04 Linux x86-64 and arm64
+- [x] Online Demo
 - [x] Supervisor (Linux process manager) examples
 - [x] Firebase Studio Configuration
 - [ ] InfluxDB Integration
