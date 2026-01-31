@@ -320,6 +320,7 @@ COPY ./platform-ubuntu-2404/telegraf-input-mongodb.conf /etc/telegraf/telegraf.d
 COPY ./platform-ubuntu-2404/telegraf-output-json-scada.conf /etc/telegraf/telegraf.d/telegraf-output-json-scada.conf
 
 COPY ./platform-ubuntu-2404/calculations.ini /etc/supervisor/conf.d/calculations.ini
+COPY ./platform-ubuntu-2404/config_server_excel.ini /etc/supervisor/conf.d/config_server_excel.ini
 COPY ./platform-ubuntu-2404/cs_custom_processor.ini /etc/supervisor/conf.d/cs_custom_processor.ini
 COPY ./platform-ubuntu-2404/cs_data_processor.ini /etc/supervisor/conf.d/cs_data_processor.ini
 COPY ./platform-ubuntu-2404/iec104client.ini /etc/supervisor/conf.d/iec104client.ini
@@ -328,6 +329,7 @@ COPY ./platform-ubuntu-2404/iec61850client.ini /etc/supervisor/conf.d/iec61850cl
 COPY ./platform-ubuntu-2404/metabase.ini /etc/supervisor/conf.d/metabase.ini
 COPY ./platform-ubuntu-2404/grafana_server.ini /etc/supervisor/conf.d/grafana_server.ini
 COPY ./platform-ubuntu-2404/dnp3_server.ini /etc/supervisor/conf.d/dnp3_server.ini
+COPY ./platform-ubuntu-2404/mcp_server.ini /etc/supervisor/conf.d/mcp_server.ini
 COPY ./platform-ubuntu-2404/mongofw.ini /etc/supervisor/conf.d/mongofw.ini
 COPY ./platform-ubuntu-2404/mongowr.ini /etc/supervisor/conf.d/mongowr.ini
 COPY ./platform-ubuntu-2404/mqtt-sparkplug.ini /etc/supervisor/conf.d/mqtt-sparkplug.ini
