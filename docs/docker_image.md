@@ -23,7 +23,7 @@ It includes
 
 Be sure to have the ports free. The ports are: 80, 9000, 4840, 2404 and 20000. Use sudo if needed.
 
-    docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -i -t json-scada:latest
+    docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -i -t json-scada:v0.59
 
 ## Access Instructions
 
