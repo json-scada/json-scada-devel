@@ -15,7 +15,6 @@ It includes
 - OPC UA Server.
 - OPC UA Client.
 - MQTT Sparkplug B.
-- Grafana.
 - Metabase.
 - And more.
 
