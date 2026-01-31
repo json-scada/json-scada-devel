@@ -423,7 +423,7 @@ EXPOSE 20000
 # ==============================================================================
 # VOLUMES
 # ==============================================================================
-VOLUME ["/data/db", "/var/lib/postgresql", "/var/lib/grafana", "/app"]
+VOLUME ["/var/lib/mongodb", "/var/lib/postgresql", "/var/lib/grafana", "/app/json-scada/svg", "/app/json-scada/conf", "/etc"]
 
 # ==============================================================================
 # HEALTHCHECK
