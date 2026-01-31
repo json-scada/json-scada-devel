@@ -29,8 +29,8 @@ Be sure to have the ports free. The ports are: 80, 9000, 4840, 2404 and 20000. U
     mkdir -p $DATA_DIR/svg
     mkdir -p $DATA_DIR/etc
     mkdir -p $DATA_DIR/conf
-    docker pull ricardolo/json-scada:v0.59
-    docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -d --name=json_scada -v /var/lib/postgresql:/$DATA_DIR/postgresql -v /var/lib/mongodb:/$DATA_DIR/mongodb -v /var/lib/grafana:/$DATA_DIR/grafana -v /var/lib/svg:/$DATA_DIR/svg -v /var/lib/etc:/$DATA_DIR/etc -v /var/lib/conf:/$DATA_DIR/conf ricardolo/json-scada:v0.59 
+    docker pull ricardolo/json-scada:latest
+    docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -d --name=json_scada -v /var/lib/postgresql:/$DATA_DIR/postgresql -v /var/lib/mongodb:/$DATA_DIR/mongodb -v /var/lib/grafana:/$DATA_DIR/grafana -v /var/lib/svg:/$DATA_DIR/svg -v /var/lib/etc:/$DATA_DIR/etc -v /var/lib/conf:/$DATA_DIR/conf ricardolo/json-scada:latest 
 
 ## Access Instructions
 
