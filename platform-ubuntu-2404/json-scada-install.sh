@@ -101,7 +101,7 @@ sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.config/ink
 sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.config/inkscape/extensions/'
 
 # Configure web server
-sudo cp json_scada_*.conf /etc/nginx/conf.d/
+sudo cp json_scada_http.conf json_scada_https.conf /etc/nginx/conf.d/
 sudo cp nginx.conf /etc/nginx/
 sudo systemctl enable nginx
 sudo systemctl enable php8.3-fpm
