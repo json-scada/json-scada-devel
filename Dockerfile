@@ -25,6 +25,7 @@ RUN apt-get update && apt-get install -y \
     libzstd-dev \
     libsnappy-dev \
     libsqlite3-dev \
+    ffmpeg \
     curl \
     wget \
     gnupg \
@@ -284,11 +285,12 @@ RUN cd src/cs_data_processor && npm install \
     && cd ../cs_custom_processor && npm install && npm run build \
     && cd ../config_server_for_excel && npm install \
     && cd ../server_realtime_auth && npm install \
-    && cd ../alarm_beep && npm install \
+    && cd ../camera-onvif && npm install \
     && cd ../oshmi2json && npm install \
     && cd ../telegraf-listener && npm install \
     && cd ../OPC-UA-Server && npm install \
     && cd ../mqtt-sparkplug && npm install \
+    && cd ../mcp-json-scada-db && npm install && npm run build \
     && cd ../AdminUI && npm install && npm run build && rm -rf node_modules \
     && cd ../svgedit && npm install && npm run build && rm -rf node_modules \
     && cd ../custom-developments/basic_bargraph \
