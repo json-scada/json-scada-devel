@@ -22,14 +22,16 @@ It includes
 
 Be sure to have the ports free. The ports are: 80, 9000, 4840, 2404 and 20000. Use sudo if needed.
 
-    # Change the DATA_DIR variable to your desired persistent data directory on the host machine.
     sudo docker pull ricardolo/json-scada:latest
     sudo docker run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -d --name=json_scada ricardolo/json-scada:latest
+    # open http://127.0.0.1:80 on a browser
 
 Or with Podman
 
     podman pull docker.io/ricardolo/json-scada:latest
-    podman run -p 80:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -d --name=json_scada docker.io/ricardolo/json-scada:latest
+    # redirect port 80 to an upper port as podman doesn't have root access by default
+    podman run -p 8090:80 -p 9000:9000 -p 4840:4840 -p 2404:2404 -p 20000:20000 -d --name=json_scada docker.io/ricardolo/json-scada:latest
+    # open http://127.0.0.1:8090 on a browser
 
 ## Access Instructions
 
