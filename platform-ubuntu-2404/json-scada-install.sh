@@ -101,7 +101,7 @@ sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.config/ink
 sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.config/inkscape/extensions/'
 
 # Configure web server
-sudo cp json_scada_*.conf /etc/nginx/conf.d/
+sudo cp json_scada_http.conf json_scada_https.conf /etc/nginx/conf.d/
 sudo cp nginx.conf /etc/nginx/
 sudo systemctl enable nginx
 sudo systemctl enable php8.3-fpm
@@ -112,14 +112,8 @@ sudo cp mongod.conf /etc/
 sudo systemctl enable mongod
 
 # Install monitoring tools
-curl --silent --location -O \
-https://repos.influxdata.com/influxdata-archive.key \
-&& echo "943666881a1b8d9b849b74caebf02d3465d6beb716510d86a39f6c8e8dac7515  influxdata-archive.key" \
-| sha256sum -c - && cat influxdata-archive.key \
-| gpg --dearmor \
-| sudo tee /etc/apt/trusted.gpg.d/influxdata-archive.gpg > /dev/null \
-&& echo 'deb [signed-by=/etc/apt/trusted.gpg.d/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main' \
-| sudo tee /etc/apt/sources.list.d/influxdata.list
+sudo sh -c "wget -q -O - https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor -o /etc/apt/keyrings/influxdata-archive.gpg"
+sudo sh -c "echo \"deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main\" > /etc/apt/sources.list.d/influxdata.list" 
 sudo apt-get update && sudo apt-get -y install telegraf
 sudo cp telegraf-*.conf /etc/telegraf/telegraf.d/
 sudo systemctl enable telegraf
@@ -138,7 +132,7 @@ sudo systemctl daemon-reload
 
 # Install Metabase
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.57.1/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
 
 # Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -

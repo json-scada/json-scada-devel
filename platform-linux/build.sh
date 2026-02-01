@@ -27,25 +27,25 @@ cmake ..
 make
 cp src/libiec61850.so src/libiec61850.so.* ../../../bin/
 cd ../dotnet/core/2.0/IEC61850.NET.core.2.0
-dotnet publish --no-self-contained --runtime $ARG1 -c Release
+dotnet publish --self-contained --runtime $ARG1 -c Release
 cd ../../../../../iec61850_client
-dotnet publish --no-self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/ 
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/ 
 
 sleep 1
 cd ../lib60870.netcore
 dotnet restore
-dotnet publish --no-self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
 
 cd ../OPC-UA-Client
 dotnet restore
-dotnet publish --no-self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
 
 cd ../opcdaaehda-client-solution-net
 dotnet build -f net8.0-windows DaAeHdaNetStandard.sln
 
 cd ../OPC-DA-Client
 dotnet restore
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -f net8.0-windows -c Release -o ../../bin-wine/ OPC-DA-Client.csproj
+dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -f net8.0-windows -c Release -o ../../bin-wine/ OPC-DA-Client.csproj
 
 cd ../mongo-cxx-driver/mongo-cxx-driver/build
 cmake .. -DCMAKE_INSTALL_PREFIX="../../../mongo-cxx-driver-lib" -DCMAKE_CXX_STANDARD=17 -DBUILD_VERSION=4.0.0 -DBUILD_SHARED_LIBS=OFF -DBUILD_SHARED_AND_STATIC_LIBS=OFF
