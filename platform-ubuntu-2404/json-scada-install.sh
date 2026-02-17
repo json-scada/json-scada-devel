@@ -37,8 +37,8 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Install Go
-wget --inet4-only https://go.dev/dl/go1.25.5.linux-$ARCHITECTURE.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.25.5.linux-$ARCHITECTURE.tar.gz
+wget --inet4-only https://go.dev/dl/go1.26.0.linux-$ARCHITECTURE.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-$ARCHITECTURE.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 
