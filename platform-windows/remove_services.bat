@@ -54,6 +54,7 @@ nssm remove JSON_SCADA_opcuaserver confirm
 nssm remove JSON_SCADA_log_io_file confirm
 nssm remove JSON_SCADA_log_io_server confirm
 nssm remove JSON_SCADA_onvif confirm
+nssm remove JSON_SCADA_mcp_server confirm
 
 PowerShell -NoProfile -ExecutionPolicy Bypass -Command "& {Start-Process PowerShell -ArgumentList '-NoProfile -ExecutionPolicy Bypass -File ""remove_jsonscada_services.ps1""' -Verb RunAs}"
 
