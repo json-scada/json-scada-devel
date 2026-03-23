@@ -821,6 +821,16 @@ Section "Uninstall"
   ExecWait `"${SC}" delete "JSON_SCADA_log_io_server"`
   ClearErrors
 
+  ExecWait `"${SC}" stop "JSON_SCADA_mcp_server"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_mcp_server"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_onvif"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_onvif"`
+  ClearErrors
+
   ExecWait '"$0" /C "$INSTDIR\platform-windows\mongodb-stop.bat"'
   ExecWait '"$0" /C "$INSTDIR\platform-windows\postgresql-stop.bat"'
   ExecWait '"$0" /C "$INSTDIR\platform-windows\stop_services.bat"'
