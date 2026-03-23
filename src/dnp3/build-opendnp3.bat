@@ -29,3 +29,9 @@ mkdir build
 cd build
 cmake ..
 cmake --build . --config Release
+
+cd Dnp3ClientCpp
+mkdir build
+cd build
+cmake ..
+cmake --build . --config Release
