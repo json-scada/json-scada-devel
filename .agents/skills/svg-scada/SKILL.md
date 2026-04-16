@@ -1,11 +1,12 @@
 ---
-name: svg-scada  
+name: svg-scada
 description: Generate, structure, and markup scalable vector graphics (SVG) files that natively interface with SCADA markups by embedding strict, HTML-escaped JSON configurations into the `inkscape:label` attribute of SVG elements. Dedicated to the SCADAvis.io / OSHMI / JSON-SCADA projects and integration specialist. Use when user asks to edit or create SVG files with SCADA animations or markup (SVG or SCADA or SAGE or XSAC or Inkscape or SVG-Edit or SVG-SCADA or JSON-SCADA or SCADAvis or OSHMI).
 ---
 
 # SVG SCADA Generation Agent Skills
 
 ## Overview
+
 This agent is designed to generate, structure, and markup scalable vector graphics (SVG) files that natively interface with SCADA markups by embedding strict, HTML-escaped JSON configurations into the `inkscape:label` attribute of SVG elements. It is dedicated to the SCADAvis.io / OSHMI / JSON-SCADA projects.
 
 ## 📐 Core SVG & JSON Serialization Rules
@@ -15,7 +16,7 @@ This agent is designed to generate, structure, and markup scalable vector graphi
 3. **The "attr" Key:** The selected animation "Tab" (action type) must be stored in the `"attr"` key (e.g., `"attr":"set"`, `"attr":"get"`, `"attr":"bar"`).
 4. **Lowercase Keys:** All JSON keys correspond to the dialog fields and MUST be lowercase (e.g., `"tag"`, `"src"`, `"prompt"`, `"format"`, `"min"`, `"max"`).
 5. **XML-Entity Escaping:** The JSON string MUST be HTML-escaped so that standard double-quotes inside the JSON become `&quot;`. The attribute itself is wrapped in standard double quotes.
-   * *Correct Example:* `inkscape:label="{&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;TAG1&quot;,&quot;format&quot;:&quot;%5.2f&quot;}"`
+   - _Correct Example:_ `inkscape:label="{&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;TAG1&quot;,&quot;format&quot;:&quot;%5.2f&quot;}"`
 
 ---
 
@@ -25,69 +26,132 @@ Use the following JSON dictionary structures embedded as HTML-escaped strings fo
 Multiple behaviors can be combined by embedding multiple JSON objects in the same `inkscape:label` attribute, as a JSON array but without the surrounding square brackets `[]` (e.g., `{"attr":"get", "tag":"TAG_NAME"},{"attr":"color", "tag":"TAG_NAME", "limit1":"1", "color1":"red|"}`).
 
 ### 1. Get (Text Formatting)
-* Targets `<text>` SVG elements.
-* The `<text>` element should contain a `<tspan>` child element where the format string is placed (e.g., `%5.2f`, `.3s`, `off|on|failed`).
-* **Fields:** `"attr":"get"`, `"tag"`, `align` (e.g., `"align":"Right"`), `type` (e.g., `"type":"Good"`). All fields are required to ensure proper parsing and functionality.
-* **JSON:** `{"attr":"get", "tag":"TAG_NAME", align":"Right", "type":"Good"}`
-* **Format Strings should be put in the tspan element:** 
-  * Printf (`%5.2f`), d3 (`.3s`), Boolean (`off|on|failed`).
-  * Flow arrows: append `u^`, `d^`, `r^`, `l^`, `a^` to show direction.
-* Example: `<text
-       xml:space="preserve"
-       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:0%;font-family:'Microsoft Sans Serif';-inkscape-font-specification:'Microsoft Sans Serif';text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#6a43e5;fill-opacity:1;stroke:none"
-       x="-310"
-       y="-232.63782"
-       id="mw_model"
-       inkscape:label="{&quot;align&quot;:&quot;Right&quot;,&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;%n&quot;,&quot;type&quot;:&quot;Good&quot;}"><tspan
-         sodipodi:role="line"
-         id="tspan4770"
-         x="-310"
-         y="-232.63782"
-         style="font-size:22px;line-height:1.25">%5.1f</tspan></text>
-    `.
+
+- Targets `<text>` SVG elements.
+- The `<text>` element should contain a `<tspan>` child element where the format string is placed (e.g., `%5.2f`, `.3s`, `off|on|failed`).
+- **Fields:** `"attr":"get"`, `"tag"`, `align` (e.g., `"align":"Right"`), `type` (e.g., `"type":"Good"`). All fields are required to ensure proper parsing and functionality.
+- **JSON:** `{"attr":"get", "tag":"TAG_NAME", align":"Right", "type":"Good"}`
+- **Format Strings should be put in the tspan element:**
+  - Printf (`%5.2f`), d3 (`.3s`), Boolean (`off|on|failed`).
+  - Flow arrows: append `u^`, `d^`, `r^`, `l^`, `a^` to show direction.
+- Example: `<text
+   xml:space="preserve"
+   style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:0%;font-family:'Microsoft Sans Serif';-inkscape-font-specification:'Microsoft Sans Serif';text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#6a43e5;fill-opacity:1;stroke:none"
+   x="-310"
+   y="-232.63782"
+   id="mw_model"
+   inkscape:label="{&quot;align&quot;:&quot;Right&quot;,&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;%n&quot;,&quot;type&quot;:&quot;Good&quot;}"><tspan
+     sodipodi:role="line"
+     id="tspan4770"
+     x="-310"
+     y="-232.63782"
+     style="font-size:22px;line-height:1.25">%5.1f</tspan></text>
+`.
 
 ### 2. Color (Fill, Stroke, & Attributes)
-* **Target:** SVG drawing objects (Exclude `<g>`).
-* **Fields:** `"attr":"color"`, `"tag"`, `"list"` as an array of `{"data":"VALUE_LIMIT"}`, `{"param":"COLOR_CODE"}`, `{"tag","TAG_NAME"}`.
-* **Color Syntax:** `"fill|stroke"`, e.g., `"red|green"`, `"|yellow"` (stroke only), `"black|"` (fill only). 
-* **Limit Constants:** `"a"` (alarm), `"f"` (failed), `"1"` (off), `"2"` (on).
-* **JSON:** `{"attr":"color", "tag":"TAG_NAME", "list":[{"data":"1", "param":"red|", "tag":"%n"}, {"data":"2", "param":"green|", "tag":"%n"}, {"data":"f", "param":"gray|", "tag":"%n"}]}`. All fields are required to ensure proper parsing and functionality.
-* **Attribute Hack:** Use the prefix `"attrib:"` followed by SVG properties for the "data" field of "list" arrray (e.g., `{"data":"attrib: style=fill:red;text-decoration:underline;"}`) to manipulate SVG properties instead of just colors.
-* Example: `inkscape:label="{&quot;attr&quot;:&quot;color&quot;,&quot;list&quot;:[{&quot;data&quot;:&quot;-99999&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;-500&quot;,&quot;param&quot;:&quot;-cor-20|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;500&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;c&quot;,&quot;param&quot;:&quot;-cor-41|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;n&quot;,&quot;param&quot;:&quot;-cor-42|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;f&quot;,&quot;param&quot;:&quot;-cor-12|&quot;,&quot;tag&quot;:&quot;%n&quot;}]}"`.
+
+- **Target:** SVG drawing objects (Exclude `<g>`).
+- **Fields:** `"attr":"color"`, `"tag"`, `"list"` as an array of `{"data":"VALUE_LIMIT"}`, `{"param":"COLOR_CODE"}`, `{"tag","TAG_NAME"}`.
+- **Color Syntax:** `"fill|stroke"`, e.g., `"red|green"`, `"|yellow"` (stroke only), `"black|"` (fill only).
+- **Limit Constants:** `"a"` (alarm), `"f"` (failed), `"1"` (off), `"2"` (on).
+- **JSON:** `{"attr":"color", "tag":"TAG_NAME", "list":[{"data":"1", "param":"red|", "tag":"%n"}, {"data":"2", "param":"green|", "tag":"%n"}, {"data":"f", "param":"gray|", "tag":"%n"}]}`. All fields are required to ensure proper parsing and functionality.
+- **Attribute Hack:** Use the prefix `"attrib:"` followed by SVG properties for the "data" field of "list" arrray (e.g., `{"data":"attrib: style=fill:red;text-decoration:underline;"}`) to manipulate SVG properties instead of just colors.
+- Example: `inkscape:label="{&quot;attr&quot;:&quot;color&quot;,&quot;list&quot;:[{&quot;data&quot;:&quot;-99999&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;-500&quot;,&quot;param&quot;:&quot;-cor-20|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;500&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;c&quot;,&quot;param&quot;:&quot;-cor-41|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;n&quot;,&quot;param&quot;:&quot;-cor-42|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;f&quot;,&quot;param&quot;:&quot;-cor-12|&quot;,&quot;tag&quot;:&quot;%n&quot;}]}"`.
 
 ### 3. Bar, Opacity, Rotate, Slider
-* **Bar:** `{"attr":"bar", "tag":"TAG", "min":0, "max":100}` (Targets `<rect>` SVG elements. Max matches the the variable value proportionally to the height of the rectangle). All fields are required to ensure proper parsing and functionality.
-* **Rotate:** `{"attr":"rotate", "tag":"TAG", "min":0, "max":100}` (Rotates 360° from Min to Max). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
-* **Slider:** `{"attr":"slider", "tag":"TAG", "min":0, "max":100}` (Linearly transitions from the original object's position to a cloned object's (`<use>` SVG element) position). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
+
+- **Bar:** `{"attr":"bar", "tag":"TAG", "min":0, "max":100}` (Targets `<rect>` SVG elements. Max matches the the variable value proportionally to the height of the rectangle). All fields are required to ensure proper parsing and functionality.
+- **Rotate:** `{"attr":"rotate", "tag":"TAG", "min":0, "max":100}` (Rotates 360° from Min to Max). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
+- **Slider:** `{"attr":"slider","max":100,"min":0,"readonly":0,"tag":"TAG1"}` (Linearly transitions from the original object's position to a cloned object's (`<use>` SVG element) position). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
 
 ### 4. Tooltips
-* Targets SVG element.
-* **JSON:** `{"attr":"tooltips", "line1":"Literal text", "line2":"!EVAL $V('TAG') !END"}`. All fields are required to ensure proper parsing and functionality.
+
+- Targets SVG element. The tooltip can display up to 5 lines of text when the mouse hovers over the element.
+- **JSON:** `{"attr":"tooltips","param":["text1","text2","text3","text4","!EVAL $V('TAG') !END"],"size":12,"style":""}`. All fields are required to ensure proper parsing and functionality.
 
 ### 5. Popup & Open
-* Targets SVG element.
-* **Popup:** `{"attr":"popup", "source":"TAG_OR_ACTION"}` 
-  *(Actions: `block`, `notrace`, `preview:URL`).*
-* **Open (URL):** `{"attr":"open", "source_type":"URL", "source":"new:URL"}`
-* **Open (Trends):** `{"attr":"open", "source_type":"Tag", "source":"TAG", "width":60, "height":100}` *(Draws a line-trend inside a `<rect>`)*.
-* All fields are required to ensure proper parsing and functionality.
+
+- Targets SVG element.
+- **Popup:** `{"attr":"popup","height":400,"src":"TAG_OR_ACTION","width":500,"x":100,"y":100}`
+  _Popup Actions: `block` (block the popup from opening), `notrace` ( allow point info dialog when object is clicked but do not highlight the object when accessed), `preview:URL` (Show a preview of the URL in a window when mouse hovers over the element)._
+- **Open (URL):** `{"attr":"open","height":400,"istag":0,"src":"http://localhost:8080/index.html","type":"_self|_blank|_shared","width":500,"x":100,"y":100}`
+- **Open (Trends):** `{"attr":"open","height":400,"istag":1,"src":"TAG_NAME","type":"_self|_blank|_shared","width":500,"x":100,"y":100}`\_(Draws a line-trend inside a`<rect>`)\_.
+- All fields are required to ensure proper parsing and functionality.
 
 ### 6. Faceplate (Indirect Variables)
-* Targets SVG group `<g>` elements.
-* **JSON:** `{"attr":"faceplate", "variable":"n", "value":"ACTUAL_TAG_NAME"}`
-* **Inner Elements:** Elements inside the group reference the variable using `%` (e.g., `"tag":"%n"`).
-* All fields are required to ensure proper parsing and functionality.
+
+- Targets SVG group `<g>` elements.
+- **JSON:** `{"attr":"clone","map":["%n=TAG1","%m=TAG2"]}`
+- **Inner Elements:** Elements inside the group reference the variable using `%` (e.g., `"TAG1" as "%n"` and `"TAG2" as "%m"`).
+- All fields are required to ensure proper parsing and functionality.
 
 ### 7. Set (Macros & Functions)
-* **Target:** Any object.
-* **Fields:** `"attr":"set"`, `"tag"`, `"src"`, `"prompt"`
-* **Use Cases:**
-  * **Arc/Doughnut:** `{"attr":"set", "tag":"#arc", "src":"TAG1", "prompt":"0,100,75"}` *(Prompt = Min,Max,InnerRadius)*.
-  * **Execute Script:** `{"attr":"set", "tag":"#exec_once", "src":"console.log('loaded');"}`
-  * **Clone Properties:** `{"attr":"set", "tag":"#copy_xsac_from", "src":"MASTER_ELEMENT_ID"}`
-  * **Vega Charts:** `{"attr":"set", "tag":"#vega4", "src":"TAG1,TAG2", "prompt":"URL_OR_JSON"}`
-  * **ONVIF Camera:** `{"attr":"set", "tag":"#camera", "src":"CAM_NAME", "prompt":"width=500 height=500"}`
-* All fields are required to ensure proper parsing and functionality.
+
+- **Target:** Any object.
+- **Fields:** `{"align":"Left|Right","attr":"set","prompt":"PROMPT_TEXT","src":"SOURCE_TEXT","tag":"TAG1","type":"Data|Variable"}`.
+- **Use Cases:**
+  - **Arc/Doughnut:** `{"attr":"set", "tag":"#arc", "src":"TAG1", "prompt":"0,100,75", "align":"Right", "type":"Data"}` _(Prompt = Min,Max,InnerRadius)_.
+  - **Execute Script:** `{"attr":"set", "tag":"#exec_once", "src":"console.log('loaded');", "align":"Right", "type":"Data"}`
+  - **Clone Properties:** `{"attr":"set", "tag":"#copy_xsac_from", "src":"MASTER_ELEMENT_ID", "align":"Right", "type":"Data"}`
+  - **Vega Charts:** `{"attr":"set", "tag":"#vega4", "src":"TAG1,TAG2", "prompt":"URL_OR_JSON", "align":"Right", "type":"Data"}`
+  - **ONVIF Camera:** `{"attr":"set", "tag":"#camera", "src":"CAM_NAME", "prompt":"width=500 height=500", "align":"Right", "type":"Data"}`
+- All fields are required to ensure proper parsing and functionality.
+
+### 8. Script
+
+- **Purpose:** Associate Javascript code to an event and create charts using the Vega specification.
+- **Target:** Any object.
+- **Fields:** `{"attr":"script","list":[{"evt":"mouseup","param":"SCRIPT_CONTENT"},{"evt":"mousedown","param":"SCRIPT_CONTENT"},{"evt":"mouseover","param":"SCRIPT_CONTENT"},{"evt":"mouseout","param":"SCRIPT_CONTENT"},{"evt":"mousemove","param":"SCRIPT_CONTENT"},{"evt":"keydown","keys":"","param":"SCRIPT_CONTENT"},{"evt":"exec_once","keys":"","param":"SCRIPT_CONTENT"},{"evt":"exec_on_update","keys":"","param":"SCRIPT_CONTENT"},{"evt":"vega-lite","keys":"","param":"SCRIPT_CONTENT"},{"evt":"vega","keys":"","param":"SCRIPT_CONTENT"},{"evt":"vega-json","keys":"","param":"SCRIPT_CONTENT"},{"evt":"vega4","keys":"","param":"SCRIPT_CONTENT"},{"evt":"vega4-json","keys":"","param":"SCRIPT_CONTENT"}]}`.
+- **Use Cases:**
+  Available scriptable events:
+
+  mouseup: release the mouse button.
+  mousedown: mouse click.
+  mouseover: mouse cursor entering the object.
+  mousemove: mouse cursor moving over the object.
+  mouseout: mouse cursor leaving the object.
+  exec_once: execute a script one time only after the screen is loaded and parsed.
+  exec_on_update: execute a script every time data is updated.
+
+  Use “$V('TAG')” to obtain point values inside the script.
+
+  The function $W.Animate and thisobj can be used to animate objects in scripts, example
+
+  var obj = thisobj; // get the current object (the object that hosts the script)
+
+  // Use a call like below to get references to other objects from the SVG file by the id property
+  // var obj = SVGDoc.getElementById("rect1");
+
+  $W.RemoveAnimate(obj); // remove previous animations
+  // animate on axis x
+  $W.Animate(obj, "animate", {"attributeName": "x", "from": 208 ,"to": 300, "repeatCount": 5, "dur": 5});
+  // animate on axis y
+  $W.Animate(obj, "animate", {"attributeName": "y", "from": -301 ,"to":-400, "repeatCount": 5, "dur": 5});
+
+  Vega specification markup options:
+
+      vega: old style Vega 1/2 specification. In the first line of the script must be written the tag list comma separated. In the next line either a URL to a specification or the specification itself beginning with a “{” char. DEPRECATED, use vega4! Example:
+      `{"attr":"script","list":[{"evt":"vega","param":"TAG1,TAG2,TAG3,TAG4,TAG5,TAG6,TAG7\n{\n  \"width\": 200,\n  \"height\": 200,\n  \"data\": [\n    {\n      \"name\": \"correntes\",\n      \"values\": [\n        {\"x\": 1,  \"y\": \"PNT#1\", \"bay\" : \"BAY#1\"},\n        {\"x\": 2,  \"y\": \"PNT#2\", \"bay\" : \"BAY#2\"},\n        {\"x\": 3,  \"y\": \"PNT#3\", \"bay\" : \"BAY#3\"},\n        {\"x\": 4,  \"y\": \"PNT#4\", \"bay\" : \"BAY#4\"},\n        {\"x\": 5,  \"y\": \"PNT#5\", \"bay\" : \"BAY#5\"},\n        {\"x\": 6,  \"y\": \"PNT#6\", \"bay\" : \"BAY#6\"},\n        {\"x\": 7,  \"y\": \"PNT#7\", \"bay\" : \"BAY#7\"},\n        {\"x\": 8,  \"y\": \"PNT#8\", \"bay\" : \"BAY#8\"}\n      ],\n      \"transform\": [{\"type\": \"pie\", \"field\": \"y\", \"sort\": \"true\"}]\n    } ],\n  \"scales\": [\n    {\n      \"name\": \"r\",\n      \"type\": \"linear\",\n      \"domain\": {\"data\": \"correntes\", \"field\": \"y\"},\n      \"range\": [20, 100]\n    },\n    {\n      \"name\": \"c\",\n      \"type\": \"ordinal\",\n      \"range\": [\"#74add1\", \"#4575b4\", \"#dcfab9\", \"#d9a6ff\", \"#e0f3f8\", \"#ffffbf\", \"#ffc794\", \"#fee090\"]\n    }\n  ],  \n  \"marks\": [\n     {\n      \"type\": \"arc\",\n      \"from\": {\"data\": \"correntes\"},\n      \"properties\": {\n        \"enter\": {\n          \"x\": {\"field\": {\"group\": \"width\"}, \"mult\": 0.5},\n          \"y\": {\"field\": {\"group\": \"height\"}, \"mult\": 0.5},\n          \"startAngle\": {\"field\": \"layout_start\"},\n          \"endAngle\": {\"field\": \"layout_end\"},\n          \"innerRadius\": {\"value\": 20},\n          \"outerRadius\": {\"value\": 60},\n          \"fill\": {\"scale\": \"c\", \"field\": \"x\"}\n        },\n        \"update\": {\n          \n        },\n        \"hover\": {\n          \"fill\": {\"value\": \"pink\"}\n        }\n      }\n    },\n    {\n      \"type\": \"text\",\n      \"from\": {\"data\": \"correntes\"},\n      \"properties\": {\n        \"enter\": {\n          \"x\": {\"field\": {\"group\": \"width\"}, \"mult\": 0.5},\n          \"y\": {\"field\": {\"group\": \"height\"}, \"mult\": 0.5},\n          \"radius\": {\"value\": \"45\"},\n          \"theta\": {\"field\": \"layout_mid\"},\n          \"align\": {\"value\": \"center\"},\n          \"baseline\": {\"value\": \"middle\"},\n          \"fill\": {\"value\": \"#002d75\"},\n          \"font\": {\"value\": \"open sans\"},\n          \"fontSize\": {\"value\": 14},\n          \"fontStyle\": {\"value\": \"oblique\"},\n          \"text\": { \"template\": \"{{datum.y|number:'.0f'}}\" }\n        }\n      }\n    },\n    {\n      \"type\": \"text\",\n      \"from\": {\"data\": \"correntes\"},\n      \"properties\": {\n        \"enter\": {\n          \"x\": {\"field\": {\"group\": \"width\"}, \"mult\": 0.5},\n          \"y\": {\"field\": {\"group\": \"height\"}, \"mult\": 0.5},\n          \"radius\": {\"value\": \"65\"},\n          \"theta\": {\"field\": \"layout_mid\"},\n          \"align\": {\"value\": \"center\"},\n          \"baseline\": {\"value\": \"middle\"},\n          \"fill\": {\"value\": \"#0088ee\"},\n          \"font\": {\"value\": \"open sans\"},\n          \"fontSize\": {\"value\": 12},\n          \"fontWeight\": {\"value\": 300},\n          \"text\": { \"template\": \"{{datum.bay|left:4}}\" }\n        }\n      }\n    }\n  ]\n}"}]}`
+
+      vega4: new style Vega 3/4/5 specification. In the first line of the script must be written the tag list comma separated. In the next line either a URL to a specification or the specification itself beginning with a “{” char.
+      vega-lite: vega-lite specification. In the first line of the script must be written the tag list comma separated. In the next line either a URL to a specification or the specification itself beginning with a “{” char.
+      vega-json: old style Vega 1/2 specification with no tags associated. In the first line of the script must be put a URL to a specification or the specification itself beginning with a “{” char. In the data section of the specification define “update_period“ in seconds for the periodic update of the data. DEPRECATED, use vega4-json!
+      vega4-json: new style Vega 3/4/5 specification with no tags associated. In the first line of the script must be put a URL to a specification or the specification itself beginning with a “{” char. In the data section of the specification define “update_period“ in seconds for the periodic update of the data.
+      See Vega project site for tools and documentation of syntax: https://vega.github.io/vega/docs/.
+
+      In the Vega file (“data” / “values” section), use the following markup to refer to the tag list:
+         “PNT#1” to retrieve the current value of the first tag in the tag list
+         “TAG#1” to retrieve the first tag in the tag list
+         “LMI#1” to retrieve the inferior limit of the fist point in the point list
+         “LMS#1” to retrieve the superior limit of the fist point in the point list
+         “FLG#1” to retrieve the qualifier flags of the first tag in the tag list
+         “FLR#1” to retrieve the failure of the first tag in the tag list
+         “SUB#1” to retrieve the group1 name (location/station name) of the fist point in the point list
+         “BAY#1” to retrieve the group2 name (bay/area name) of the fist point in the point list
+         “DCR#1” to retrieve the description of the fist point in the point list
+         “HIS#1” to retrieve the historical curve of the first tag in the tag list
+
+- All fields are required to ensure proper parsing and functionality.
 
 ---
 
@@ -96,9 +160,10 @@ Multiple behaviors can be combined by embedding multiple JSON objects in the sam
 **User Prompt:** Create a digital text display for a pump status and a gauge (using the `#arc` set function), fully bound with JSON-SCADA logic.
 
 **AI Response Output Format:**
+
 ```xml
-<svg xmlns="http://www.w3.org/2000/svg" 
-     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape" 
+<svg xmlns="http://www.w3.org/2000/svg"
+     xmlns:inkscape="http://www.inkscape.org/namespaces/inkscape"
     xmlns:sodipodi="http://sodipodi.sourceforge.net/DTD/sodipodi-0.dtd"
     xmlns="http://www.w3.org/2000/svg"
     xmlns:svg="http://www.w3.org/2000/svg"
@@ -114,18 +179,18 @@ Multiple behaviors can be combined by embedding multiple JSON objects in the sam
 
       <!-- Example 1: Pump Status Digital Display -->
       <g id="pump_status_group">
-        
+
         <!-- Background changes color based on PUMP_01 state -->
         <!-- JSON: {"attr":"color", "tag":"PUMP_01", "limit1":"1", "color1":"red|", "limit2":"2", "color2":"green|", "limit3":"f", "color3":"gray|"} -->
-        <rect id="pump_bg" 
-              x="100" y="100" width="200" height="50" 
+        <rect id="pump_bg"
+              x="100" y="100" width="200" height="50"
               fill="gray" stroke="black" stroke-width="2"
               inkscape:label="{&quot;attr&quot;:&quot;color&quot;,&quot;tag&quot;:&quot;PUMP_01&quot;,&quot;limit1&quot;:&quot;1&quot;,&quot;color1&quot;:&quot;red|&quot;,&quot;limit2&quot;:&quot;2&quot;,&quot;color2&quot;:&quot;green|&quot;,&quot;limit3&quot;:&quot;f&quot;,&quot;color3&quot;:&quot;gray|&quot;}" />
 
         <!-- Text formats the PUMP_01 state into strings -->
         <!-- JSON: {"attr":"get", "tag":"PUMP_01", "format":"STOPPED|RUNNING|COMM ERROR"} -->
-        <text id="pump_text" 
-              x="200" y="135" 
+        <text id="pump_text"
+              x="200" y="135"
               font-family="Arial" font-size="24" text-anchor="middle" fill="white"
               inkscape:label="{&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;PUMP_01&quot;,&quot;format&quot;:&quot;STOPPED|RUNNING|COMM ERROR&quot;}">
             STOPPED
@@ -135,8 +200,8 @@ Multiple behaviors can be combined by embedding multiple JSON objects in the sam
       <!-- Example 2: Analog Level using #arc donut macro -->
       <!-- JSON: {"attr":"set", "tag":"#arc", "src":"TANK_LVL", "prompt":"0,100,75"} -->
       <g id="tank_arc_group">
-        <path id="tank_level_arc" 
-              d="M 500,500 A 100,100 0 0,1 600,600" 
+        <path id="tank_level_arc"
+              d="M 500,500 A 100,100 0 0,1 600,600"
               fill="blue"
               inkscape:label="{&quot;attr&quot;:&quot;set&quot;,&quot;tag&quot;:&quot;#arc&quot;,&quot;src&quot;:&quot;TANK_LVL&quot;,&quot;prompt&quot;:&quot;0,100,75&quot;}" />
       </g>
