@@ -22,43 +22,61 @@ This agent is designed to generate, structure, and markup scalable vector graphi
 ## ⚙️ SCADA Animations & Attribute Mapping
 
 Use the following JSON dictionary structures embedded as HTML-escaped strings for different SCADA behaviors.
+Multiple behaviors can be combined by embedding multiple JSON objects in the same `inkscape:label` attribute, as a JSON array but without the surrounding square brackets `[]` (e.g., `{"attr":"get", "tag":"TAG_NAME"},{"attr":"color", "tag":"TAG_NAME", "limit1":"1", "color1":"red|"}`).
 
 ### 1. Get (Text Formatting)
-* **Target:** `<text>` objects.
-* **Fields:** `"attr":"get"`, `"tag"`, `"format"`
-* **JSON:** `{"attr":"get", "tag":"TAG_NAME", "format":"FORMAT_STRING"}`
-* **Format Strings:** 
+* Targets `<text>` SVG elements.
+* The `<text>` element should contain a `<tspan>` child element where the format string is placed (e.g., `%5.2f`, `.3s`, `off|on|failed`).
+* **Fields:** `"attr":"get"`, `"tag"`, `align` (e.g., `"align":"Right"`), `type` (e.g., `"type":"Good"`). All fields are required to ensure proper parsing and functionality.
+* **JSON:** `{"attr":"get", "tag":"TAG_NAME", align":"Right", "type":"Good"}`
+* **Format Strings should be put in the tspan element:** 
   * Printf (`%5.2f`), d3 (`.3s`), Boolean (`off|on|failed`).
   * Flow arrows: append `u^`, `d^`, `r^`, `l^`, `a^` to show direction.
+* Example: `<text
+       xml:space="preserve"
+       style="font-style:normal;font-variant:normal;font-weight:normal;font-stretch:normal;line-height:0%;font-family:'Microsoft Sans Serif';-inkscape-font-specification:'Microsoft Sans Serif';text-align:end;letter-spacing:0px;word-spacing:0px;writing-mode:lr-tb;text-anchor:end;fill:#6a43e5;fill-opacity:1;stroke:none"
+       x="-310"
+       y="-232.63782"
+       id="mw_model"
+       inkscape:label="{&quot;align&quot;:&quot;Right&quot;,&quot;attr&quot;:&quot;get&quot;,&quot;tag&quot;:&quot;%n&quot;,&quot;type&quot;:&quot;Good&quot;}"><tspan
+         sodipodi:role="line"
+         id="tspan4770"
+         x="-310"
+         y="-232.63782"
+         style="font-size:22px;line-height:1.25">%5.1f</tspan></text>
+    `.
 
 ### 2. Color (Fill, Stroke, & Attributes)
 * **Target:** SVG drawing objects (Exclude `<g>`).
-* **Fields:** `"attr":"color"`, `"tag"`, plus limit pairs (usually `"limit1"`, `"color1"`, etc., based on extension variables).
-* **JSON:** `{"attr":"color", "tag":"TAG_NAME", "limit1":"1", "color1":"red|", "limit2":"2", "color2":"green|"}`
+* **Fields:** `"attr":"color"`, `"tag"`, `"list"` as an array of `{"data":"VALUE_LIMIT"}`, `{"param":"COLOR_CODE"}`, `{"tag","TAG_NAME"}`.
 * **Color Syntax:** `"fill|stroke"`, e.g., `"red|green"`, `"|yellow"` (stroke only), `"black|"` (fill only). 
 * **Limit Constants:** `"a"` (alarm), `"f"` (failed), `"1"` (off), `"2"` (on).
-* **Attribute Hack:** Use `"color1":"attrib: opacity=0.5"` to manipulate SVG properties instead of just colors.
+* **JSON:** `{"attr":"color", "tag":"TAG_NAME", "list":[{"data":"1", "param":"red|", "tag":"%n"}, {"data":"2", "param":"green|", "tag":"%n"}, {"data":"f", "param":"gray|", "tag":"%n"}]}`. All fields are required to ensure proper parsing and functionality.
+* **Attribute Hack:** Use the prefix `"attrib:"` followed by SVG properties for the "data" field of "list" arrray (e.g., `{"data":"attrib: style=fill:red;text-decoration:underline;"}`) to manipulate SVG properties instead of just colors.
+* Example: `inkscape:label="{&quot;attr&quot;:&quot;color&quot;,&quot;list&quot;:[{&quot;data&quot;:&quot;-99999&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;-500&quot;,&quot;param&quot;:&quot;-cor-20|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;500&quot;,&quot;param&quot;:&quot;-cor-11|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;c&quot;,&quot;param&quot;:&quot;-cor-41|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;n&quot;,&quot;param&quot;:&quot;-cor-42|&quot;,&quot;tag&quot;:&quot;%n&quot;},{&quot;data&quot;:&quot;f&quot;,&quot;param&quot;:&quot;-cor-12|&quot;,&quot;tag&quot;:&quot;%n&quot;}]}"`.
 
 ### 3. Bar, Opacity, Rotate, Slider
-* **Bar:** `{"attr":"bar", "tag":"TAG", "min":0, "max":100}` (Targets `<rect>`. Max matches the height of the rectangle).
-* **Opacity:** `{"attr":"opacity", "tag":"TAG", "min":0, "max":100}` (0 = transparent, 100 = solid. Digital states: Min=0, Max=1).
-* **Rotate:** `{"attr":"rotate", "tag":"TAG", "min":0, "max":100}` (Rotates 360° from Min to Max).
-* **Slider:** `{"attr":"slider", "tag":"TAG", "min":0, "max":100}` (Linearly transitions from the original object's position to a cloned object's position).
+* **Bar:** `{"attr":"bar", "tag":"TAG", "min":0, "max":100}` (Targets `<rect>` SVG elements. Max matches the the variable value proportionally to the height of the rectangle). All fields are required to ensure proper parsing and functionality.
+* **Rotate:** `{"attr":"rotate", "tag":"TAG", "min":0, "max":100}` (Rotates 360° from Min to Max). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
+* **Slider:** `{"attr":"slider", "tag":"TAG", "min":0, "max":100}` (Linearly transitions from the original object's position to a cloned object's (`<use>` SVG element) position). Targets any SVG element. All fields are required to ensure proper parsing and functionality.
 
 ### 4. Tooltips
-* **Target:** Any object.
-* **JSON:** `{"attr":"tooltips", "line1":"Literal text or !EVAL $V('TAG') !END"}`
+* Targets SVG element.
+* **JSON:** `{"attr":"tooltips", "line1":"Literal text", "line2":"!EVAL $V('TAG') !END"}`. All fields are required to ensure proper parsing and functionality.
 
 ### 5. Popup & Open
+* Targets SVG element.
 * **Popup:** `{"attr":"popup", "source":"TAG_OR_ACTION"}` 
   *(Actions: `block`, `notrace`, `preview:URL`).*
 * **Open (URL):** `{"attr":"open", "source_type":"URL", "source":"new:URL"}`
 * **Open (Trends):** `{"attr":"open", "source_type":"Tag", "source":"TAG", "width":60, "height":100}` *(Draws a line-trend inside a `<rect>`)*.
+* All fields are required to ensure proper parsing and functionality.
 
 ### 6. Faceplate (Indirect Variables)
-* **Target:** `<g>` groups.
+* Targets SVG group `<g>` elements.
 * **JSON:** `{"attr":"faceplate", "variable":"n", "value":"ACTUAL_TAG_NAME"}`
 * **Inner Elements:** Elements inside the group reference the variable using `%` (e.g., `"tag":"%n"`).
+* All fields are required to ensure proper parsing and functionality.
 
 ### 7. Set (Macros & Functions)
 * **Target:** Any object.
@@ -69,6 +87,7 @@ Use the following JSON dictionary structures embedded as HTML-escaped strings fo
   * **Clone Properties:** `{"attr":"set", "tag":"#copy_xsac_from", "src":"MASTER_ELEMENT_ID"}`
   * **Vega Charts:** `{"attr":"set", "tag":"#vega4", "src":"TAG1,TAG2", "prompt":"URL_OR_JSON"}`
   * **ONVIF Camera:** `{"attr":"set", "tag":"#camera", "src":"CAM_NAME", "prompt":"width=500 height=500"}`
+* All fields are required to ensure proper parsing and functionality.
 
 ---
 
