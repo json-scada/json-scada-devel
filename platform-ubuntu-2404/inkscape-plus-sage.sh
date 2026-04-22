@@ -16,7 +16,7 @@ cd /home/jsonscada
 sudo -u $JS_USERNAME sh -c 'git clone https://gitlab.com/ricardolo/inkscape-scadavis-editor.git'
 cd inkscape-scadavis-editor
 sudo -u $JS_USERNAME sh -c 'git checkout 1.4.x-scada'
-sudo -u $JS_USERNAME sh -c 'git pull --recurse-submodules && git submodule update --recursive'
+sudo -u $JS_USERNAME sh -c 'git submodule init && git submodule update --recursive'
 
 sudo bash ./buildtools/install_dependencies.sh --recommended
 sudo -u $JS_USERNAME sh -c 'wget -v https://gitlab.com/inkscape/inkscape-ci-docker/-/raw/master/install_dependencies.sh -O install_dependencies.sh'
@@ -31,7 +31,7 @@ cd build
 #sudo -u $JS_USERNAME sh -c 'cmake -DENABLE_POPPLER_CAIRO=OFF -DCMAKE_CXX_STANDARD=17 ..'
 #sudo -u $JS_USERNAME sh -c 'make'
 #sudo make install
-sudo -u $JS_USERNAME sh -c 'cmake -DCMAKE_INSTALL_PREFIX="${PWD}/install_dir" -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=Release -DWITH_INTERNAL_2GEOM=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja ..'
+sudo -u $JS_USERNAME sh -c 'cmake -DCMAKE_INSTALL_PREFIX="${PWD}/install_dir" -DENABLE_POPPLER=OFF -DCMAKE_C_COMPILER_LAUNCHER=ccache -DCMAKE_CXX_COMPILER_LAUNCHER=ccache -DCMAKE_BUILD_TYPE=Release -DWITH_INTERNAL_2GEOM=ON -DCMAKE_EXPORT_COMPILE_COMMANDS=ON -G Ninja ..'
 sudo -u $JS_USERNAME sh -c 'ninja -j4'
 sudo -u $JS_USERNAME sh -c 'ninja -j4'
 sudo ninja install
