@@ -125,7 +125,8 @@ sudo cp *.ini /etc/supervisor/conf.d/
 sudo systemctl enable supervisor
 
 # Install Grafana
-sudo apt -y install grafana
+sudo apt -y install grafana=12.4.3
+sudo apt-mark hold grafana
 sudo cp grafana.ini /etc/grafana/
 sudo systemctl enable grafana-server
 sudo systemctl daemon-reload
