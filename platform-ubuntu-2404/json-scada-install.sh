@@ -136,7 +136,7 @@ sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
 sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
 
 # Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt -y install nodejs
 
 # Start services
