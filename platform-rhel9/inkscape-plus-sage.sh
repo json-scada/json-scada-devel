@@ -12,8 +12,13 @@ sudo dnf -y install https://dl.rockylinux.org/pub/rocky/9/devel/$(arch)/os/Packa
 sudo dnf -y install https://dl.rockylinux.org/pub/rocky/9/devel/$(arch)/os/Packages/l/ladspa-1.13-28.el9.$(arch).rpm
 
 cd /home/jsonscada
-sudo -u $JS_USERNAME sh -c 'git clone --recurse-submodules https://gitlab.com/ricardolo/inkscape-rebased.git'
+sudo -u $JS_USERNAME sh -c 'git clone https://gitlab.com/ricardolo/inkscape-scadavis-editor.git'
 cd inkscape-rebased
+git checkout 1.4.x-scada
+sudo -u $JS_USERNAME sh -c 'git submodule init && git submodule update --recursive'
+sudo -u $JS_USERNAME sh -c 'wget -v https://gitlab.com/inkscape/inkscape-ci-docker/-/raw/master/install_dependencies.sh -O install_dependencies.sh'
+sudo bash install_dependencies.sh --recommended
+
 sudo -u $JS_USERNAME sh -c 'mkdir build'
 cd build
 

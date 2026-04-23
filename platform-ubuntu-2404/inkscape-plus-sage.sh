@@ -31,7 +31,6 @@ cd inkscape-scadavis-editor
 sudo -u $JS_USERNAME sh -c 'git checkout 1.4.x-scada'
 sudo -u $JS_USERNAME sh -c 'git submodule init && git submodule update --recursive'
 
-sudo bash ./buildtools/install_dependencies.sh --recommended
 sudo -u $JS_USERNAME sh -c 'wget -v https://gitlab.com/inkscape/inkscape-ci-docker/-/raw/master/install_dependencies.sh -O install_dependencies.sh'
 sudo bash install_dependencies.sh --recommended
 
