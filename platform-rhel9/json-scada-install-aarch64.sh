@@ -142,12 +142,13 @@ sudo dnf -y install supervisor
 sudo cp *.ini /etc/supervisord.d/
 sudo systemctl enable supervisord
 
-sudo dnf -y install grafana
+sudo yum install -y https://dl.grafana.com/grafana/release/12.4.3/grafana_12.4.3_24388279614_linux_arm64.rpm
+#sudo dnf -y install grafana
 sudo cp grafana.ini /etc/grafana
 sudo systemctl enable grafana-server
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
 
 sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_24.x -o nodesource_setup.sh'
 sudo bash nodesource_setup.sh
