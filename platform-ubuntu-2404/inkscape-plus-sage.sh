@@ -49,3 +49,6 @@ sudo -u $JS_USERNAME sh -c 'cmake -DCMAKE_INSTALL_PREFIX="${PWD}/install_dir" -D
 sudo -u $JS_USERNAME sh -c 'ninja -j4'
 sudo -u $JS_USERNAME sh -c 'ninja -j4'
 sudo -u $JS_USERNAME sh -c 'ninja install'
+
+echo "Start custom Inkscape with:"
+echo "~/inkscape-scadavis-editor/build/install_dir/bin/inkscape &"

@@ -187,7 +187,7 @@ sudo supervisorctl start all
 sudo supervisorctl status
 
 echo "Installation complete!"
-# echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh"
+echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh"
 echo "To open web interface run: firefox http://localhost"
 echo "Default credentials: admin / jsonscada"
 echo "Default Metabase credentials: json@scada.com / jsonscada123"
