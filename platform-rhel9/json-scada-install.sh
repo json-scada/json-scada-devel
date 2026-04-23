@@ -43,16 +43,16 @@ sudo dnf install -y --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion
 sudo dnf install -y ffmpeg ffmpeg-devel
 sudo dnf remove -y python3-circuitbreaker
 
-sudo dnf install -y flatpak
-flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.inkscape.Inkscape -y
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
+#sudo dnf install -y flatpak
+#flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+#flatpak install --user flathub org.inkscape.Inkscape -y
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
 
 sudo update-crypto-policies --set LEGACY
 
-wget --inet4-only https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
+wget --inet4-only https://go.dev/dl/go1.26.2.linux-amd64.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-amd64.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 source ~/.bashrc
@@ -153,11 +153,11 @@ sudo cp grafana.ini /etc/grafana
 sudo systemctl enable grafana-server
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
 
-sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_22.x -o nodesource_setup.sh'
+sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_24.x -o nodesource_setup.sh'
 sudo bash nodesource_setup.sh
-sudo dnf -y install nodejs
+sudo dnf -y install nodejs  
 
 sudo systemctl daemon-reload
 sudo systemctl start postgresql-18
