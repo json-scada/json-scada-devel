@@ -5,10 +5,11 @@
 JS_USERNAME=jsonscada
 
 # to compile inkscape
-sudo dnf -y install ninja-build ccache libjpeg-devel libxslt-devel gtkmm30-devel gspell-devel boost-devel poppler-devel poppler-glib-devel gtest-devel harfbuzz-devel 
+sudo dnf -y install ninja-build ccache libjpeg-devel libxslt-devel gtkmm30-devel gspell-devel boost-devel poppler-devel poppler-glib-devel gtest-devel harfbuzz-devel gsl-devel lcms2-devel libgc-devel double-conversion-devel
 sudo dnf -y install libwpg-devel librevenge-devel libvisio-devel libcdr-devel readline-devel ImageMagick-c++-devel GraphicsMagick-c++-devel
 sudo dnf -y install pango-devel gsl-devel libsoup-devel lcms2-devel gc-devel double-conversion-devel potrace python3-scour
-sudo dnf -y install https://dl.rockylinux.org/pub/rocky/9/devel/$(arch)/os/Packages/p/potrace-devel-1.16-7.el9.0.1.$(arch).rpm
+sudo dnf -y install https://dl.rockylinux.org/pub/rocky/10/devel/$(arch)/os/Packages/p/potrace-1.16-16.el10.$(arch).rpm
+sudo dnf -y install https://dl.rockylinux.org/pub/rocky/10/devel/$(arch)/os/Packages/p/potrace-devel-1.16-16.el10.$(arch).rpm
 sudo dnf -y install https://dl.rockylinux.org/pub/rocky/9/devel/$(arch)/os/Packages/l/ladspa-1.13-28.el9.$(arch).rpm
 
 cd /home/jsonscada
