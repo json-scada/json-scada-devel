@@ -73,7 +73,7 @@ sudo systemctl start disable-transparent-huge-pages
 sudo tee /etc/yum.repos.d/mongodb-org-8.0.repo <<EOF
 [mongodb-org-8.0]
 name=MongoDB Repository
-baseurl=https://repo.mongodb.org/yum/redhat/9/mongodb-org/8.0/\$basearch/
+baseurl=https://repo.mongodb.org/yum/redhat/10/mongodb-org/8.2/\$basearch/
 gpgcheck=1
 enabled=1
 gpgkey=https://pgp.mongodb.com/server-8.0.asc
