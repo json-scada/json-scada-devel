@@ -28,7 +28,8 @@ sudo -u $JS_USERNAME sh -c 'mkdir ../log'
 # Update and install base packages
 sudo apt update
 sudo apt -y upgrade
-sudo apt -y install ffmpeg bzip2 tar build-essential dotnet-sdk-8.0 openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev
+sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
+sudo apt -y install dotnet-sdk-8.0 
 
 # Docker and container tools
 sudo apt -y remove containerd.io
@@ -37,8 +38,8 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Install Go
-wget --inet4-only https://go.dev/dl/go1.26.0.linux-$ARCHITECTURE.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-$ARCHITECTURE.tar.gz
+wget --inet4-only https://go.dev/dl/go1.26.2.linux-$ARCHITECTURE.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-$ARCHITECTURE.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 
@@ -90,15 +91,15 @@ sudo cp postgresql.conf /etc/postgresql/18/main/
 sudo chown postgres:postgres /etc/postgresql/18/main/postgresql.conf
 sudo systemctl restart postgresql
 
-# Install Inkscape and SCADA extension
-sudo apt -y remove inkscape
-sudo add-apt-repository -y universe
-sudo add-apt-repository -y ppa:inkscape.dev/stable
-sudo apt-get update
-sudo apt -y install inkscape python3-tk
-
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.config/inkscape/extensions/'
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.config/inkscape/extensions/'
+## Install Inkscape and SCADA extension
+#sudo apt -y remove inkscape
+#sudo add-apt-repository -y universe
+#sudo add-apt-repository -y ppa:inkscape.dev/stable
+#sudo apt-get update
+#sudo apt -y install inkscape python3-tk
+#
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.config/inkscape/extensions/'
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.config/inkscape/extensions/'
 
 # Configure web server
 sudo cp json_scada_http.conf json_scada_https.conf /etc/nginx/conf.d/
@@ -125,17 +126,22 @@ sudo cp *.ini /etc/supervisor/conf.d/
 sudo systemctl enable supervisor
 
 # Install Grafana
-sudo apt -y install grafana
+sudo apt -y install grafana=12.4.3
+sudo apt-mark hold grafana
 sudo cp grafana.ini /etc/grafana/
 sudo systemctl enable grafana-server
 sudo systemctl daemon-reload
 
 # Install Metabase
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
+
+# Install Mongodb Compass
+sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.5_$ARCHITECTURE.deb"
+sudo apt install ./mongodb-compass_1.49.5_$ARCHITECTURE.deb
 
 # Install Node.js
-curl -fsSL https://deb.nodesource.com/setup_22.x | sudo -E bash -
+curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt -y install nodejs
 
 # Start services
@@ -186,7 +192,7 @@ sudo supervisorctl start all
 sudo supervisorctl status
 
 echo "Installation complete!"
-# echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh"
+echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh"
 echo "To open web interface run: firefox http://localhost"
 echo "Default credentials: admin / jsonscada"
 echo "Default Metabase credentials: json@scada.com / jsonscada123"

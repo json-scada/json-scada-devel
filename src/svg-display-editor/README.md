@@ -12,13 +12,13 @@ This editor can be accessed from the JSON-SCADA web interface by users with the 
 
 Select the "SCADA Animations" tool from the left panel toolbar to edit the animations for the selected SVG object.
 
-# SVG Synoptic Display Editor - Customized Inkscape + SCADA Properties Dialog
+# SVG Synoptic Display Editor - Customized Inkscape + "SCADA Properties" Dialog
 
 The official desktop application for SVG editing on JSON-SCADA.
 
 Any graphics properties can be animated with live data, such as fill/stroke colors, size, position, rotation, etc.
 
-Access the SCADA Properties dialog from the context menu of the SVG object (right-click the mouse).
+Access the "SCADA Properties" dialog from the context menu of the SVG object (right-click the mouse).
 
 # Inkscape + SCADA Extension
 
@@ -28,13 +28,12 @@ This is the original Inkscape with SCADA extension. Install it from the Inkscape
 * Access the SCADA extension from the "Extensions" menu.
 * After each SCADA modification for SVG object exit with ESC (do not return to the main Inkscape window without exiting the SCADA dialog).
 * To access the SCADA extension subsequently, use ALT+Q.
-* The old "Object Properties" menu is not available anymore.
 
 # Creating Displays
 
 To create a new display
 
-1. Create the SVG graphics using the Synoptic Editor. It is possible to use other editors (Illustrator, Corel, etc.) to create graphics that can be imported in the Synoptic Editor to later markup. The editor can import graphics from a great number of formats. There are on the web many sources of vector graphics clipart (free and paid) that can be useful. It is recommended to configure each new display file with a size of 2400 x 1500 pixels (File \| Document Properties \| Page \| Page Size \| Custom Size). This is a reference size, the actual drawing can be larger.
+1. Create the SVG graphics using the Synoptic Editor. It is possible to use other editors (Illustrator, Corel, etc.) to create graphics that can be imported in the Synoptic Editor to later markup. The editor can import graphics from a great number of formats. There are on the web many sources of vector graphics clipart (free and paid) that can be useful. It is recommended to configure each new display file with a size of 2400 x 1500 pixels (File \| Document Properties \| Page \| Page Size \| Custom Size). This is a reference size, the actual drawing can be larger or smaller.
 
 2. Markup the animations you want in the graphics using the Synoptic Editor. For this, select the SVG object you want to animate and access the SCADA extension from the "Extensions" menu. Then choose from the SCADA dialog the properties you want to animate. Use the key ESC to exit the SCADA dialog after the modification is done. Follow the documentation below to understand the parameters of animations. Always use JSON-SCADA TAGs as identifiers of values to animate the graphics at runtime in the web browser. Finally, save the file always using the default native Inkscape SVG format. To access the SCADA extension subsequently, use ALT+Q. 
 
@@ -60,6 +59,7 @@ An interactive tutorial is available inside the editor in many languages (menu H
 Other useful related resources.
 
 - [https://www.opto22.com/support/resources-tools/demos/svg-image-library](https://www.opto22.com/support/resources-tools/demos/svg-image-library)
+- [https://www.opto22.com/support/resources-tools/image-library-svg-editors](https://www.opto22.com/support/resources-tools/image-library-svg-editors)
 - [https://github.com/willianjusten/awesome-svg](https://github.com/willianjusten/awesome-svg)
 - [https://github.com/PanderMusubi/inkscape-open-symbols](https://github.com/PanderMusubi/inkscape-open-symbols)
 - [https://sourceforge.net/projects/oshmiopensubstationhmi/files/svg-clipart.zip/download](https://sourceforge.net/projects/oshmiopensubstationhmi/files/svg-clipart.zip/download)
@@ -87,8 +87,8 @@ Follow below a list of attributes (“SCADA\|Tab”) that can be utilized to ani
 | Associate mouse/keyboard events          | [Script](#script-tab)                                                                        |
 | Bar graph                                | [Bar](#bar-tab)                                                                              |
 | Arc, Donut                               | [Set (#arc)](#set-tab)                                                                       |
-| Camera UI (ONVIF) View                   | [Set (#camera)](#set-tab)                                                                       |
-| Generic URL View                         | [Set (#foreign_object)](#set-tab)                                                                       |
+| Camera UI (ONVIF) View                   | [Set (#camera)](#set-tab)                                                                    |
+| Generic URL View                         | [Set (#foreign_object)](#set-tab)                                                            |
 | Generic charts                           | [Script](#script-tab) \| [Set (#vega4 #vega4-json #vega-lite)](#set-tab)                     |
 | Control transparency                     | [Opacity](#opacity-tab), [Color](#color-tab)                                                 |
 | Rotate objects                           | [Rotate](#rotate-tab)                                                                        |
@@ -496,7 +496,7 @@ Obs.: Special codes to obtain other point attributes instead of the tag value in
 - !STVALxxx = returns the text for current state of digital points.
 - !EVAL expression = evaluates a Javascript expression, use $V("xxx") to obtain point values in the expression.
 
-### Debugging Scripts is Displays
+### Debugging Scripts in Displays
 
 To debug scripts in a SVG display file, do the following:
 
@@ -505,19 +505,13 @@ To debug scripts in a SVG display file, do the following:
 - press F12 to open the browser Developer Tools and then F5 to reload.
 - The Chromium browser will stop execution when found the introduced breakpoint. Use the execution control keys F10, F11, F9, F8 to forward execution.
 
-# SVG Synoptic Display Editor - Customized Inkscape Editor **DEPRECATED**
-
-This is a separate project. This editor is based on the popular open-source Inkscape editor, it was modified to allow markup SCADA-like animations in the SVG file with links to data that can be later provided at runtime. The "Object Properties" dialog was modified to allow the entry of SCADA markup. 
-
-This editor is deprecated and will not be updated anymore.
-
 ## Source Code
 
-- [Display Editor Source Code](https://gitlab.com/ricardolo/inkscape-rebased)
+- [Display Editor Source Code](https://gitlab.com/ricardolo/inkscape-scadavis-editor)
 
 ## Installer
 
-This old editor can also be acquired here in the standalone Microsoft Store, version for Windows 10/11 (Certified Binary).
+The custom editor can also be acquired here in the standalone MS Store version for Windows 10/11 (Certified Binary).
 
 - [Microsoft Store Binary](https://www.microsoft.com/store/apps/9P9905HMKZ7X?ocid=periscope)
 

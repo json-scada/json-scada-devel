@@ -3,6 +3,7 @@
 # INSTALL SCRIPT FOR JSON-SCADA ON RHEL9 AND COMPATIBLE PLATFORMS
 # username is supposed to be jsonscada
 JS_USERNAME=jsonscada
+JS_ARCH=amd64
 
 # Execute commands below to prepare for this script:
 # sudo dnf -y install git
@@ -43,16 +44,16 @@ sudo dnf install -y --nogpgcheck https://mirrors.rpmfusion.org/free/el/rpmfusion
 sudo dnf install -y ffmpeg ffmpeg-devel
 sudo dnf remove -y python3-circuitbreaker
 
-sudo dnf install -y flatpak
-flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
-flatpak install --user flathub org.inkscape.Inkscape -y
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
-sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
+#sudo dnf install -y flatpak
+#flatpak remote-add --user --if-not-exists flathub https://flathub.org/repo/flathub.flatpakrepo
+#flatpak install --user flathub org.inkscape.Inkscape -y
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.inx ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
+#sudo -u $JS_USERNAME sh -c 'cp ../src/inkscape-extension/scada.py ~/.var/app/org.inkscape.Inkscape/config/inkscape/extensions/'
 
 sudo update-crypto-policies --set LEGACY
 
-wget --inet4-only https://go.dev/dl/go1.26.0.linux-amd64.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.0.linux-amd64.tar.gz
+wget --inet4-only https://go.dev/dl/go1.26.2.linux-$JS_ARCH.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-$JS_ARCH.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 source ~/.bashrc
@@ -92,17 +93,17 @@ enabled = 1
 gpgcheck = 1
 gpgkey = https://repos.influxdata.com/influxdata-archive.key
 EOF
-sudo tee /etc/yum.repos.d/grafana.repo <<EOF
-[grafana]
-name=grafana
-baseurl=https://packages.grafana.com/oss/rpm
-repo_gpgcheck=1
-enabled=1
-gpgcheck=1
-gpgkey=https://packages.grafana.com/gpg.key
-sslverify=1
-sslcacert=/etc/pki/tls/certs/ca-bundle.crt
-EOF
+#sudo tee /etc/yum.repos.d/grafana.repo <<EOF
+#[grafana]
+#name=grafana
+#baseurl=https://packages.grafana.com/oss/rpm
+#repo_gpgcheck=1
+#enabled=1
+#gpgcheck=1
+#gpgkey=https://packages.grafana.com/gpg.key
+#sslverify=1
+#sslcacert=/etc/pki/tls/certs/ca-bundle.crt
+#EOF
 sudo tee /etc/yum.repos.d/timescale_timescaledb.repo <<EOL
 [timescale_timescaledb]
 name=timescale_timescaledb
@@ -148,16 +149,17 @@ sudo dnf -y install supervisor
 sudo cp *.ini /etc/supervisord.d/
 sudo systemctl enable supervisord
 
-sudo dnf -y install grafana
+sudo yum install -y https://dl.grafana.com/grafana/release/12.4.3/grafana_12.4.3_24388279614_linux_$JS_ARCH.rpm
+#sudo dnf -y install grafana
 sudo cp grafana.ini /etc/grafana
 sudo systemctl enable grafana-server
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
 
-sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_22.x -o nodesource_setup.sh'
+sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_24.x -o nodesource_setup.sh'
 sudo bash nodesource_setup.sh
-sudo dnf -y install nodejs
+sudo dnf -y install nodejs  
 
 sudo systemctl daemon-reload
 sudo systemctl start postgresql-18

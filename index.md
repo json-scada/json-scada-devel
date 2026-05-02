@@ -99,7 +99,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 
 - [Generic Install Guide](docs/install.md)
 - [Windows Installer](https://github.com/riclolsen/json-scada/releases/tag/V0.61-alpha)
-- [RedHat/Rocky Linux Installer Script](docs/install.md#rhel94-and-compatible-systems-automated-installation)
+- [RedHat/Rocky/Alma Linux Installer Script](docs/install.md#rhel94-and-compatible-systems-automated-installation)
 - [Ubuntu Linux Installer Script](docs/install.md#ubuntu-2404-scripted-installation)
 - [Generic Install Guide](docs/install.md)
 - [Docker Image](docs/docker_image.md)
@@ -171,6 +171,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] LDAP/AD Authorization
 - [x] Inkscape-based SVG Synoptic Display Editor
 - [x] Web-based SVG Synoptic Display Editor
+- [x] Skill file for AI-assisted SVG creation with SCADA markup
 - [x] MCP Server to help with AI query, development and testing
 - [x] Template nodejs app with Typescript submodule to access JSON-SCADA data structures, manage connections and redundancy
 - [x] Compiled Cyclic Calculations Engine
@@ -185,8 +186,8 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] Windows Installer
 - [x] Docker Image
 - [x] Docker Compose Demo (docker-compose.yaml scripts)
-- [x] Install Script for RedHat/Rocky 9.7 Linux x86-64 and arm64
-- [x] Install Script for Ubuntu 24.04 Linux x86-64 and arm64
+- [x] Install Script for RedHat/Rocky/Alma 9/10 Linux x86-64 and arm64
+- [x] Install Script for Ubuntu 24.04/26.04 Linux x86-64 and arm64
 - [x] Online Demo
 - [x] Supervisor (Linux process manager) examples
 - [ ] InfluxDB Integration
