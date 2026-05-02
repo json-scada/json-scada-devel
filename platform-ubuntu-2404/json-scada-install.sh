@@ -136,6 +136,10 @@ sudo systemctl daemon-reload
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
 sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
 
+# Install Mongodb Compass
+sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.5_$ARCHITECTURE.deb"
+sudo apt install ./mongodb-compass_1.49.5_$ARCHITECTURE.deb
+
 # Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
 sudo apt -y install nodejs
