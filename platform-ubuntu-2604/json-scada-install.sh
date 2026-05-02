@@ -28,8 +28,8 @@ sudo -u $JS_USERNAME sh -c 'mkdir ../log'
 # Update and install base packages
 sudo apt update
 sudo apt -y upgrade
-sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev
-sudo apt -y install dotnet-sdk-8.0 
+sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
+sudo apt -y install dotnet-sdk-10.0 
 
 # Docker and container tools
 sudo apt -y remove containerd.io
@@ -105,7 +105,7 @@ sudo systemctl restart postgresql
 sudo cp json_scada_http.conf json_scada_https.conf /etc/nginx/conf.d/
 sudo cp nginx.conf /etc/nginx/
 sudo systemctl enable nginx
-sudo systemctl enable php8.3-fpm
+sudo systemctl enable php8.5-fpm
 
 # Install MongoDB
 sudo apt -y install mongodb-org
@@ -175,7 +175,7 @@ cd ../platform-linux
 sudo -u $JS_USERNAME bash -c 'source ~/.bashrc;export PATH=$PATH:/usr/local/go/bin;./build.sh'
 
 # Start remaining services
-sudo systemctl start php8.3-fpm
+sudo systemctl start php8.5-fpm
 sudo systemctl restart nginx
 sudo systemctl start supervisor
 sudo systemctl start telegraf
