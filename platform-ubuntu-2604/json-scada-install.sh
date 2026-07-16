@@ -123,10 +123,13 @@ sudo systemctl enable telegraf
 sudo apt -y install supervisor
 sudo cp supervisord.conf /etc/supervisor/
 sudo cp *.ini /etc/supervisor/conf.d/
+# JSON-SCADA process manager: dir for driver services created from the AdminUI
+# (owned by jsonscada, included by the copied supervisord.conf).
+mkdir -p ~/json-scada/conf/supervisor.d
 sudo systemctl enable supervisor
 
 # Install Grafana
-sudo apt -y install grafana=12.4.3
+sudo apt -y install grafana=13.1.0
 sudo apt-mark hold grafana
 sudo cp grafana.ini /etc/grafana/
 sudo systemctl enable grafana-server
@@ -196,3 +199,10 @@ echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh
 echo "To open web interface run: firefox http://localhost"
 echo "Default credentials: admin / jsonscada"
 echo "Default Metabase credentials: json@scada.com / jsonscada123"
+
+# Optional: install a local Node-RED runtime for the NODE-RED driver (commented by
+# default). The driver also works with a remote or containerized Node-RED. To enable:
+#   sudo -u '$JS_USERNAME' bash -c 'cd ~/json-scada && mkdir -p nodered-runtime && npm install --prefix nodered-runtime node-red@4 node-red-contrib-jsonscada'
+#   cp ../conf-templates/node-red-settings.js ~/json-scada/conf/node-red-settings.js
+#   mkdir -p ~/json-scada/conf/node-red
+# Then enable the nodered_driver (and optionally nodered_runtime) supervisor programs.
