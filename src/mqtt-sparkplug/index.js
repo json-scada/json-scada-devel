@@ -41,7 +41,7 @@ process.on('uncaughtException', (err) =>
 )
 
 const SparkplugNS = 'spBv1.0'
-const DevicesList = [] // contains either EoN nodes or devices
+const DevicesList = {} // contains either EoN nodes or devices
 const ValuesQueue = new Queue() // queue of values to update acquisition
 const SparkplugPublishQueue = new Queue() // queue of values to publish as Sparkplug-B
 let SparkplugDeviceBirthed = false
@@ -115,7 +115,7 @@ let LastNodeRebirth = 0
           if ('topic' in data.properties)
             SparkplugClientObj.handle.client.publish(
               data.properties.topic.value,
-              data.value.toString(),
+              String(data.value),
               { retain: true }
             )
 
@@ -129,9 +129,9 @@ let LastNodeRebirth = 0
               type: data?.type,
               ...('timestamp' in data ? { timestamp: data.timestamp } : {}),
               ...('quality' in data ? { quality: data.quality } : {}),
-              ...('good' in data.properties
-                ? { good: data.properties.good.value }
-                : {}),
+              ...('good' in data.properties ?
+                { good: data.properties.good.value }
+              : {}),
             }),
             { retain: true }
           )
@@ -323,8 +323,10 @@ let LastNodeRebirth = 0
               changeStreamCmd.on('change', (change) => {
                 // do not queue data changes until device connected, and birthed (when sparkplug used)
                 if (
-                  (connection.groupId != '' && !SparkplugDeviceBirthed) ||
-                  !SparkplugClientObj.handle.connected
+                  (connection.groupId &&
+                    connection.groupId.trim() !== '' &&
+                    !SparkplugDeviceBirthed) ||
+                  !SparkplugClientObj?.handle?.connected
                 )
                   return
 
@@ -411,6 +413,7 @@ let LastNodeRebirth = 0
                     qos = parseInt(
                       change.fullDocument.protocolSourceCommandDuration
                     )
+                  if (![0, 1, 2].includes(qos)) qos = 0
                   if (
                     typeof change.fullDocument?.protocolSourceCommandUseSBO ===
                     'boolean'
@@ -565,12 +568,19 @@ async function getDeviceBirthPayload(
         break
       case 'string':
         type = 'string'
-        if ('valueString' in element) value = element.valueString
-        else value = element.value.toString()
+        if (typeof element.valueString === 'string') value = element.valueString
+        else
+          value =
+            element.value === null || element.value === undefined ?
+              ''
+            : element.value.toString()
         break
       case 'analog':
         type = 'double'
-        value = element.value
+        value =
+          element.value === null || element.value === undefined ?
+            0
+          : element.value
         break
       default:
         return
@@ -639,27 +649,27 @@ async function getDeviceBirthPayload(
       properties: {
         ...topic,
         ...topicAsTag,
-        ...(element.origin === 'command'
-          ? {
-              isCommand: {
-                type: 'boolean',
-                value: true,
-              },
-            }
-          : {}),
+        ...(element.origin === 'command' ?
+          {
+            isCommand: {
+              type: 'boolean',
+              value: true,
+            },
+          }
+        : {}),
         description: { type: 'string', value: element.description },
         good: {
           type: 'boolean',
           value: element.invalid ? false : true,
         },
-        ...(timestamp === false
-          ? {}
-          : {
-              timestampGood: {
-                type: 'boolean',
-                value: timestampGood,
-              },
-            }),
+        ...(timestamp === false ?
+          {}
+        : {
+            timestampGood: {
+              type: 'boolean',
+              value: timestampGood,
+            },
+          }),
       },
     }
     metrics.push(metric)
@@ -678,12 +688,18 @@ function getMetricCommandPayload(cmd) {
 
   if (
     typeof cmd.protocolSourceASDU !== 'string' ||
-    cmd.protocolSourceASDU.trim() === ''
+    cmd.protocolSourceASDU.trim() === '' ||
+    typeof cmd.protocolSourceObjectAddress !== 'string'
   )
     return null
 
+  // normalize type aliases to valid Sparkplug B types
+  let asdu = cmd.protocolSourceASDU.toLowerCase()
+  if (asdu === 'int') asdu = 'int64'
+  if (asdu === 'text') asdu = 'string'
+
   // int, int8, int16, int32, int64, uint8, uint16, uint32, uint64, float, double, boolean, string, datetime
-  switch (cmd.protocolSourceASDU.toLowerCase()) {
+  switch (asdu) {
     case 'int8':
       value = parseInt(cmd.value)
       if (value > Math.pow(2, 7) - 1) value = Math.pow(2, 7) - 1
@@ -745,16 +761,16 @@ function getMetricCommandPayload(cmd) {
   if (splTopic.length === 0) return null
 
   if (splTopic[0] === SparkplugNS) {
-    if (splTopic.length === 5) {
-      // DCMD
+    if (splTopic.length >= 5) {
+      // DCMD (metric name may contain slashes)
       return {
         groupId: splTopic[1],
         edgeNodeId: splTopic[2],
         deviceId: splTopic[3],
         metric: {
-          name: splTopic[4],
+          name: splTopic.slice(4).join('/'),
           value: value,
-          type: cmd.protocolSourceASDU.toLowerCase(),
+          type: asdu,
           timestamp: new Date().getTime(),
         },
       }
@@ -766,7 +782,7 @@ function getMetricCommandPayload(cmd) {
         metric: {
           name: splTopic[3],
           value: value,
-          type: cmd.protocolSourceASDU.toLowerCase(),
+          type: asdu,
           timestamp: new Date().getTime(),
         },
       }
@@ -796,12 +812,19 @@ function getMetricPayload(element, jscadaConnection) {
       break
     case 'string':
       type = 'string'
-      if ('valueString' in element) value = element.valueString
-      else value = element.value.toString()
+      if (typeof element.valueString === 'string') value = element.valueString
+      else
+        value =
+          element.value === null || element.value === undefined ?
+            ''
+          : element.value.toString()
       break
     case 'analog':
       type = 'double'
-      value = element.value
+      value =
+        element.value === null || element.value === undefined ?
+          0
+        : element.value
       break
     default:
       return null
@@ -874,7 +897,7 @@ function getMetricPayload(element, jscadaConnection) {
       },
       valueString: {
         type: 'string',
-        value: element.valueString || value.toString(),
+        value: element.valueString || String(value),
       },
       good: {
         type: 'boolean',
@@ -882,14 +905,14 @@ function getMetricPayload(element, jscadaConnection) {
       },
       ...topic,
       ...topicAsTag,
-      ...(timestamp === false
-        ? {}
-        : {
-            timestampGood: {
-              type: 'boolean',
-              value: timestampGood,
-            },
-          }),
+      ...(timestamp === false ?
+        {}
+      : {
+          timestampGood: {
+            type: 'boolean',
+            value: timestampGood,
+          },
+        }),
     },
   }
 }
@@ -940,10 +963,12 @@ async function processMongoUpdates(
         // check tag is created, if not found create it
         if (AutoCreateTags) {
           let topicSplit = data.protocolSourceObjectAddress.split('/')
-          if (topicSplit.length > 0) data.group2 = topicSplit[0]
-          if (topicSplit.length > 1 && topicSplit[0] === SparkplugNS)
-            data.group2 = topicSplit[1]
-          if (topicSplit.length > 2) data.group3 = topicSplit[2]
+          if (!data.group2) {
+            if (topicSplit.length > 1 && topicSplit[0] === SparkplugNS)
+              data.group2 = topicSplit[1]
+            else if (topicSplit.length > 0) data.group2 = topicSplit[0]
+          }
+          if (!data.group3 && topicSplit.length > 2) data.group3 = topicSplit[2]
           await AutoTag.AutoCreateTag(
             data,
             jsConfig.ConnectionNumber,
@@ -960,8 +985,10 @@ async function processMongoUpdates(
           Log.levelDetailed
         )
 
+        let numValue = parseFloat(data.value)
+        if (isNaN(numValue)) numValue = 0
         let updTag = {
-          valueAtSource: new Double(parseFloat(data.value)),
+          valueAtSource: new Double(numValue),
           valueStringAtSource: data.valueString,
           valueJsonAtSource: data?.valueJson,
           asduAtSource: data?.asduAtSource,
@@ -1000,14 +1027,18 @@ async function processMongoUpdates(
 
 // sparkplug-client configuration options based on JSON-SCADA connection settings
 function getSparkplugConfig(connection) {
-  let minVersion = 'TLSv1',
+  // TLS version range from the lowest to the highest allowed version
+  const allowedVersions = []
+  if (connection.allowTLSv10) allowedVersions.push('TLSv1')
+  if (connection.allowTLSv11) allowedVersions.push('TLSv1.1')
+  if (connection.allowTLSv12) allowedVersions.push('TLSv1.2')
+  if (connection.allowTLSv13) allowedVersions.push('TLSv1.3')
+  let minVersion = 'TLSv1.2',
     maxVersion = 'TLSv1.3'
-  if (!connection.allowTLSv10) minVersion = 'TLSv1.1'
-  if (connection.allowTLSv11) maxVersion = 'TLSv1.1'
-  else minVersion = 'TLSv1.2'
-  if (connection.allowTLSv12) maxVersion = 'TLSv1.2'
-  else minVersion = 'TLSv1.3'
-  if (connection.allowTLSv13) maxVersion = 'TLSv1.3'
+  if (allowedVersions.length > 0) {
+    minVersion = allowedVersions[0]
+    maxVersion = allowedVersions[allowedVersions.length - 1]
+  }
 
   let secOpts = {}
   if (connection.useSecurity) {
@@ -1043,7 +1074,6 @@ function getSparkplugConfig(connection) {
     }
 
     secOpts = {
-      secureProtocol: 'TLSv1_2_method',
       rejectUnauthorized: connection.chainValidation,
       minVersion: minVersion,
       maxVersion: maxVersion,
@@ -1055,7 +1085,7 @@ function getSparkplugConfig(connection) {
   return {
     clean: AppDefs.MQTT_CLEAN_SESSION,
     keepalive: AppDefs.MQTT_CONNECTION_KEEPALIVE,
-    connectionTimeout: AppDefs.MQTT_CONNECTION_TIMEOUT,
+    connectTimeout: AppDefs.MQTT_CONNECTION_TIMEOUT * 1000,
     serverUrl: connection.endpointURLs[0],
     username: connection?.username || '',
     password: connection?.password || '',
@@ -1086,8 +1116,7 @@ async function sparkplugProcess(
     sparkplugProcess.db = null
     if (spClient.handle !== null) {
       Log.log('Sparkplug - Stopping client...')
-      spClient.handle.on('packetreceive', () => {})
-      spClient.handle.on('message', () => {})
+      spClient.handle.removeAllListeners()
       spClient.handle.stop()
       spClient.handle = null
     }
@@ -1149,7 +1178,7 @@ async function sparkplugProcess(
         spClient.handle.logger.level = 'debug'
 
       spClient.handle.on('error', function (error) {
-        Log.log(logMod + "Event: Can't connect" + error)
+        Log.log(logMod + "Event: Can't connect - " + error)
         if (spClient?.handle) spClient.handle.stop()
         spClient.handle = null
       })
@@ -1229,34 +1258,41 @@ async function sparkplugProcess(
       spClient.handle.on('connect', function () {
         sparkplugProcess.connectionRetries = 0
         Log.log(logMod + 'Event: Connected to broker')
-        // Subscribe topics
-        jscadaConnection.topics
-          .concat(jscadaConnection.topicsAsFiles)
-          .forEach((elem) => {
-            let topicStr = JsonPathTopic(elem).topic
-
-            Log.log(logMod + 'Subscribing topic: ' + topicStr)
-
-            spClient.handle.client.subscribe(topicStr, {
-              qos: 1,
-              properties: { subscriptionIdentifier: 1 },
-              function(err, granted) {
-                if (err)
-                  Log.log(
-                    logMod + 'Subscribe error on topic: ' + elem + ' : ' + err
-                  )
-                if (granted)
-                  Log.log(
-                    logMod +
-                      'Subscription granted for topic: ' +
-                      elem +
-                      ' : ' +
-                      granted
-                  )
-                return
-              },
-            })
+        // Subscribe topics (plain, as-files and scripted)
+        const topics = []
+        if (jscadaConnection.topics instanceof Array)
+          topics.push(...jscadaConnection.topics)
+        if (jscadaConnection.topicsAsFiles instanceof Array)
+          topics.push(...jscadaConnection.topicsAsFiles)
+        if (jscadaConnection.topicsScripted instanceof Array)
+          jscadaConnection.topicsScripted.forEach((elem) => {
+            if (elem?.topic) topics.push(elem.topic)
           })
+        topics.forEach((elem) => {
+          if (typeof elem !== 'string' || elem.trim() === '') return
+          let topicStr = JsonPathTopic(elem).topic
+
+          Log.log(logMod + 'Subscribing topic: ' + topicStr)
+
+          spClient.handle.client.subscribe(
+            topicStr,
+            { qos: 1 },
+            (err, granted) => {
+              if (err)
+                Log.log(
+                  logMod + 'Subscribe error on topic: ' + elem + ' : ' + err
+                )
+              if (granted && granted.length > 0)
+                Log.log(
+                  logMod +
+                    'Subscription granted for topic: ' +
+                    granted[0].topic +
+                    ' qos: ' +
+                    granted[0].qos
+                )
+            }
+          )
+        })
       })
 
       spClient.handle.on('reconnect', function () {
@@ -1282,9 +1318,22 @@ async function sparkplugProcess(
         }
       })
 
-      // test for topic matches subscription
-      const topicMatchSub = (t) => (s) =>
-        new RegExp(s.split`+`.join`[^/]+`.split`#`.join`.+`).test(t)
+      // test for MQTT topic matching a subscription (handles + and # wildcards)
+      const topicMatchSub = (t) => (s) => {
+        if (typeof t !== 'string' || typeof s !== 'string') return false
+        if (t === s) return true
+        const pattern = s
+          .split('/')
+          .map((level) => {
+            if (level === '+') return '[^/]+'
+            if (level === '#') return '#'
+            return level.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')
+          })
+          .join('/')
+          .replace(/\/#$/, '(?:/.*)?')
+          .replace(/^#$/, '.*')
+        return new RegExp('^' + pattern + '$').test(t)
+      }
 
       // A VM to run scripts to extract complex payloads
       let sharedObj = {}
@@ -1375,21 +1424,24 @@ async function sparkplugProcess(
                             protocolSourceObjectAddress:
                               topic + '/' + element.id,
                             value: element.value,
-                            valueString: element.valueString
-                              ? element.valueString
+                            valueString:
+                              element.valueString ?
+                                element.valueString
                               : element.value.toString(),
-                            valueJson: element.valueJson
-                              ? element.valueJson
+                            valueJson:
+                              element.valueJson ?
+                                element.valueJson
                               : element.value,
                             invalid: element.qualityOk === false ? true : false,
                             transient:
                               element.transient === true ? true : false,
                             causeOfTransmissionAtSource:
-                              'causeOfTransmissionAtSource' in element
-                                ? element.causeOfTransmissionAtSource
-                                : '3',
-                            timeTagAtSource: element.timestamp
-                              ? new Date(element.timestamp)
+                              'causeOfTransmissionAtSource' in element ?
+                                element.causeOfTransmissionAtSource
+                              : '3',
+                            timeTagAtSource:
+                              element.timestamp ?
+                                new Date(element.timestamp)
                               : new Date(),
                             timeTagAtSourceOk: element.timestamp ? true : false,
                             asduAtSource: 'scripted',
@@ -1544,12 +1596,13 @@ async function sparkplugProcess(
                     jscadaConnection.protocolConnectionNumber,
                     jscadaConnection
                   )
+                  sparkplugProcess.deviceBirthPayload = dbc
                   Log.log(
                     logMod +
                       'Publish device Birth "' +
                       jscadaConnection.deviceId +
                       '" with ' +
-                      sparkplugProcess.deviceBirthPayload.metrics.length +
+                      dbc.metrics.length +
                       ' metrics'
                   )
                   spClient.handle.publishDeviceBirth(
@@ -1557,6 +1610,7 @@ async function sparkplugProcess(
                     dbc,
                     { compress: AppDefs.SPARKPLUG_COMPRESS_DBIRTH }
                   )
+                  SparkplugDeviceBirthed = true
                 }
                 break
               case 'Node Control/Reboot':
@@ -1629,212 +1683,236 @@ async function sparkplugProcess(
 
       // process MQTT Sparkplug B messages (coming from other devices)
       spClient.handle.on('message', function (topic, payload, topicInfo) {
-        payload.metrics = payload?.metrics // null check filter
-          ?.filter(
-            (metric) => !(metric?.type === undefined || metric?.type === null)
-          )
+        payload.metrics =
+          Array.isArray(payload?.metrics) ?
+            payload.metrics.filter(
+              (metric) => !(metric?.type === undefined || metric?.type === null)
+            )
+          : []
         Log.log(logModS + 'Event: Sparkplug B message on topic: ' + topic)
 
         if (Log.levelCurrent >= Log.levelDetailed) {
           Log.log(logModS + JSON.stringify(payload), Log.levelDetailed)
         }
 
-        let splTopic = topic.split('/')
-        if (splTopic.length < 4) {
-          // invalid topic
-          Log.log(logModS + 'Invalid topic')
+        if (
+          !topicInfo?.namespace ||
+          !topicInfo?.groupId ||
+          !topicInfo?.msgType ||
+          !topicInfo?.edgeNodeId ||
+          // device-level messages require a deviceId (5 topic levels)
+          (['DDATA', 'DBIRTH', 'DDEATH'].includes(topicInfo.msgType) &&
+            !topicInfo.deviceId)
+        ) {
+          // ignore topics with less levels than required
+          Log.log(logModS + 'Ignored invalid topic: ' + topic)
+          return
         }
-        let deviceLocator = splTopic[0] + '/' + splTopic[1] + '/' + splTopic[3]
+        let deviceLocator =
+          topicInfo.namespace +
+          '/' +
+          topicInfo.groupId +
+          '/' +
+          topicInfo.edgeNodeId
         let nodeLocator = deviceLocator
-        if (splTopic.length > 4) deviceLocator += '/' + splTopic[4]
+        if (topicInfo.deviceId) deviceLocator += '/' + topicInfo.deviceId
 
-        if (splTopic.length)
-          switch (splTopic[2]) {
-            case 'NCMD': // commands for other nodes
-              break
-            case 'DCMD': // commands for other devices
-              break
-            case 'NDATA':
-              // edge of node data (7.2)
+        switch (topicInfo.msgType) {
+          case 'NCMD': // commands for other nodes
+            break
+          case 'DCMD': // commands for other devices
+            break
+          case 'NDATA':
+            // edge of node data (7.2)
 
-              // data from not birthed node?
+            // data from not birthed node?
+            if (
+              !(nodeLocator in DevicesList) ||
+              !DevicesList[nodeLocator].birthed
+            ) {
               if (
-                !(nodeLocator in DevicesList) ||
-                !DevicesList[nodeLocator].birthed
+                // wait some time between birth requests
+                nodeLocator in DevicesList &&
+                'lastReqDateTime' in DevicesList[nodeLocator] &&
+                new Date().getTime() <
+                  DevicesList[nodeLocator].lastReqDateTime +
+                    AppDefs.SECONDS_BETWEEN_NODE_REQUESTS * 1000
               ) {
-                if (
-                  // wait some time between birth requests
-                  nodeLocator in DevicesList &&
-                  'lastReqDateTime' in DevicesList[nodeLocator] &&
-                  new Date().getTime() <
-                    DevicesList[nodeLocator].lastReqDateTime +
-                      AppDefs.SECONDS_BETWEEN_NODE_REQUESTS * 1000
-                ) {
-                  Log.log(
-                    logModS +
-                      'Data from not yet birthed node (waiting time between birth requests): ' +
-                      nodeLocator,
-                    2
-                  )
-                  return
-                }
-                DevicesList[nodeLocator] = {
-                  birthed: false,
-                  lastReqDateTime: new Date().getTime(),
-                }
                 Log.log(
-                  logModS + 'Data from not yet birthed node: ' + nodeLocator
+                  logModS +
+                    'Data from not yet birthed node (waiting time between birth requests): ' +
+                    nodeLocator,
+                  2
                 )
-                if (!topicInfo.groupId || !topicInfo.edgeNodeId) {
-                  Log.log(logModS + 'Invalid topic info for node not birthed!')
-                  return
-                }
-                Log.log(logModS + 'Requesting node rebirth: ' + nodeLocator)
-                if (spClient?.handle)
-                  spClient.handle.publishNodeCmd(
-                    topicInfo.groupId,
-                    topicInfo.edgeNodeId,
-                    {
-                      timestamp: new Date().getTime(),
-                      metrics: [
-                        {
-                          name: 'Node Control/Rebirth',
-                          timestamp: new Date().getTime(),
-                          type: 'Boolean',
-                          value: true,
-                        },
-                      ],
-                    }
-                  )
                 return
               }
-              ProcessNodeBirthOrData(nodeLocator, payload, false, splTopic[2])
-              break
-            case 'DDATA':
-              // device data, update metrics (7.4)
+              DevicesList[nodeLocator] = {
+                birthed: false,
+                lastReqDateTime: new Date().getTime(),
+              }
               Log.log(
-                logModS + 'Device DATA: ' + deviceLocator,
-                Log.levelDetailed
+                logModS + 'Data from not yet birthed node: ' + nodeLocator
               )
-
-              // data from not birthed device?
-              if (
-                !(deviceLocator in DevicesList) ||
-                !DevicesList[deviceLocator].birthed
-              ) {
-                if (
-                  // wait some time between birth requests
-                  nodeLocator in DevicesList &&
-                  'lastReqDateTime' in DevicesList[nodeLocator] &&
-                  new Date().getTime() <
-                    DevicesList[nodeLocator].lastReqDateTime +
-                      AppDefs.SECONDS_BETWEEN_NODE_REQUESTS * 1000
-                ) {
-                  Log.log(
-                    logModS +
-                      'Data from not yet birthed node (waiting time between birth requests): ' +
-                      nodeLocator,
-                    2
-                  )
-                  return
-                }
-                DevicesList[nodeLocator] = {
-                  birthed: false,
-                  lastReqDateTime: new Date().getTime(),
-                }
-                Log.log(
-                  logModS + 'Data from not yet birthed device: ' + deviceLocator
-                )
-                if (!topicInfo.groupId || !topicInfo.edgeNodeId) {
-                  Log.log(logModS + 'Invalid topic info for node not birthed!')
-                  return
-                }
-                Log.log(logModS + 'Requesting node rebirth: ' + deviceLocator)
-                if (spClient?.handle)
-                  spClient.handle.publishNodeCmd(
-                    topicInfo.groupId,
-                    topicInfo.edgeNodeId,
-                    {
-                      timestamp: new Date().getTime(),
-                      metrics: [
-                        {
-                          name: 'Node Control/Rebirth',
-                          timestamp: new Date().getTime(),
-                          type: 'Boolean',
-                          value: true,
-                        },
-                      ],
-                    }
-                  )
+              if (!topicInfo.groupId || !topicInfo.edgeNodeId) {
+                Log.log(logModS + 'Invalid topic info for node not birthed!')
                 return
               }
-              ProcessDeviceBirthOrData(
-                deviceLocator,
-                payload,
-                false,
-                splTopic[2]
-              )
-              break
-            case 'NBIRTH':
-              // on node birth all associated data is invalidated (7.1.2)
-              Log.log(logModS + 'Node BIRTH: ' + nodeLocator, Log.levelDetailed)
-              ProcessNodeBirthOrData(nodeLocator, payload, true, splTopic[2])
-              if (sparkplugProcess.mongoClient)
-                InvalidatePathTags(
-                  nodeLocator,
-                  sparkplugProcess.mongoClient,
-                  jscadaConnection,
-                  configObj,
-                  MongoStatus
+              Log.log(logModS + 'Requesting node rebirth: ' + nodeLocator)
+              if (spClient?.handle)
+                spClient.handle.publishNodeCmd(
+                  topicInfo.groupId,
+                  topicInfo.edgeNodeId,
+                  {
+                    timestamp: new Date().getTime(),
+                    metrics: [
+                      {
+                        name: 'Node Control/Rebirth',
+                        timestamp: new Date().getTime(),
+                        type: 'Boolean',
+                        value: true,
+                      },
+                    ],
+                  }
                 )
-              break
-            case 'DBIRTH':
-              // device birth, create tags and update metrics (7.3.1)
+              return
+            }
+            ProcessNodeBirthOrData(
+              nodeLocator,
+              payload,
+              false,
+              topicInfo.msgType
+            )
+            break
+          case 'DDATA':
+            // device data, update metrics (7.4)
+            Log.log(
+              logModS + 'Device DATA: ' + deviceLocator,
+              Log.levelDetailed
+            )
+
+            // data from not birthed device?
+            if (
+              !(deviceLocator in DevicesList) ||
+              !DevicesList[deviceLocator].birthed
+            ) {
+              if (
+                // wait some time between birth requests
+                nodeLocator in DevicesList &&
+                'lastReqDateTime' in DevicesList[nodeLocator] &&
+                new Date().getTime() <
+                  DevicesList[nodeLocator].lastReqDateTime +
+                    AppDefs.SECONDS_BETWEEN_NODE_REQUESTS * 1000
+              ) {
+                Log.log(
+                  logModS +
+                    'Data from not yet birthed node (waiting time between birth requests): ' +
+                    nodeLocator,
+                  2
+                )
+                return
+              }
+              DevicesList[nodeLocator] = {
+                birthed: false,
+                lastReqDateTime: new Date().getTime(),
+              }
               Log.log(
-                logModS + 'Device BIRTH: ' + deviceLocator,
-                Log.levelDetailed
+                logModS + 'Data from not yet birthed device: ' + deviceLocator
               )
-              ProcessDeviceBirthOrData(
+              if (!topicInfo.groupId || !topicInfo.edgeNodeId) {
+                Log.log(logModS + 'Invalid topic info for node not birthed!')
+                return
+              }
+              Log.log(logModS + 'Requesting node rebirth: ' + deviceLocator)
+              if (spClient?.handle)
+                spClient.handle.publishNodeCmd(
+                  topicInfo.groupId,
+                  topicInfo.edgeNodeId,
+                  {
+                    timestamp: new Date().getTime(),
+                    metrics: [
+                      {
+                        name: 'Node Control/Rebirth',
+                        timestamp: new Date().getTime(),
+                        type: 'Boolean',
+                        value: true,
+                      },
+                    ],
+                  }
+                )
+              return
+            }
+            ProcessDeviceBirthOrData(
+              deviceLocator,
+              payload,
+              false,
+              topicInfo.msgType
+            )
+            break
+          case 'NBIRTH':
+            // on node birth all associated data is invalidated (7.1.2)
+            Log.log(logModS + 'Node BIRTH: ' + nodeLocator, Log.levelDetailed)
+            ProcessNodeBirthOrData(
+              nodeLocator,
+              payload,
+              true,
+              topicInfo.msgType
+            )
+            if (sparkplugProcess.mongoClient)
+              InvalidatePathTags(
+                nodeLocator,
+                sparkplugProcess.mongoClient,
+                jscadaConnection,
+                configObj,
+                MongoStatus
+              )
+            break
+          case 'DBIRTH':
+            // device birth, create tags and update metrics (7.3.1)
+            Log.log(
+              logModS + 'Device BIRTH: ' + deviceLocator,
+              Log.levelDetailed
+            )
+            ProcessDeviceBirthOrData(
+              deviceLocator,
+              payload,
+              true,
+              topicInfo.msgType
+            )
+            break
+          case 'NDEATH':
+            // Node death, invalidate all Sparkplug metrics from this node (7.1.1)
+            Log.log(logModS + 'Node DEATH', Log.levelDetailed)
+            if (nodeLocator in DevicesList)
+              DevicesList[nodeLocator].birthed = false
+            // devices from this node marked as dead
+            Object.keys(DevicesList).forEach(function (key) {
+              if (key.indexOf(nodeLocator) === 0)
+                DevicesList[key].birthed = false
+            })
+            if (sparkplugProcess.mongoClient)
+              InvalidatePathTags(
+                nodeLocator,
+                sparkplugProcess.mongoClient,
+                jscadaConnection,
+                configObj,
+                MongoStatus
+              )
+            break
+          case 'DDEATH':
+            // Node death, invalidate all Sparkplug metrics from this device (7.3.2)
+            Log.log(logModS + 'Device DEATH', Log.levelDetailed)
+            if (deviceLocator in DevicesList)
+              DevicesList[deviceLocator].birthed = false
+            if (sparkplugProcess.mongoClient)
+              InvalidatePathTags(
                 deviceLocator,
-                payload,
-                true,
-                splTopic[2]
+                sparkplugProcess.mongoClient,
+                jscadaConnection,
+                configObj,
+                MongoStatus
               )
-              break
-            case 'NDEATH':
-              // Node death, invalidate all Sparkplug metrics from this node (7.1.1)
-              Log.log(logModS + 'Node DEATH', Log.levelDetailed)
-              if (nodeLocator in DevicesList)
-                DevicesList[nodeLocator].birthed = false
-              // devices from this node marked as dead
-              DevicesList.forEach(function (element, key) {
-                if (key.indexOf(deviceLocator) === 0)
-                  DevicesList[key].birthed = false
-              })
-              if (sparkplugProcess.mongoClient)
-                InvalidatePathTags(
-                  nodeLocator,
-                  sparkplugProcess.mongoClient,
-                  jscadaConnection,
-                  configObj,
-                  MongoStatus
-                )
-              break
-            case 'DDEATH':
-              // Node death, invalidate all Sparkplug metrics from this device (7.3.2)
-              Log.log(logModS + 'Device DEATH', Log.levelDetailed)
-              if (deviceLocator in DevicesList)
-                DevicesList[deviceLocator].birthed = false
-              if (sparkplugProcess.mongoClient)
-                InvalidatePathTags(
-                  deviceLocator,
-                  sparkplugProcess.mongoClient,
-                  jscadaConnection,
-                  configObj,
-                  MongoStatus
-                )
-              break
-          }
+            break
+        }
       })
     } catch (e) {
       Log.log(logModS + 'Error: ' + e.message, Log.levelMin)
@@ -1847,9 +1925,9 @@ async function sparkplugProcess(
 
       Log.log(
         logMod +
-          (spClient.handle.connected
-            ? 'Currently Connected'
-            : 'Currently Disconnected'),
+          (spClient.handle.connected ?
+            'Currently Connected'
+          : 'Currently Disconnected'),
         Log.levelDetailed
       )
       if (spClient.handle.connected) {
@@ -1918,7 +1996,12 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
   //if (typeof queueMetric.MapAliasToObjectAddress === 'undefined')
   //  queueMetric.MapAliasToObjectAddress = []
 
-  if ('name' in metric && metric.name.trim() !== '') {
+  if (typeof metric?.type !== 'string') {
+    Log.log('Sparkplug - Invalid metric (missing type)!', Log.levelDetailed)
+    return false
+  }
+
+  if (typeof metric.name === 'string' && metric.name.trim() !== '') {
     // when metric is from a template, add template name to object address
     if (templateName && templateName.trim() !== '')
       objectAddress =
@@ -1993,7 +2076,11 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
       type = 'json'
       if ('value' in metric) {
         // recurse to publish more metrics
-        if ('metrics' in metric.value) {
+        if (
+          metric.value !== null &&
+          typeof metric.value === 'object' &&
+          'metrics' in metric.value
+        ) {
           metric.value.metrics.forEach((m) => {
             queueMetric(m, deviceLocator, isBirth, metric.name, msgType)
           })
@@ -2008,7 +2095,11 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
       // transform data set in a simpler array of objects with named properties
       type = 'json'
       if ('value' in metric) {
-        if ('numOfColumns' in metric.value) {
+        if (
+          metric.value !== null &&
+          typeof metric.value === 'object' &&
+          'numOfColumns' in metric.value
+        ) {
           let v = []
           for (let j = 0; j < metric.value.rows.length; j++) {
             let r = {}
@@ -2066,10 +2157,6 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
         if (isNaN(value)) value = 0
         valueString = metric.value
         valueJson = JSON.stringify(metric)
-        // try to parse value as JSON
-        try {
-          valueJson = JSON.stringify(metric)
-        } catch (e) {}
       }
       break
     case 'int8':
@@ -2129,7 +2216,7 @@ function queueMetric(metric, deviceLocator, isBirth, templateName, msgType) {
       invalid = metric.properties.Quality.value !== 192
     }
     if ('timestampGood' in metric.properties) {
-      timestampGood = !metric.properties.timestampGood.value
+      timestampGood = metric.properties.timestampGood.value ? true : false
     }
   }
 
@@ -2244,6 +2331,7 @@ async function ProcessDeviceCommand(
         'Sparkplug - Discarding received command on the same driver connection: ' +
           jscadaConnection.protocolConnectionNumber
       )
+      return
     }
 
     let value = parseFloat(metric.value)
@@ -2350,7 +2438,9 @@ function InvalidatePathTags(
       {
         protocolSourceConnectionNumber:
           jscadaConnection.protocolConnectionNumber,
-        protocolSourceObjectAddress: { $regex: '^' + topicPath },
+        protocolSourceObjectAddress: {
+          $regex: '^' + topicPath.replace(/[.*+?^${}()|[\]\\]/g, '\\$&'),
+        },
       },
       { $set: { invalid: true } }
     )
@@ -2409,7 +2499,6 @@ function EnqueueJsonValue(JsonValue, protocolSourceObjectAddress) {
   }
 
   if (isNaN(value)) value = 0
-  if (JsonValue === null) JsonValue = ''
 
   ValuesQueue.enqueue({
     protocolSourceObjectAddress: protocolSourceObjectAddress,
@@ -2503,8 +2592,9 @@ function ProcessOpcUaPubSubMessage(opcMsgObj, topic) {
 
   messages.forEach((dataSetMessage) => {
     const dataSetWriterId = dataSetMessage?.DataSetWriterId || 'unknown'
-    const messageTimestamp = dataSetMessage?.Timestamp
-      ? new Date(dataSetMessage.Timestamp)
+    const messageTimestamp =
+      dataSetMessage?.Timestamp ?
+        new Date(dataSetMessage.Timestamp)
       : new Date()
     const messageStatus = dataSetMessage?.Status
     const payload = dataSetMessage?.Payload

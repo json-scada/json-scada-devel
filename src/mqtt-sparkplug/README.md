@@ -118,10 +118,12 @@ Each instance for this driver can have just one connection defined that must be 
 - _**chainValidation**_ [Boolean] - Indicates whether the drivers performs a X509 chain validation against the registered CA certificates (equiv. to NodeJS TLS option 'rejectUnauthorized'). Default: false. **Optional parameter**.
 - _**localCertFilePath**_ [String] - File that contains the certificate (\*.PEM) that will be presented to the remote side of the connection (equiv. to NodeJS TLS option 'cert'). **Optional parameter**.
 - _**privateKeyFilePath**_ [String] - File (\*.PEM) that contains the private key corresponding to the local certificate (equiv. to NodeJS TLS option 'key'). **Optional parameter**.
-- _**allowTLSv10**_ [Boolean] - Allow TLS version 1.0 (default true, recommended false). **Optional parameter**.
-- _**allowTLSv11**_ [Boolean] - Allow TLS version 1.1 (default true, recommended false). **Optional parameter**.
+- _**allowTLSv10**_ [Boolean] - Allow TLS version 1.0 (default false). **Optional parameter**.
+- _**allowTLSv11**_ [Boolean] - Allow TLS version 1.1 (default false). **Optional parameter**.
 - _**allowTLSv12**_ [Boolean] - Allow TLS version 1.2 (default true). **Optional parameter**.
 - _**allowTLSv13**_ [Boolean] - Allow TLS version 1.3 (default true). **Optional parameter**.
+
+The allowed TLS version range goes from the lowest to the highest version enabled by these flags. When no flag is set, TLS 1.2 up to TLS 1.3 is used.
 - _**cipherList**_ [String] - TLS cipher list (equiv. to NodeJS TLS option 'ciphers'). Leave empty to use defaults. **Optional parameter**.
 
 See also NodeJS TLS configuration and Sparkplug-Client original lib.

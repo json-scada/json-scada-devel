@@ -128,8 +128,7 @@ async function AutoCreateTag(data, connectionNumber, rtDataCollection) {
   if (data.protocolSourceObjectAddress.indexOf(SparkplugNS + '/') === 0) {
     commonAddress = SparkplugNS
     splitTopic = data.protocolSourceObjectAddress.split('/')
-    tag += data.protocolSourceObjectAddress
-      .replace(SparkplugNS + '/', '')
+    tag += data.protocolSourceObjectAddress.replace(SparkplugNS + '/', '')
   } else {
     tag += data.protocolSourceObjectAddress
   }
@@ -169,10 +168,12 @@ async function AutoCreateTag(data, connectionNumber, rtDataCollection) {
         data?.ungroupedDescription || data.protocolSourceObjectAddress
       newTag.group1 =
         data?.group1 || AppDefs.AUTOTAG_PREFIX + ':' + connectionNumber
-      newTag.group2 = data?.group2 || splitTopic[1]
+      newTag.group2 = data?.group2 || splitTopic[1] || ''
       newTag.group3 =
         data?.group3 ||
-        splitTopic[2] + (splitTopic.length > 4 ? '/' + splitTopic[3] : '')
+        (splitTopic.length > 2 ?
+          splitTopic[2] + (splitTopic.length > 4 ? '/' + splitTopic[3] : '')
+        : '')
       newTag.description =
         data?.description ||
         newTag.group1 + '~' + newTag.group2 + '~' + newTag.ungroupedDescription
@@ -182,13 +183,15 @@ async function AutoCreateTag(data, connectionNumber, rtDataCollection) {
           .replace(data.group2 + '/', '')
         newTag.ungroupedDescription = splitTopic[splitTopic.length - 1]
       }
-      newTag.value = new Mongo.Double(data.value)
-      newTag.valueString = data?.valueString
-      newTag.valueJson = data?.valueJson
+      let numValue = parseFloat(data.value)
+      if (isNaN(numValue)) numValue = 0
+      newTag.value = new Mongo.Double(numValue)
+      newTag.valueString = data?.valueString || ''
+      newTag.valueJson = data?.valueJson || {}
       newTag.transient = data?.transient === true
-      newTag.invalid = data?.invalidAtSource === false ? false : true
-      newTag.timeTagAtSource = data?.timeTagAtSource
-      newTag.commissioningRemarks = data?.commissioningRemarks
+      newTag.invalid = data?.invalid === false ? false : true
+      newTag.timeTagAtSource = data?.timeTagAtSource || null
+      newTag.commissioningRemarks = data?.commissioningRemarks || ''
       newTag.priority = new Mongo.Double(3.0)
 
       // console.log('>> Insert ' + tag)
