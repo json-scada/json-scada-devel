@@ -44,6 +44,7 @@ Each instance for this driver can have many client connection defined that must 
         description: "KAK1 Station IEC-101",
         enabled: true,
         commandsEnabled: true,
+        autoCreateTags: true,
         portName: "COM3",
         baudRate: 9600,
         parity: "Even",
@@ -117,6 +118,17 @@ Select a tag for a update on a connection as below.
 - _**protocolSourceCommandUseSBO**_ [Boolean] - Use Select-Before-Operate control sequence. Just meaningful for commands. **Mandatory parameter**.
 - _**kconv1**_ [Double] - Analog conversion factor: multiplier. Use -1 to invert digital values. **Mandatory parameter**.
 - _**kconv2**_ [Double] - Analog conversion factor: adder. **Mandatory parameter**.
+
+## Automatic tag creation (autoCreateTags)
+
+The optional connection parameter _**autoCreateTags**_ [Boolean, default false] lets the driver bootstrap the point list directly from a live server. When it is set to `true`, the first time a value is received for a {Common Address, Object Address} pair that has no tag yet in the _realtimeData_ collection, a new supervised tag is inserted automatically.
+
+- The tag is named `<connectionName>;<commonAddress>;<objectAddress>` and created as _digital_ or _analog_ according to the received ASDU type, with `origin: "supervised"` and `invalid: true` until the next update.
+- New tag keys (`_id`) are allocated inside a partition reserved for the connection — the range `[protocolConnectionNumber × 1000000, (protocolConnectionNumber + 1) × 1000000)`. Choose _protocolConnectionNumber_ values so these partitions do not overlap each other or your manually numbered tags.
+- Addresses already present are preloaded at startup, so restarting the driver never re-creates existing tags.
+- Only monitored (supervised) points are created; command tags are never auto-created and must be configured manually.
+
+Once the tags exist you can rename, group, scale (`kconv1`/`kconv2`) and edit them normally. Set _autoCreateTags_ back to `false` when the address map is stable.
 
 ## Command Line Arguments
 

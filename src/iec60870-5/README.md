@@ -105,6 +105,12 @@ Notable mappings and current limitations:
   are carried over a TCP client connection to a terminal / serial-device server
   (this replaces the C# `TcpClientVirtualSerialPort`). TLS is used on that TCP
   transport when `localCertFilePath` is configured.
+- **`autoCreateTags`**: on the **clients** it auto-creates a supervised
+  `realtimeData` tag on the first value for a new address; on the **servers** it
+  distributes `protocolDestinations` onto existing tags (with
+  `autoCreateTagsCommonAddress` and an optional `topics` group1 filter). See the
+  per-driver READMEs under `cmd/*/README.md` for the full behavior and IOA
+  ranges.
 
 ### Known limitations vs. the C# drivers
 

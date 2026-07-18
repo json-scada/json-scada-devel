@@ -45,6 +45,9 @@ A instance for this driver can have many server ports defined that must be descr
             description: "Distribution of IEC 101",
             enabled: true,
             commandsEnabled: true,
+            autoCreateTags: true,
+            autoCreateTagsCommonAddress: 1,
+            topics: [],
             portName: "COM3",
             baudRate: 9600,
             parity: "Even",
@@ -154,7 +157,29 @@ Parameters description for _protocolDestinations_
 
 When the protocol destination is changed for a tag, the change will be immediately effective on running drivers. There is no need to restart any process.
 
+## Automatic destination creation (autoCreateTags)
+
+Three optional connection parameters let the driver publish a whole database without hand-assigning object addresses:
+
+- _**autoCreateTags**_ [Boolean] - When `true`, at startup the driver distributes protocol destinations to existing _realtimeData_ tags not yet mapped to this connection. Default: false. **Optional parameter**.
+- _**autoCreateTagsCommonAddress**_ [Double] - Common Address (ASDU CA) assigned to the destinations created by _autoCreateTags_. Default: 1. **Optional parameter**.
+- _**topics**_ [Array of Strings] - Optional filter: only tags whose _group1_ contains one of these substrings receive a destination. Empty or absent means all tags. **Optional parameter**.
+
+When enabled, the driver scans _realtimeData_ once at startup and, for every tag not already mapped to this connection, appends a _protocolDestinations_ entry so the tag is exposed to masters through this server.
+
+- It requires _sizeOfIOA_ >= 2; with a 1-byte IOA the ranges below do not fit and the distribution is skipped.
+- Every created destination uses _autoCreateTagsCommonAddress_ as its Common Address.
+- Object addresses (IOA) are allocated sequentially from per-category ranges that share the CA:
+  - digital supervised -> ASDU 1 (M_SP_NA_1), IOA 1 - 20000
+  - analog supervised -> ASDU 13 (M_ME_NC_1), IOA 20001 - 40000
+  - digital command -> ASDU 45 (C_SC_NA_1), IOA 40001 - 50000 (only when _commandsEnabled_)
+  - analog command -> ASDU 50 (C_SE_NC_1), IOA 50001 - 60000 (only when _commandsEnabled_)
+- Addresses already mapped to the connection are detected and preserved, so re-running only fills gaps; when a range is exhausted the driver logs it and stops that category.
+
+Once created, the destinations can be edited normally (ASDU type, interrogation group, kconv, hours shift, SBO, ...). Set _autoCreateTags_ back to `false` when the mapping is stable.
+
 ## Command Line Arguments
+
 
 This driver has the following command line arguments.
 
