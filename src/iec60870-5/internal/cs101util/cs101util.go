@@ -22,7 +22,6 @@
 package cs101util
 
 import (
-	"fmt"
 	"strings"
 	"time"
 
@@ -32,6 +31,7 @@ import (
 
 	"iec60870-5/internal/jscfg"
 	"iec60870-5/internal/model"
+	"iec60870-5/internal/tlsutil"
 )
 
 func msToSeconds(ms float64, def, min, max int) time.Duration {
@@ -57,48 +57,60 @@ func BuildConfig(cc *model.ConnCfg, isServer bool) (cs101.Config, error) {
 	if portName == "" {
 		portName = "COM1" // C# BsonDefaultValue parity
 	}
-	if strings.Contains(portName, ":") {
-		// C# supports portName "host:port" via TcpClientVirtualSerialPort;
-		// go-iecp5 currently opens real serial devices only (planned fork
-		// enhancement, see GO_DRIVERS_PLAN.md gap G2)
-		return cfg, fmt.Errorf("TCP virtual serial port ('%s') is not supported yet by the Go driver", portName)
-	}
-
-	baud := int(cc.BaudRate)
-	if baud == 0 {
-		baud = 9600
-	}
-	parity := serial.EvenParity // Even is the standard parity for 101
-	switch strings.ToLower(cc.Parity) {
-	case "none":
-		parity = serial.NoParity
-	case "odd":
-		parity = serial.OddParity
-	case "mark":
-		parity = serial.MarkParity
-	case "space":
-		parity = serial.SpaceParity
-	}
-	stopBits := serial.OneStopBit
-	switch strings.ToLower(cc.StopBits) {
-	case "one5", "onepointfive":
-		stopBits = serial.OnePointFiveStopBits
-	case "two":
-		stopBits = serial.TwoStopBits
-	}
-	if h := strings.ToLower(cc.Handshake); h != "" && h != "none" {
-		jscfg.Log(jscfg.LogLevelBasic, cc.Name+" - Warning: serial handshake '"+cc.Handshake+"' not supported, using none.")
-	}
-
-	cfg.Serial = cs101.SerialConfig{
-		Address:  portName,
-		BaudRate: baud,
-		DataBits: 8,
-		StopBits: stopBits,
-		Parity:   parity,
-		Timeout:  5 * time.Second,
-	}
 	cfg.Mode = cs101.ModeUnbalanced
+
+	// portName "host:port" is TCP-encapsulated FT1.2 (the C# driver used a
+	// TcpClientVirtualSerialPort for this). go-iecp5 carries the frames over
+	// a TCP client connection to the terminal/serial-device server.
+	if strings.Contains(portName, ":") {
+		cfg.Transport = cs101.TransportTCPClient
+		cfg.TCP = cs101.TCPConfig{
+			Address:        portName,
+			ConnectTimeout: time.Duration(defInt(int(cc.T0), 30)) * time.Second,
+		}
+		// optional TLS on the TCP transport when a local certificate is set
+		if cc.LocalCertFilePath != "" {
+			tlsCfg, err := tlsutil.BuildTLSConfig(cc, false)
+			if err != nil {
+				return cfg, err
+			}
+			cfg.TCP.TLSConfig = tlsCfg
+		}
+	} else {
+		baud := int(cc.BaudRate)
+		if baud == 0 {
+			baud = 9600
+		}
+		parity := serial.EvenParity // Even is the standard parity for 101
+		switch strings.ToLower(cc.Parity) {
+		case "none":
+			parity = serial.NoParity
+		case "odd":
+			parity = serial.OddParity
+		case "mark":
+			parity = serial.MarkParity
+		case "space":
+			parity = serial.SpaceParity
+		}
+		stopBits := serial.OneStopBit
+		switch strings.ToLower(cc.StopBits) {
+		case "one5", "onepointfive":
+			stopBits = serial.OnePointFiveStopBits
+		case "two":
+			stopBits = serial.TwoStopBits
+		}
+		if h := strings.ToLower(cc.Handshake); h != "" && h != "none" {
+			jscfg.Log(jscfg.LogLevelBasic, cc.Name+" - Warning: serial handshake '"+cc.Handshake+"' not supported, using none.")
+		}
+		cfg.Serial = cs101.SerialConfig{
+			Address:  portName,
+			BaudRate: baud,
+			DataBits: 8,
+			StopBits: stopBits,
+			Parity:   parity,
+			Timeout:  5 * time.Second,
+		}
+	}
 
 	if isServer {
 		cfg.LinkAddress = uint16(defInt(int(cc.LocalLinkAddress), 1))

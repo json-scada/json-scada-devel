@@ -1,19 +1,43 @@
-# IEC 60870-5-101/104 Client and Server Drivers (Go)
+# IEC 60870-5-101/103/104 Client and Server Drivers (Go)
 
-Go reimplementation of the four JSON-SCADA IEC 60870-5 protocol drivers, built
-on the [go-iecp5](https://github.com/riclolsen/go-iecp5) library. These are
-**drop-in replacements** for the legacy C# drivers in
+Go reimplementation of the JSON-SCADA IEC 60870-5 protocol drivers, built
+on the [go-iecp5](https://github.com/riclolsen/go-iecp5) library. The 101/104
+drivers are **drop-in replacements** for the legacy C# drivers in
 [`../lib60870.netcore`](../lib60870.netcore): same protocol driver names, same
 MongoDB collections and field semantics, same command-line contract and same
 binary names, so AdminUI, the service definitions and the demo configurations
-work unchanged.
+work unchanged. The 103 client is a new driver (no C# predecessor).
 
 | Binary | Protocol driver name | Role | Transport |
 |---|---|---|---|
 | `iec104client` | `IEC60870-5-104` | Master (client) | TCP/IP (+TLS) |
 | `iec104server` | `IEC60870-5-104_SERVER` | Outstation (server) | TCP/IP (+TLS) |
-| `iec101client` | `IEC60870-5-101` | Primary station (master) | Serial (unbalanced) |
-| `iec101server` | `IEC60870-5-101_SERVER` | Secondary station (outstation) | Serial (unbalanced) |
+| `iec101client` | `IEC60870-5-101` | Primary station (master) | Serial or TCP (unbalanced) |
+| `iec101server` | `IEC60870-5-101_SERVER` | Secondary station (outstation) | Serial or TCP (unbalanced) |
+| `iec103client` | `IEC60870-5-103` | Master (protection relays) | Serial or TCP (unbalanced) |
+
+## IEC 60870-5-103 client
+
+IEC 60870-5-103 is the informative interface of protection equipment. The
+`iec103client` master runs the FT1.2 unbalanced link procedure (shared with
+101) and the 103 application layer. Points are addressed by **function type
+(FUN)** and **information number (INF)** rather than an IOA; the driver maps
+them into the JSON-SCADA `realtimeData` model as:
+
+- `protocolSourceCommonAddress` = device common address (= link address).
+- `protocolSourceObjectAddress` = `FUN*65536 + INF*256 + index`, where
+  `index` selects a value inside a multi-valued measurands ASDU (0 otherwise).
+- `protocolSourceASDU` = the 103 type identification number.
+
+Time-tagged ASDUs (1/2) become digital points (DPI On/Off; transient/unknown →
+invalid quality); measurands ASDUs (3/9) become analog points, one per index,
+scaled to the fraction of full scale (`Measurand.Float64()`). General
+interrogation and time synchronization are issued periodically per
+`giInterval` / `timeSyncInterval`. Control is via the 103 **general command**
+(ASDU 20): a `commandsQueue` entry with `protocolSourceASDU = 20` and
+`protocolSourceObjectAddress = FUN*65536 + INF*256` sends DCO On/Off from the
+command value; the device's ASDU 1 acknowledgement (cause 20/21) is written
+back as the command `ack`.
 
 ## Command line
 
@@ -57,6 +81,7 @@ go build -o ../../bin/iec104client ./cmd/iec104client
 go build -o ../../bin/iec104server ./cmd/iec104server
 go build -o ../../bin/iec101client ./cmd/iec101client
 go build -o ../../bin/iec101server ./cmd/iec101server
+go build -o ../../bin/iec103client ./cmd/iec103client
 ```
 
 ## Configuration fields
@@ -73,14 +98,16 @@ Notable mappings and current limitations:
   `rootCertFilePath`, `chainValidation`, `allowOnlySpecificCertificates`) is
   supported; the certificate file may be a `.pfx`/`.p12` (as in the C# drivers)
   or a PEM file containing the certificate and key.
-- **101 serial** (`portName`, `baudRate`, `parity`, `stopBits`) maps to the
+- **101/103 serial** (`portName`, `baudRate`, `parity`, `stopBits`) maps to the
   go-iecp5 serial config. Serial `handshake` other than `none` is not applied.
   `timeoutForACK`/`timeoutRepeat` (ms) are converted to whole-second T1/T2.
+- **101/103 TCP transport**: when `portName` is `host:port`, the FT1.2 frames
+  are carried over a TCP client connection to a terminal / serial-device server
+  (this replaces the C# `TcpClientVirtualSerialPort`). TLS is used on that TCP
+  transport when `localCertFilePath` is configured.
 
 ### Known limitations vs. the C# drivers
 
-- `portName = "host:port"` (TCP virtual serial) is not yet supported by the 101
-  drivers.
 - 104 client connection statistics currently report `isConnected` only; the
   detailed APCI counters are not yet exposed by go-iecp5 (gap G4).
 - `serverModeMultiActive=false` (single-redundancy-group buffering) is emulated

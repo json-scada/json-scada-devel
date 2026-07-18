@@ -49,6 +49,10 @@ type Conn struct {
 	IsConnected func() bool
 	// SendCmd sends one command object with cause Activation (set by main).
 	SendCmd func(obj *conv.InfoObject, ca int) error
+	// RawCmd, when set, fully sends a command from the queue document and
+	// bypasses the default 101/104 BuildInfoObj/SBO path. Used by the IEC 103
+	// client (FUN/INF general command). Returns an error to cancel.
+	RawCmd func(asduNum, objAddr, commonAddr int, value float64, duration int) error
 
 	mu             sync.Mutex
 	lastSelected   *conv.InfoObject
@@ -202,12 +206,16 @@ func (e *Engine) sourceDataUpdateDoc(iv conv.IecValue) bson.M {
 	if iv.HasSourceTimestamp {
 		bsontt = iv.SourceTimestamp
 	}
+	asduStr := iv.AsduStr
+	if asduStr == "" {
+		asduStr = iv.Asdu.String()
+	}
 	return bson.M{
 		"$set": bson.M{
 			"sourceDataUpdate": bson.M{
 				"valueAtSource":               iv.Value,
 				"valueStringAtSource":         formatValue(iv.Value),
-				"asduAtSource":                iv.Asdu.String(),
+				"asduAtSource":                asduStr,
 				"causeOfTransmissionAtSource": strconv.Itoa(iv.Cot),
 				"timeTagAtSource":             bsontt,
 				"timeTagAtSourceOk":           iv.TimestampOk,
@@ -417,6 +425,25 @@ func (e *Engine) processCommand(collection *mongo.Collection, doc bson.M) {
 		jscfg.Logf(jscfg.LogLevelBasic, "MongoDB CMD CS - %s OA %d value %s %s",
 			srv.Cfg.Name, objAddr, formatValue(value), reason)
 		setResult("cancelReason", reason)
+		return
+	}
+
+	// IEC 103 (and any driver that sets RawCmd) builds and sends the command
+	// itself; the connected/enabled/expiry checks above and below still apply.
+	if srv.RawCmd != nil {
+		if time.Since(timeTag) >= 10*time.Second {
+			jscfg.Logf(jscfg.LogLevelBasic, "MongoDB CMD CS - %s OA %d value %s Expired",
+				srv.Cfg.Name, objAddr, formatValue(value))
+			setResult("cancelReason", "expired")
+			return
+		}
+		if err := srv.RawCmd(asduNum, objAddr, commonAddr, value, duration); err != nil {
+			jscfg.Logf(jscfg.LogLevelBasic, "MongoDB CMD CS - %s - Error sending command: %s", srv.Cfg.Name, err.Error())
+			setResult("cancelReason", "not connected")
+			return
+		}
+		jscfg.Logf(jscfg.LogLevelBasic, "MongoDB CMD CS - %s - TI %d OA %d Delivered", srv.Cfg.Name, asduNum, objAddr)
+		setResult("delivered", true)
 		return
 	}
 

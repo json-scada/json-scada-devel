@@ -79,8 +79,12 @@ func QualityFromQdp(d asdu.QualityDescriptorProtection) Quality {
 // IecValue is one acquired value to be updated in the realtimeData collection
 // (port of the C# IEC_Value struct).
 type IecValue struct {
-	Address            int
-	Asdu               asdu.TypeID
+	Address int
+	Asdu    asdu.TypeID
+	// AsduStr, when non-empty, overrides Asdu.String() for the
+	// asduAtSource field (used by the IEC 103 client whose type
+	// identifications are not asdu.TypeID values).
+	AsduStr            string
 	IsDigital          bool
 	Value              float64
 	Cot                int
