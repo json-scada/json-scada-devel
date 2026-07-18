@@ -75,7 +75,6 @@ type ConnCfg struct {
 	AllowOnlySpecificCertificates bool          `bson:"allowOnlySpecificCertificates"`
 	ChainValidation               bool          `bson:"chainValidation"`
 	AutoCreateTags                bool          `bson:"autoCreateTags"`
-	AutoCreateTagsCommonAddress   float64       `bson:"autoCreateTagsCommonAddress"`
 	Topics                        []string      `bson:"topics"`
 	// IEC 101 (serial) specific
 	PortName          string  `bson:"portName"`

@@ -123,9 +123,11 @@ func (e *Engine) DistributeAutoTags() {
 			{"analog", "supervised", 13, lastAnalog, ioaTopAnalog},
 		}
 
-		autoCA := srv.Cfg.AutoCreateTagsCommonAddress
+		// the server's link-level address is used as the common address
+		// of the created destinations
+		autoCA := srv.Cfg.LocalLinkAddress
 		if autoCA == 0 {
-			autoCA = 1 // BsonDefaultValue(1) parity
+			autoCA = 1 // default when localLinkAddress is missing
 		}
 
 		for _, cat := range categories {
