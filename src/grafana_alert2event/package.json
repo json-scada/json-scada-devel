@@ -1,7 +1,7 @@
 {
   "name": "grafana_alert2event",
-  "version": "1.0.0",
-  "description": "Web API for the OSHMI HMI Shell",
+  "version": "0.2.0",
+  "description": "{json:scada} - Converts Grafana alert notifications (webhook contact point) to JSON-SCADA SOE events, beeps and alarms.",
   "main": "grafana_alert2event",
   "scripts": {
     "test": "echo \"Error: no test specified\" && exit 1"
@@ -9,9 +9,9 @@
   "author": "Ricardo Lastra Olsen",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "express": "^4.17.1",
+    "express": "^5.2.1",
     "fs": "0.0.1-security",
-    "mongodb": "^4.1.0",
+    "mongodb": "^7.5.0",
     "queue-fifo": "^0.2.6"
   }
 }
