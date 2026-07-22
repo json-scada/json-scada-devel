@@ -16,7 +16,10 @@
       "basic": "Básico",
       "detailed": "Detalhado",
       "maximum": "Máximo"
-    }
+    },
+    "start": "Iniciar",
+    "stop": "Parar",
+    "close": "Fechar"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Estatísticas",
         "actions": "Ações",
         "process": "Processo",
-        "running": "Correndo"
+        "running": "Correndo",
+        "serviceState": "Serviço"
       },
       "addProtocolDriverInstance": "Nova Instância",
       "addNewProtocolDriverInstance": "Adicionar nova instância de driver de protocolo",
@@ -298,7 +302,39 @@
       "newNodeName": "Novo nome do nó",
       "deleteInstance": "Excluir instância",
       "deleteInstanceConfirm": "Tem certeza de que deseja excluir esta instância do driver de protocolo?",
-      "editInstance": "Editar Instância"
+      "editInstance": "Editar Instância",
+      "restart": "Reiniciar",
+      "syncServices": "Sincronizar Serviços",
+      "notManageable": "Esta instância não é gerenciada como serviço do SO neste nó.",
+      "serviceManagement": "Gerenciamento de Serviço",
+      "managedService": "Gerenciar serviço do SO automaticamente",
+      "startMode": "Modo de inicialização do serviço",
+      "startModes": {
+        "auto": "Automático",
+        "manual": "Manual"
+      },
+      "autoRestartOnConfigChange": "Reiniciar automaticamente ao alterar configuração",
+      "executableVariant": "Variante do executável",
+      "syncResult": "Sincronização concluída: {ensured} aplicados, {errors} erros, {orphans} serviço(s) órfão(s).",
+      "deleteServiceNote": "O serviço do SO {service} será parado e removido no nó {node}.",
+      "serviceStates": {
+        "notManageable": "N/D",
+        "notInstalled": "Não instalado",
+        "restartPending": "Reinício pendente",
+        "RUNNING": "Em execução",
+        "STOPPED": "Parado",
+        "STARTING": "Iniciando",
+        "STOPPING": "Parando",
+        "FATAL": "Falha",
+        "BACKOFF": "Retentando",
+        "PAUSED": "Pausado",
+        "UNKNOWN": "Desconhecido"
+      },
+      "actionResults": {
+        "started": "início solicitado",
+        "stopped": "parada solicitada",
+        "restarted": "reinício solicitado"
+      }
     },
     "protocolConnections": {
       "title": "Conexões",
@@ -709,7 +745,11 @@
       "restartProcesses": "Reiniciar Processos",
       "restartProtocols": "Reiniciar Protocolos",
       "sanitizeDatabase": "Sanitizar banco de dados",
-      "advancedOptions": "Opções avançadas"
+      "advancedOptions": "Opções avançadas",
+      "processManagement": "Gerenciamento de Processos",
+      "processManagementDisabled": "O gerenciamento de processos está desabilitado no servidor (sem backend de serviço neste host).",
+      "autoManageServices": "Criar/atualizar/remover serviços do SO automaticamente quando instâncias mudam",
+      "autoRestartOnConnectionChange": "Reiniciar o driver automaticamente quando suas conexões mudam"
     }
   }
 }

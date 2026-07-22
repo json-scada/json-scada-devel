@@ -16,7 +16,10 @@
       "basic": "Basic",
       "detailed": "Detaillierte",
       "maximum": "Maximal"
-    }
+    },
+    "start": "Start",
+    "stop": "Stoppen",
+    "close": "Schließen"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Statistiken",
         "actions": "Aktionen",
         "process": "Verfahren",
-        "running": "Läuft"
+        "running": "Läuft",
+        "serviceState": "Service"
       },
       "addProtocolDriverInstance": "Neue Instanz",
       "addNewProtocolDriverInstance": "Neue Protokolltreiberinstanz hinzufügen",
@@ -298,7 +302,39 @@
       "newNodeName": "Neuer Knotenname",
       "deleteInstance": "Instanz löschen",
       "deleteInstanceConfirm": "Möchten Sie diese Protokolltreiberinstanz wirklich löschen?",
-      "editInstance": "Instanz bearbeiten"
+      "editInstance": "Instanz bearbeiten",
+      "restart": "Neustart",
+      "syncServices": "Synchronisierungsdienste",
+      "notManageable": "Diese Instanz wird auf diesem Knoten nicht als Betriebssystemdienst verwaltet.",
+      "serviceManagement": "Servicemanagement",
+      "managedService": "Betriebssystemdienste automatisch verwalten",
+      "startMode": "Dienststartmodus",
+      "startModes": {
+        "auto": "Automatisch",
+        "manual": "Handbuch"
+      },
+      "autoRestartOnConfigChange": "Automatischer Neustart bei Konfigurationsänderung",
+      "executableVariant": "Ausführbare Variante",
+      "syncResult": "Synchronisierung abgeschlossen: {ensured} sichergestellt, {errors} Fehler, {orphans} verwaiste Dienste.",
+      "deleteServiceNote": "Der Betriebssystemdienst {service} wird auf dem Knoten {node} beendet und entfernt.",
+      "serviceStates": {
+        "notManageable": "N / A",
+        "notInstalled": "Nicht installiert",
+        "restartPending": "Neustart ausstehend",
+        "RUNNING": "Läuft",
+        "STOPPED": "Angehalten",
+        "STARTING": "Beginn",
+        "STOPPING": "Anhalten",
+        "FATAL": "Tödlich",
+        "BACKOFF": "Zurückweichen",
+        "PAUSED": "Angehalten",
+        "UNKNOWN": "Unbekannt"
+      },
+      "actionResults": {
+        "started": "Start angefordert",
+        "stopped": "Stopp angefordert",
+        "restarted": "Neustart angefordert"
+      }
     },
     "protocolConnections": {
       "title": "Anschlüsse",
@@ -709,7 +745,11 @@
       "restartProcesses": "Prozesse neu starten",
       "restartProtocols": "Neustartprotokolle",
       "sanitizeDatabase": "Datenbank bereinigen",
-      "advancedOptions": "Erweiterte Optionen"
+      "advancedOptions": "Erweiterte Optionen",
+      "processManagement": "Prozessmanagement",
+      "processManagementDisabled": "Die Prozessverwaltung ist auf dem Server deaktiviert (kein Service-Backend auf diesem Host).",
+      "autoManageServices": "Automatische Erstellung/Aktualisierung/Entfernung von Betriebssystemdiensten bei Instanzänderungen",
+      "autoRestartOnConnectionChange": "Der Treiber wird automatisch neu gestartet, wenn sich seine Verbindungen ändern."
     }
   }
 }

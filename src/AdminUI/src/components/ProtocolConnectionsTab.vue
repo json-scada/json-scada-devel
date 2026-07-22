@@ -159,6 +159,7 @@
             'TELEGRAF-LISTENER',
             'IEC61850',
             'PLC4X',
+            'MODBUS',
             'OPC-DA',
             'ICCP',
             'DNP3_SERVER',
@@ -167,6 +168,7 @@
             'IEC60870-5-104',
             'IEC60870-5-101_SERVER',
             'IEC60870-5-104',
+            'N8N',
           ].includes(editedConnection.protocolDriver)
         "
         ></v-switch>
@@ -182,6 +184,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104',
                   'IEC60870-5-104_SERVER',
@@ -227,6 +230,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104',
                   'IEC60870-5-104_SERVER',
@@ -273,11 +277,12 @@
             <v-list-item
               v-if="
                 [
-                  'OPC-UA', 
-                  'MQTT-SPARKPLUG-B', 
-                  'PLC4X', 
+                  'OPC-UA',
+                  'MQTT-SPARKPLUG-B',
+                  'PLC4X',
                   'OPC-DA',
                   'ONVIF',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -325,6 +330,8 @@
                           ? rules.endpointMQTT
                           : editedConnection.protocolDriver === 'OPC-UA'
                           ? rules.endpointOPC
+                          : editedConnection.protocolDriver === 'N8N'
+                          ? rules.endpointN8N
                           : rules.endpointOPCDA,
                       ]"
                     ></v-text-field>
@@ -358,6 +365,7 @@
               v-if="
                 [
                   'ONVIF',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -389,11 +397,12 @@
             <v-list-item
               v-if="
                 [
-                  'MQTT-SPARKPLUG-B', 
-                  'IEC61850', 
+                  'MQTT-SPARKPLUG-B',
+                  'IEC61850',
                   'OPC-DA',
                   'OPC-UA',
                   'ONVIF',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -427,13 +436,15 @@
             <v-list-item
               v-if="
                 [
-                  'MQTT-SPARKPLUG-B', 
+                  'MQTT-SPARKPLUG-B',
                   'IEC61850',
                   'OPC-DA',
                   'OPC-UA',
                   'ONVIF',
                   'ICCP',
                   'ICCP_SERVER',
+                  'NODE-RED',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -603,7 +614,7 @@
             </v-list-item>
 
             <v-list-item
-              v-if="['OPC-DA'].includes(editedConnection.protocolDriver)"
+              v-if="['OPC-DA', 'N8N'].includes(editedConnection.protocolDriver)"
             >
               <template #default="{ isActive }">
                 <v-row>
@@ -678,6 +689,7 @@
                   'ICCP',
                   'ICCP_SERVER',
                   'ONVIF',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -710,6 +722,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC61850',
                   'DNP3',
@@ -720,7 +733,8 @@
                   'OPC-UA',
                   'OPC-DA',
                   'ICCP',
-                  'ONVIF',	
+                  'ONVIF',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -752,7 +766,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-104'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-104'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -785,7 +799,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-104', 'PLCTAG'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-104', 'PLCTAG'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1022,6 +1036,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1057,6 +1072,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1092,6 +1108,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1194,6 +1211,7 @@
                   'IEC61850_SERVER',
                   'PI_DATA_ARCHIVE_INJECTOR',
                   'PI_DATA_ARCHIVE_CLIENT',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -1494,7 +1512,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1527,7 +1545,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1560,7 +1578,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1598,7 +1616,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1657,6 +1675,30 @@
                 outlined
               ></v-select>
             </v-list-item>
+
+            <v-list-item
+              class="ma-0"
+              v-if="editedConnection.protocolDriver === 'MODBUS'"
+            >
+              <v-select
+                :items="connectionModeModbusItems"
+                :label="$t('admin.protocolConnections.connectionMode')"
+                v-model="editedConnection.connectionMode"
+                outlined
+              ></v-select>
+            </v-list-item>
+
+            <v-list-item
+              class="ma-0"
+              v-if="editedConnection.protocolDriver === 'MODBUS_SERVER'"
+            >
+              <v-select
+                :items="connectionModeModbusServerItems"
+                :label="$t('admin.protocolConnections.connectionMode')"
+                v-model="editedConnection.connectionMode"
+                outlined
+              ></v-select>
+            </v-list-item>
           </v-list>
         </v-card>
 
@@ -1671,14 +1713,15 @@
               'IEC61850',
               'IEC61850_SERVER',
               'I104M',
-              'MODBUS',
               'PLCTAG',
               'TELEGRAF-LISTENER',
+              'NODE-RED',
+              'N8N',
               'OPC-UA_SERVER',
               'ICCP',
               'ICCP_SERVER',
             ].includes(editedConnection.protocolDriver) ||
-            (['DNP3', 'DNP3_SERVER'].includes(
+            (['DNP3', 'DNP3_SERVER', 'MODBUS', 'MODBUS_SERVER'].includes(
               editedConnection.protocolDriver
             ) &&
               editedConnection.connectionMode !== 'Serial')
@@ -1696,7 +1739,10 @@
                   'IEC60870-5-104_SERVER',
                   'IEC61850_SERVER',
                   'I104M',
+                  'MODBUS_SERVER',
                   'TELEGRAF-LISTENER',
+                  'NODE-RED',
+                  'N8N',
                   'OPC-UA_SERVER',
                   'ICCP_SERVER',
                   'ONVIF',
@@ -1744,7 +1790,10 @@
                   'I104M',
                   'PLCTAG',
                   'MODBUS',
+                  'MODBUS_SERVER',
                   'TELEGRAF-LISTENER',
+                  'NODE-RED',
+                  'N8N',
                   'OPC-UA_SERVER',
                   'ICCP',
                   'ICCP_SERVER',
@@ -2011,6 +2060,7 @@
                   'IEC61850_SERVER',
                   'ICCP',
                   'ICCP_SERVER',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2506,6 +2556,8 @@
               'PLC4X',
               'OPC-DA_SERVER',
               'ICCP_SERVER',
+              'NODE-RED',
+              'N8N',
             ].includes(editedConnection.protocolDriver)
             ||
             [
@@ -2539,6 +2591,8 @@
                   'OPC-DA',
                   'OPC-DA_SERVER',
                   'ICCP_SERVER',
+                  'NODE-RED',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
                 ||
                 [
@@ -3103,10 +3157,10 @@
           tile
           variant="outlined"
           v-if="
-            ['IEC60870-5-101', 'IEC60870-5-101_SERVER', 'MODBUS'].includes(
+            ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
               editedConnection.protocolDriver
             ) ||
-            (['DNP3', 'DNP3_SERVER'].includes(
+            (['DNP3', 'DNP3_SERVER', 'MODBUS', 'MODBUS_SERVER'].includes(
               editedConnection.protocolDriver
             ) &&
               editedConnection.connectionMode === 'Serial')
@@ -3123,10 +3177,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3159,10 +3215,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3196,10 +3254,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3232,10 +3292,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3268,10 +3330,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3507,6 +3571,13 @@
         t('admin.protocolConnections.rulesInvalidEndpoint')
       )
     },
+    endpointN8N: (value) => {
+      let pattern = /^https?:\/\/[a-zA-Z0-9-_.]+(:\d{1,5})?(\/[^\s]*)?$/
+      return (
+        pattern.test(value) ||
+        t('admin.protocolConnections.rulesInvalidEndpoint')
+      )
+    },
     subtopic: (value) => {
       return (
         !(
@@ -3535,15 +3606,34 @@
     'Serial',
   ]
 
+  const connectionModeModbusItems = [
+    'TCP Active',
+    'TLS Active',
+    'Serial',
+    'RTU over TCP',
+    'RTU over TLS',
+  ]
+
+  const connectionModeModbusServerItems = [
+    'TCP Passive',
+    'TLS Passive',
+    'Serial',
+    'RTU over TCP Passive',
+    'RTU over TLS Passive',
+  ]
+
   const driverNameItems = [
     'IEC60870-5-104',
     'IEC60870-5-104_SERVER',
     'IEC60870-5-101',
+    'IEC60870-5-103',
     'IEC60870-5-101_SERVER',
     'IEC61850',
     'IEC61850_SERVER',
     'DNP3',
     'DNP3_SERVER',
+    'MODBUS',
+    'MODBUS_SERVER',
     'MQTT-SPARKPLUG-B',
     'OPC-UA',
     'OPC-UA_SERVER',

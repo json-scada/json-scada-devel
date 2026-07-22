@@ -30,6 +30,9 @@ const bcrypt = require('bcryptjs')
 const { spawn } = require('child_process')
 const AdmZip = require('adm-zip')
 const { Client } = require('ldapts')
+const ProcessManager = require('../services/process-manager')
+const RestartScheduler = require('../services/restart-scheduler')
+const SystemSettings = require('../services/system-settings')
 const User = db.user
 const Role = db.role
 const Tag = db.tag
@@ -235,6 +238,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3_SERVER',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP_SERVER',
       'ONVIF',
@@ -252,6 +256,9 @@ exports.updateProtocolConnection = async (req, res) => {
         case 'IEC60870-5-104_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:2404'
           break
+        case 'IEC61850_SERVER':
+          req.body.ipAddressLocalBind = '0.0.0.0:102'
+          break
         case 'DNP3_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:20000'
           break
@@ -260,6 +267,9 @@ exports.updateProtocolConnection = async (req, res) => {
           break
         case 'TELEGRAF-LISTENER':
           req.body.ipAddressLocalBind = '0.0.0.0:51920'
+          break
+        case 'N8N':
+          req.body.ipAddressLocalBind = '0.0.0.0:51930'
           break
         case 'ICCP_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:102'
@@ -281,6 +291,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'PLCTAG',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP',
       'ICCP_SERVER',
@@ -295,6 +306,7 @@ exports.updateProtocolConnection = async (req, res) => {
     [
       'OPC-UA',
       'TELEGRAF-LISTENER',
+      'N8N',
       'MQTT-SPARKPLUG-B',
       'IEC61850',
       'PLC4X',
@@ -317,6 +329,7 @@ exports.updateProtocolConnection = async (req, res) => {
   if (
     [
       'MQTT-SPARKPLUG-B',
+      'N8N',
       'OPC-UA_SERVER',
       'IEC61850',
       'PLC4X',
@@ -859,11 +872,56 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   try {
-    await ProtocolConnection.findOneAndUpdate({ _id: req.body._id }, req.body)
-    res.status(200).send({})
+    // findOneAndUpdate returns the pre-update document (used to detect instance moves)
+    const oldConn = await ProtocolConnection.findOneAndUpdate(
+      { _id: req.body._id },
+      req.body
+    )
+      .lean()
+      .exec()
+    const restartInfo = await scheduleConnectionRestart(
+      req.body.protocolDriver,
+      req.body.protocolDriverInstanceNumber,
+      oldConn
+    )
+    res.status(200).send({ ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
+  }
+}
+
+// Schedules a debounced driver restart after a connection change, honoring the
+// global auto-restart setting. Returns flags the UI uses to inform the operator.
+async function scheduleConnectionRestart(driver, instanceNumber, oldConn) {
+  try {
+    const settings = await SystemSettings.getSettings()
+    const auto = settings.autoRestartOnConnectionChange
+    const result = await RestartScheduler.scheduleRestart(
+      driver,
+      instanceNumber,
+      auto
+    )
+    // connection moved between instances: also restart the previous owner
+    if (
+      oldConn &&
+      (oldConn.protocolDriver !== driver ||
+        Math.trunc(Number(oldConn.protocolDriverInstanceNumber)) !==
+          Math.trunc(Number(instanceNumber)))
+    ) {
+      await RestartScheduler.scheduleRestart(
+        oldConn.protocolDriver,
+        oldConn.protocolDriverInstanceNumber,
+        auto
+      )
+    }
+    return {
+      restartScheduled: !!result.scheduled,
+      restartPending: !!result.pending,
+    }
+  } catch (e) {
+    Log.log('scheduleConnectionRestart: ' + e.message)
+    return {}
   }
 }
 
@@ -877,9 +935,21 @@ exports.deleteProtocolConnection = async (req, res) => {
       })
     }
 
-    await ProtocolConnection.findOneAndDelete({ _id: req.body._id })
+    const conn = await ProtocolConnection.findOneAndDelete({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
 
-    res.status(200).send({ error: false })
+    const restartInfo = conn
+      ? await scheduleConnectionRestart(
+          conn.protocolDriver,
+          conn.protocolDriverInstanceNumber,
+          null
+        )
+      : {}
+
+    res.status(200).send({ error: false, ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -945,8 +1015,24 @@ exports.deleteProtocolDriverInstance = async (req, res) => {
   try {
     registerUserAction(req, 'deleteProtocolDriverInstance')
 
+    const doc = await ProtocolDriverInstance.findOne({ _id: req.body._id })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndDelete({ _id: req.body._id })
-    res.status(200).send({ error: false })
+
+    // best-effort: stop and uninstall the OS service for the removed instance
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices && doc) {
+        const r = await ProcessManager.removeService(doc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('deleteProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -1001,12 +1087,35 @@ exports.updateProtocolDriverInstance = async (req, res) => {
       req.body.protocolDriverInstanceNumber
     )
     req.body.logLevel = Math.floor(req.body.logLevel)
+    const oldDoc = await ProtocolDriverInstance.findOne({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndUpdate(
       { _id: req.body._id },
       req.body
     )
     registerUserAction(req, 'updateProtocolDriverInstance')
-    res.status(200).send({ error: false })
+
+    // best-effort: reconcile the OS service to the updated instance definition
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices) {
+        const newDoc = await ProtocolDriverInstance.findOne({
+          _id: req.body._id,
+        })
+          .lean()
+          .exec()
+        const r = await ProcessManager.applyInstanceUpdate(oldDoc, newDoc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('updateProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })

@@ -178,9 +178,24 @@ let pool = null
         extended: true,
       })
     )
-    initGQLServer(app, dbAuth)
+    initGQLServer(app, dbAuth, true).catch((err) =>
+      Log.log('Error starting GraphQL server: ' + err.message)
+    )
   } else {
     Log.log('******* DISABLED AUTHENTICATION! ********')
+
+    // connect mongoose (used by the GraphQL API data models)
+    dbAuth.mongoose
+      .connect(jsConfig.mongoConnectionString, jsConfig.MongoConnectionOptions)
+      .then(() => {
+        Log.log('Successfully connect to MongoDB (via mongoose).')
+      })
+      .catch((err) => {
+        Log.log('Mongoose connection error: ' + err.message)
+      })
+    initGQLServer(app, dbAuth, false).catch((err) =>
+      Log.log('Error starting GraphQL server: ' + err.message)
+    )
 
     // reverse proxy for grafana
     app.use('/grafana', httpProxy(GRAFANA_SERVER))

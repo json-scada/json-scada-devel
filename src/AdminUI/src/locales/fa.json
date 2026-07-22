@@ -16,7 +16,10 @@
       "basic": "اساسی",
       "detailed": "به تفصیل",
       "maximum": "حداکثر"
-    }
+    },
+    "start": "شروع",
+    "stop": "توقف",
+    "close": "بستن"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "آمار",
         "actions": "اقدامات",
         "process": "فرآیند",
-        "running": "در حال دویدن"
+        "running": "در حال دویدن",
+        "serviceState": "خدمات"
       },
       "addProtocolDriverInstance": "نمونه جدید",
       "addNewProtocolDriverInstance": "افزودن نمونه درایور پروتکل جدید",
@@ -298,7 +302,39 @@
       "newNodeName": "نام گره جدید",
       "deleteInstance": "حذف نمونه",
       "deleteInstanceConfirm": "آیا مطمئن هستید که می خواهید این نمونه درایور پروتکل را حذف کنید؟",
-      "editInstance": "ویرایش نمونه"
+      "editInstance": "ویرایش نمونه",
+      "restart": "راه اندازی مجدد",
+      "syncServices": "خدمات همگام‌سازی",
+      "notManageable": "این نمونه به عنوان یک سرویس سیستم عامل در این گره مدیریت نمی‌شود.",
+      "serviceManagement": "مدیریت خدمات",
+      "managedService": "مدیریت خودکار سرویس سیستم عامل",
+      "startMode": "حالت شروع سرویس",
+      "startModes": {
+        "auto": "خودکار",
+        "manual": "دستی"
+      },
+      "autoRestartOnConfigChange": "با تغییر پیکربندی، به طور خودکار راه‌اندازی مجدد شود",
+      "executableVariant": "نوع قابل اجرا",
+      "syncResult": "همگام‌سازی کامل شد: {ensured} تضمین شد، {errors} خطا داد، {orphans} سرویس(های) orphan.",
+      "deleteServiceNote": "سرویس سیستم عامل {service} در گره {node} متوقف و حذف خواهد شد.",
+      "serviceStates": {
+        "notManageable": "ناموجود",
+        "notInstalled": "نصب نشده",
+        "restartPending": "در حال بررسی، راه‌اندازی مجدد",
+        "RUNNING": "دویدن",
+        "STOPPED": "متوقف شد",
+        "STARTING": "شروع",
+        "STOPPING": "توقف",
+        "FATAL": "کشنده",
+        "BACKOFF": "بک‌آف",
+        "PAUSED": "مکث کرد",
+        "UNKNOWN": "ناشناخته"
+      },
+      "actionResults": {
+        "started": "شروع درخواست شده",
+        "stopped": "درخواست توقف داده شد",
+        "restarted": "درخواست راه‌اندازی مجدد شد"
+      }
     },
     "protocolConnections": {
       "title": "اتصالات",
@@ -709,7 +745,11 @@
       "restartProcesses": "فرآیندها را مجدداً راه اندازی کنید",
       "restartProtocols": "پروتکل ها را مجددا راه اندازی کنید",
       "sanitizeDatabase": "پاکسازی پایگاه داده",
-      "advancedOptions": "گزینه های پیشرفته"
+      "advancedOptions": "گزینه های پیشرفته",
+      "processManagement": "مدیریت فرآیند",
+      "processManagementDisabled": "مدیریت فرآیند روی سرور غیرفعال است (هیچ سرویس پشتیبانی روی این میزبان وجود ندارد).",
+      "autoManageServices": "ایجاد/به‌روزرسانی/حذف خودکار سرویس‌های سیستم عامل هنگام تغییر نمونه‌ها",
+      "autoRestartOnConnectionChange": "هنگام تغییر اتصالات، درایور را به طور خودکار مجدداً راه‌اندازی کنید"
     }
   }
 }

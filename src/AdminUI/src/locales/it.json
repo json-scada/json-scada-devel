@@ -16,7 +16,10 @@
       "basic": "Di base",
       "detailed": "Dettagliato",
       "maximum": "Massimo"
-    }
+    },
+    "start": "Inizio",
+    "stop": "Fermare",
+    "close": "Vicino"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Statistiche",
         "actions": "Azioni",
         "process": "Processo",
-        "running": "Corsa"
+        "running": "Corsa",
+        "serviceState": "Servizio"
       },
       "addProtocolDriverInstance": "Nuova istanza",
       "addNewProtocolDriverInstance": "Aggiungi nuova istanza del driver del protocollo",
@@ -298,7 +302,39 @@
       "newNodeName": "Nuovo nome del nodo",
       "deleteInstance": "Elimina istanza",
       "deleteInstanceConfirm": "Vuoi davvero eliminare questa istanza del driver di protocollo?",
-      "editInstance": "Modifica istanza"
+      "editInstance": "Modifica istanza",
+      "restart": "Ricomincia",
+      "syncServices": "Servizi di sincronizzazione",
+      "notManageable": "Questa istanza non è gestita come servizio del sistema operativo su questo nodo.",
+      "serviceManagement": "Gestione dei servizi",
+      "managedService": "Gestisci automaticamente i servizi del sistema operativo",
+      "startMode": "Modalità di avvio del servizio",
+      "startModes": {
+        "auto": "Automatico",
+        "manual": "Manuale"
+      },
+      "autoRestartOnConfigChange": "Riavvio automatico in caso di modifica della configurazione",
+      "executableVariant": "Variante eseguibile",
+      "syncResult": "Sincronizzazione completata: {ensured} garantito, {errors} errori, {orphans} servizio(i) orfano(i).",
+      "deleteServiceNote": "Il servizio del sistema operativo {service} verrà arrestato e rimosso sul nodo {node}.",
+      "serviceStates": {
+        "notManageable": "N / A",
+        "notInstalled": "Non installato",
+        "restartPending": "Riavvio in sospeso",
+        "RUNNING": "Corsa",
+        "STOPPED": "Si è fermato",
+        "STARTING": "Di partenza",
+        "STOPPING": "Fermarsi",
+        "FATAL": "Fatale",
+        "BACKOFF": "Indietro",
+        "PAUSED": "In pausa",
+        "UNKNOWN": "Sconosciuto"
+      },
+      "actionResults": {
+        "started": "avvio richiesto",
+        "stopped": "richiesta di arresto",
+        "restarted": "riavvio richiesto"
+      }
     },
     "protocolConnections": {
       "title": "Connessioni",
@@ -709,7 +745,11 @@
       "restartProcesses": "Riavviare i processi",
       "restartProtocols": "Protocolli di riavvio",
       "sanitizeDatabase": "Sanificare il database",
-      "advancedOptions": "Opzioni avanzate"
+      "advancedOptions": "Opzioni avanzate",
+      "processManagement": "Gestione dei processi",
+      "processManagementDisabled": "La gestione dei processi è disabilitata sul server (nessun backend di servizio su questo host).",
+      "autoManageServices": "Creazione/aggiornamento/rimozione automatica dei servizi del sistema operativo al variare delle istanze.",
+      "autoRestartOnConnectionChange": "Riavvia automaticamente il driver quando cambiano le sue connessioni"
     }
   }
 }
