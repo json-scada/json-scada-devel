@@ -198,7 +198,10 @@ func readConfigFile() (cfg configData, instanceNumber int, instLogLevel int) {
 		cfgFileName = filepath.Join("~", "json-scada", "conf", "json-scada.json")
 	}
 	if _, err := os.Stat(cfgFileName); err != nil {
-		cfgFileName = filepath.Join("c:", "json-scada", "conf", "json-scada.json")
+		cfgFileName = filepath.Join("/json-scada", "conf", "json-scada.json")
+	}
+	if _, err := os.Stat(cfgFileName); err != nil {
+		cfgFileName = filepath.Join("c:/json-scada", "conf", "json-scada.json")
 	}
 	if os.Getenv("JS_CONFIG_FILE") != "" {
 		cfgFileName = os.Getenv("JS_CONFIG_FILE")
