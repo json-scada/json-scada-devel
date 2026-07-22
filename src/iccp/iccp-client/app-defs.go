@@ -19,7 +19,7 @@
 package main
 
 const (
-	DriverName    = "ICCP_CLIENT"
+	DriverName    = "ICCP"
 	EnvPrefix     = "JS_ICCPCLIENT_"
 	DriverMsg     = "{json:scada} - ICCP/TASE.2 Client"
 	DriverVersion = "0.1.1"
