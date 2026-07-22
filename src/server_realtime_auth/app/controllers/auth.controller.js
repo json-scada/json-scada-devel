@@ -1685,36 +1685,55 @@ exports.exportProject = async (req, res) => {
       project.fileName = 'new_project_' + new Date().getTime() / 1000 + '.zip'
     project.fileName = project.fileName.trim()
 
+    // Strictly validate the file name before it ever reaches a shell or the
+    // file system. Only a plain zip file name is allowed: no path separators,
+    // no directory traversal and no shell metacharacters. This neutralizes
+    // both command injection (spawn) and arbitrary file read (res.download)
+    // through the user-supplied name.
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(project.fileName)) {
+      Log.log('Invalid project file name: ' + project.fileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
+    }
+
     let cmd = ''
     let dir = ''
     if (process.platform === 'win32') {
+      dir = 'c:\\json-scada\\tmp'
+      // A .bat file cannot be spawned on Windows without a shell; the strict
+      // file-name validation above guarantees the argument contains no shell
+      // metacharacters, so no injection is possible.
       cmd = spawn(
         'c:\\json-scada\\platform-windows\\export_project.bat',
         [project.fileName],
         { shell: true }
       )
-      dir = 'c:\\json-scada\\tmp\\'
     } else {
-      cmd = spawn(
-        'sh',
-        ['~/json-scada/platform-linux/export_project.sh', project.fileName],
-        { shell: true }
+      dir = path.join(os.homedir(), 'json-scada', 'tmp')
+      const script = path.join(
+        os.homedir(),
+        'json-scada',
+        'platform-linux',
+        'export_project.sh'
       )
-      dir = os.homedir() + '/json-scada/tmp/'
+      // No shell: the file name is passed as a separate argv entry to sh and
+      // is never interpreted by a shell.
+      cmd = spawn('sh', [script, project.fileName])
     }
     cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
     cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
-      if (!fs.existsSync(dir + project.fileName) || code != 0) {
-        Log.log('Project file not found! ' + dir + project.fileName)
-        res
-          .status(200)
-          .send({ error: 'Project file not found! ' + dir + project.fileName })
+      // basename is a further guard even though the name is already validated.
+      const filePath = path.join(dir, path.basename(project.fileName))
+      if (!fs.existsSync(filePath) || code != 0) {
+        Log.log('Project file not found! ' + filePath)
+        res.status(200).send({ error: 'Project file not found! ' + filePath })
         return
       }
       registerUserAction(req, 'exportProject')
-      res.download(dir + project.fileName)
+      res.download(filePath)
     })
   } catch (err) {
     Log.log(err)
@@ -1726,27 +1745,57 @@ exports.exportProject = async (req, res) => {
 exports.importProject = async (req, res) => {
   Log.log('Import project')
   try {
-    const projectFileName = req.body.projectFileName
     if (!req.files || !req.files.projectFileData)
       throw new Error('No project file uploaded!')
+
+    // Strictly validate the uploaded file name. Strip any directory component
+    // with path.basename and allow only a plain zip name, so the name can not
+    // be used to write outside the tmp directory (path traversal).
+    const safeName = path.basename((req.body.projectFileName || '').trim())
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(safeName)) {
+      Log.log('Invalid project file name: ' + req.body.projectFileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
+    }
 
     let projectPath = ''
     let importScript = ''
     if (process.platform === 'win32') {
-      projectPath = 'c:\\json-scada\\tmp\\'
+      projectPath = 'c:\\json-scada\\tmp'
       importScript = 'c:\\json-scada\\platform-windows\\import_project.bat'
     } else {
-      projectPath = '~/json-scada/tmp/'
-      importScript = '~/json-scada/platform-linux/import_project.sh'
+      // Use the resolved home directory: fs/AdmZip do not expand a literal '~'.
+      projectPath = path.join(os.homedir(), 'json-scada', 'tmp')
+      importScript = path.join(
+        os.homedir(),
+        'json-scada',
+        'platform-linux',
+        'import_project.sh'
+      )
     }
-    if (!fs.existsSync(projectPath)) fs.mkdirSync(projectPath)
-    await req.files.projectFileData.mv(projectPath + projectFileName)
-    const zip = new AdmZip(projectPath + projectFileName)
+    if (!fs.existsSync(projectPath))
+      fs.mkdirSync(projectPath, { recursive: true })
 
-    //var zipEntries = zip.getEntries(); // an array of ZipEntry records - add password parameter if entries are password protected
-    //zipEntries.forEach(function (zipEntry) {
-    //    console.log(zipEntry.toString()); // outputs zip entries information
-    //});
+    const zipPath = path.join(projectPath, safeName)
+    await req.files.projectFileData.mv(zipPath)
+    const zip = new AdmZip(zipPath)
+
+    // Zip-Slip guard: reject archives whose entries would be written outside
+    // the extraction directory via path traversal, before extracting anything.
+    const resolvedBase = path.resolve(projectPath)
+    for (const entry of zip.getEntries()) {
+      const resolvedTarget = path.resolve(projectPath, entry.entryName)
+      if (
+        resolvedTarget !== resolvedBase &&
+        !resolvedTarget.startsWith(resolvedBase + path.sep)
+      ) {
+        throw new Error(
+          'ZIP entry attempts to write outside target directory: ' +
+            entry.entryName
+        )
+      }
+    }
 
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
