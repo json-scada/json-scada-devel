@@ -143,7 +143,7 @@ namespace Iec10XDriver
                         var destDoc = new BsonDocument
                         {
                             { "protocolDestinationConnectionNumber", (double)srv.protocolConnectionNumber },
-                            { "protocolDestinationCommonAddress",    (double)srv.autoCreateTagsCommonAddress },
+                            { "protocolDestinationCommonAddress",    (double)srv.localLinkAddress },
                             { "protocolDestinationObjectAddress",    (double)nextIoa },
                             { "protocolDestinationASDU",            (double)cat.asdu },
                             { "protocolDestinationCommandDuration",  0.0 },
