@@ -46,7 +46,7 @@ Create a document in the `protocolDriverInstances` collection:
 
 ```javascript
 db.protocolDriverInstances.insert({
-    protocolDriver: "ICCP_CLIENT",
+    protocolDriver: "ICCP",
     protocolDriverInstanceNumber: 1,
     enabled: true,
     logLevel: 1,
@@ -54,7 +54,7 @@ db.protocolDriverInstances.insert({
 });
 ```
 
-- **protocolDriver** [String] - Must be "ICCP_CLIENT". **Mandatory**.
+- **protocolDriver** [String] - Must be "ICCP". **Mandatory**.
 - **protocolDriverInstanceNumber** [Double] - Instance number (1..N). **Mandatory**.
 - **enabled** [Boolean] - Enable/disable the instance. **Mandatory**.
 - **logLevel** [Double] - Log level (0=min, 1=basic, 2=detailed, 3=debug). **Mandatory**.
@@ -66,7 +66,7 @@ Create a document in the `protocolConnections` collection:
 
 ```javascript
 db.protocolConnections.insert({
-    protocolDriver: "ICCP_CLIENT",
+    protocolDriver: "ICCP",
     protocolDriverInstanceNumber: 1,
     protocolConnectionNumber: 201,
     name: "ICCP_Link_1",
@@ -92,7 +92,7 @@ db.protocolConnections.insert({
 });
 ```
 
-- **protocolDriver** [String] - Must be "ICCP_CLIENT". **Mandatory**.
+- **protocolDriver** [String] - Must be "ICCP". **Mandatory**.
 - **protocolDriverInstanceNumber** [Double] - Instance number. **Mandatory**.
 - **protocolConnectionNumber** [Double] - Unique connection number. **Mandatory**.
 - **name** [String] - Connection name for logging. **Mandatory**.
