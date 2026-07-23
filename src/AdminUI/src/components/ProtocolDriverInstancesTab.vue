@@ -61,10 +61,6 @@
           mdi-delete
         </v-icon>
       </template>
-      <template #[`item.running`]="{ item }">
-        <v-icon v-if="item.running" color="green">mdi-check</v-icon>
-        <v-icon v-else color="red">mdi-close</v-icon>
-      </template>
       <template #[`item.serviceState`]="{ item }">
         <v-tooltip
           v-if="!statusOf(item).manageable"
@@ -103,7 +99,7 @@
         />
         <template v-else>
           <v-icon
-            v-if="statusOf(item).state !== 'RUNNING'"
+            v-if="canStart(statusOf(item))"
             size="small"
             class="me-2"
             :disabled="!statusOf(item).manageable"
@@ -113,7 +109,7 @@
             mdi-play
           </v-icon>
           <v-icon
-            v-if="statusOf(item).state === 'RUNNING'"
+            v-if="canStop(statusOf(item))"
             size="small"
             class="me-2"
             :disabled="!statusOf(item).manageable"
@@ -420,10 +416,6 @@
       sortable: false,
     },
     {
-      title: t('admin.protocolDriverInstances.headers.running'),
-      key: 'running',
-    },
-    {
       title: t(
         'admin.protocolDriverInstances.headers.activeNodeKeepAliveTimeTag'
       ),
@@ -460,7 +452,6 @@
     stats: '',
     id: -1,
     nodesText: '',
-    running: false,
     localTimeUpdate: '',
     process: '',
     processManagement: {
@@ -544,6 +535,17 @@
     const label = t(key)
     return label === key ? st.state : label
   }
+  // Show start when the service is stopped/failed/not-installed; show stop whenever
+  // it is active in any form, including PAUSED (a paused service can still be stopped).
+  function canStart(st) {
+    return (
+      !st.installed ||
+      ['STOPPED', 'FATAL', 'BACKOFF', 'UNKNOWN'].includes(st.state)
+    )
+  }
+  function canStop(st) {
+    return ['RUNNING', 'PAUSED', 'STARTING', 'STOPPING'].includes(st.state)
+  }
   function showSnack(text, color = 'primary') {
     snackbar.value = { show: true, text, color }
   }
@@ -612,9 +614,6 @@
           (item.activeNodeKeepAliveTimeTag
             ? new Date(item.activeNodeKeepAliveTimeTag).toLocaleString()
             : '')
-        item.running =
-          new Date(item.activeNodeKeepAliveTimeTag).getTime() >
-          new Date().getTime() - 10000
       })
       driverInstances.value = json
     } catch (err) {
@@ -799,9 +798,6 @@
     }
     if ('nodesText' in dup) {
       delete dup.nodesText
-    }
-    if ('running' in dup) {
-      delete dup.running
     }
     if ('localTimeUpdate' in dup) {
       delete dup.localTimeUpdate

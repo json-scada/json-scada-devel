@@ -288,7 +288,8 @@ async function applyInstanceUpdate(oldDoc, newDoc) {
     if (newDoc.enabled === false) {
       await b.ensureService(spec, { startMode: 'manual' })
       await b.setManual(spec)
-      if (st.state === 'RUNNING' || st.state === 'STARTING') await b.stop(spec)
+      if (['RUNNING', 'STARTING', 'PAUSED', 'STOPPING'].includes(st.state))
+        await b.stop(spec)
       return { action: 'disabled' }
     }
 

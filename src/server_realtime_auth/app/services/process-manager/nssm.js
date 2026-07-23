@@ -154,7 +154,7 @@ async function ensureService(spec, opts = {}) {
 async function removeService(spec) {
   const st = await status(spec)
   if (!st.installed) return { action: 'absent', serviceName: spec.winServiceName }
-  if (st.state === 'RUNNING' || st.state === 'STARTING')
+  if (['RUNNING', 'STARTING', 'PAUSED', 'STOPPING'].includes(st.state))
     await nssmRun(['stop', spec.winServiceName])
   const r = await nssmRun(['remove', spec.winServiceName, 'confirm'])
   if (r.code !== 0) throw new Error('nssm remove failed: ' + errText(r))
