@@ -5,9 +5,9 @@
 ; NSIS (Nullsoft Scriptable Install System) - http://nsis.sourceforge.net/Main_Page
 
 SetCompress Auto
-SetCompressor lzma
-SetCompressorDictSize 32
-SetDatablockOptimize Off
+SetCompressor lzma ; do not use /SOLID, it fails to build!
+SetCompressorDictSize 64
+SetDatablockOptimize On
 
 Unicode True
 ; RequestExecutionLevel user
@@ -21,8 +21,8 @@ RequestExecutionLevel admin
 
 ;--------------------------------
 
-!define VERSION "v.0.63"
-!define VERSION_ "0.63.0.0"
+!define VERSION "v.0.64"
+!define VERSION_ "0.64.0.0"
 
 Function .onInit
  System::Call 'keexrnel32::CreateMutexA(p0, i1, t "MutexJsonScadaInstall")?e'
@@ -113,6 +113,9 @@ SetRegView 64
 
 ; Closes all processes
   nsExec::Exec 'net stop JSON_SCADA_grafana'
+  nsExec::Exec 'net stop JSON_SCADA_n8nclient'
+  nsExec::Exec 'net stop JSON_SCADA_nodered_runtime'
+  nsExec::Exec 'net stop JSON_SCADA_nodered_driver'
   nsExec::Exec 'net stop JSON_SCADA_metabase'
   nsExec::Exec 'net stop JSON_SCADA_mongodb'
   nsExec::Exec 'net stop JSON_SCADA_calculations'
@@ -143,6 +146,10 @@ SetRegView 64
   nsExec::Exec 'net stop JSON_SCADA_plc4xclient'  
   nsExec::Exec 'net stop JSON_SCADA_telegraf_runtime'
   nsExec::Exec 'net stop JSON_SCADA_telegraf_listener'
+  nsExec::Exec 'net stop JSON_SCADA_modbusclient'
+  nsExec::Exec 'net stop JSON_SCADA_modbusserver'
+  nsExec::Exec 'net stop JSON_SCADA_iccpclient'
+  nsExec::Exec 'net stop JSON_SCADA_iccpserver'
   nsExec::Exec 'net stop JSON_SCADA_nginx'
   nsExec::Exec 'net stop JSON_SCADA_php'
   nsExec::Exec 'net stop JSON_SCADA_log_io_file'
@@ -193,8 +200,8 @@ SetRegView 64
   WriteRegStr HKLM "Software\Microsoft\Windows\CurrentVersion\Uninstall\JSON_SCADA" "UninstallString" '"$INSTDIR\bt-uninst.exe"'
 
   ; erases all of the old chromium
-  RMDir /r "$INSTDIR\browser-runtime" 
-  RMDir /r "$INSTDIR\browser-data" 
+  ;RMDir /r "$INSTDIR\browser-runtime" 
+  ;RMDir /r "$INSTDIR\browser-data" 
 
   ; erases all of the old Inkscape but the share dir
   ; New files will replace old.
@@ -215,8 +222,8 @@ SetRegView 64
   CreateDirectory "$INSTDIR\platform-windows\jdk-runtime"
   CreateDirectory "$INSTDIR\platform-windows\metabase-runtime"
   CreateDirectory "$INSTDIR\platform-windows\grafana-runtime"
-  CreateDirectory "$INSTDIR\platform-windows\browser-runtime"
-  CreateDirectory "$INSTDIR\platform-windows\browser-data"
+  ;CreateDirectory "$INSTDIR\platform-windows\browser-runtime"
+  ;CreateDirectory "$INSTDIR\platform-windows\browser-data"
   CreateDirectory "$INSTDIR\platform-windows\mongodb-compass-runtime"
   CreateDirectory "$INSTDIR\platform-windows\mongodb-data"
   CreateDirectory "$INSTDIR\platform-windows\mongodb-conf"
@@ -303,7 +310,7 @@ SetRegView 64
   File /a "..\platform-windows\metabase-runtime\metabase.jar"
 
   SetOutPath $INSTDIR\platform-windows\grafana-runtime
-  File /a /r "..\platform-windows\grafana-runtime\*.*"
+  File /a /r /x "docs" "..\platform-windows\grafana-runtime\*.*"
 
   SetOutPath $INSTDIR\mongo_seed_demo
   File /a /r "..\demo-docker\mongo_seed\files\*.*"
@@ -360,29 +367,6 @@ SetRegView 64
   SetOutPath $INSTDIR\src\svgedit
   File /a /r "..\src\svgedit\*.*"
   
-  #SetOutPath $INSTDIR\src\htdocs
-  #File /a "..\src\htdocs\*.*"
-  #File /a ".\release_notes.txt"
-  #SetOutPath $INSTDIR\src\htdocs\sounds
-  #File /a "..\src\htdocs\sounds\critical.wav"
-  #File /a "..\src\htdocs\sounds\noncritical.wav"
-  #SetOutPath $INSTDIR\src\htdocs\scripts
-  #File /a /r "..\src\htdocs\scripts\*.*"
-  #SetOutPath $INSTDIR\src\htdocs\sage-cepel-displays
-  #File /a "..\src\htdocs\sage-cepel-displays\README.md"
-  #SetOutPath $INSTDIR\src\htdocs\images
-  #File /a /r "..\src\htdocs\images\*.*"
-  #SetOutPath $INSTDIR\src\htdocs\charts
-  #File /a /r "..\src\htdocs\charts\*.*"
-  #SetOutPath $INSTDIR\src\htdocs\lib
-  #File /a /r "..\src\htdocs\lib\*.*"
-  #SetOutPath $INSTDIR\src\htdocs\i18n
-  #File /a /r "..\src\htdocs\i18n\*.*"
-  #SetOutPath $INSTDIR\src\htdocs-admin
-  #File /a /r "..\src\htdocs-admin\*.*"
-  #SetOutPath $INSTDIR\src\htdocs-login
-  #File /a /r "..\src\htdocs-login\*.*"
-
   SetOutPath $INSTDIR\src\camera-onvif
   File /a /r "..\src\camera-onvif\*.*"
   File /a "..\platform-windows\ffmpeg.exe"
@@ -421,8 +405,8 @@ SetRegView 64
   File /a /r "..\src\cs_custom_processor\src\*.*"
   SetOutPath $INSTDIR\src\cs_custom_processor\dist
   File /a /r "..\src\cs_custom_processor\dist\*.*"
-  SetOutPath $INSTDIR\src\cs_custom_processor\node_modules
-  File /a /r "..\src\cs_custom_processor\node_modules\*.*"
+  ;SetOutPath $INSTDIR\src\cs_custom_processor\node_modules
+  ;File /a /r "..\src\cs_custom_processor\node_modules\*.*"
 
   SetOutPath $INSTDIR\src\mcp-json-scada-db
   File /a /r "..\src\mcp-json-scada-db\*.json"
@@ -431,8 +415,8 @@ SetRegView 64
   File /a /r "..\src\mcp-json-scada-db\src\*.*"
   SetOutPath $INSTDIR\src\mcp-json-scada-db\dist
   File /a /r "..\src\mcp-json-scada-db\dist\*.*"
-  SetOutPath $INSTDIR\src\mcp-json-scada-db\node_modules
-  File /a /r "..\src\mcp-json-scada-db\node_modules\*.*"
+  ;SetOutPath $INSTDIR\src\mcp-json-scada-db\node_modules
+  ;File /a /r "..\src\mcp-json-scada-db\node_modules\*.*"
   SetOutPath $INSTDIR\src\mcp-json-scada-db\examples
   File /a /r "..\src\mcp-json-scada-db\examples\*.*"
 
@@ -466,6 +450,33 @@ SetRegView 64
   SetOutPath $INSTDIR\src\OPC-UA-Server\node_modules
   File /a /r "..\src\OPC-UA-Server\node_modules\*.*"
 
+  SetOutPath $INSTDIR\src\modbus
+  File /a "..\src\modbus\*.json"
+  File /a "..\src\modbus\*.md"
+  ;SetOutPath $INSTDIR\src\modbus\node_modules
+  ;File /a /r "..\src\modbus\node_modules\*.*"
+  SetOutPath $INSTDIR\src\modbus\src
+  File /a /r "..\src\modbus\src\*.*"
+  SetOutPath $INSTDIR\src\modbus\dist
+  File /a /r "..\src\modbus\dist\*.*"
+
+  SetOutPath $INSTDIR\src\n8n-client
+  File /a "..\src\n8n-client\*.js"
+  File /a "..\src\n8n-client\*.json"
+  File /a "..\src\n8n-client\*.md"
+  SetOutPath $INSTDIR\src\n8n-client\node_modules
+  File /a /r "..\src\n8n-client\node_modules\*.*"
+
+  SetOutPath $INSTDIR\src\node-red-driver
+  File /a "..\src\node-red-driver\*.json"
+  File /a "..\src\node-red-driver\*.md"
+  ;SetOutPath $INSTDIR\src\node-red-driver\node_modules
+  ;File /a /r "..\src\node-red-driver\node_modules\*.*"
+  SetOutPath $INSTDIR\src\node-red-driver\src
+  File /a /r "..\src\node-red-driver\src\*.*"
+  SetOutPath $INSTDIR\src\node-red-driver\dist
+  File /a /r "..\src\node-red-driver\dist\*.*"
+  
   SetOutPath $INSTDIR\src\carbone-reports
   File /a /r "..\src\carbone-reports\*.*"
 
@@ -493,19 +504,23 @@ SetRegView 64
   SetOutPath $INSTDIR\src\custom-developments\transformer_with_command
   File /a /r /x node_modules "..\src\custom-developments\transformer_with_command\*.*"
 
-  SetOutPath $INSTDIR\platform-windows\browser-runtime
-  File /a /r "..\platform-windows\browser-runtime\*.*"
+  ;SetOutPath $INSTDIR\platform-windows\browser-runtime
+  ;File /a /r "..\platform-windows\browser-runtime\*.*"
 
-  SetOutPath $INSTDIR\platform-windows\browser-data
-  File /a /r "..\platform-windows\browser-data\*.*"
+  ;SetOutPath $INSTDIR\platform-windows\browser-data
+  ;File /a /r "..\platform-windows\browser-data\*.*"
 
-  ; ua-edge-translalor
+  ; nodered
+  SetOutPath $INSTDIR\platform-windows\nodered-runtime
+  File /a /r "..\platform-windows\nodered-runtime\*.*"
+
+  ; ua-edge-translator
   SetOutPath $INSTDIR\platform-windows\ua-edge-translator-runtime
   File /a /r "..\platform-windows\ua-edge-translator-runtime\*.*"
 
   ; Inkscape + SCADA extension
   SetOutPath $INSTDIR\platform-windows\inkscape-runtime
-  File /a /r "..\platform-windows\inkscape-runtime\*.*"
+  File /a /r /x "*.com" "..\platform-windows\inkscape-runtime\*.*"
   ;SetOutPath $INSTDIR\platform-windows\inkscape-runtime\share\inkscape\extensions
   ;File /a /r "..\src\inkscape-extension\scada.inx"
   ;File /a /r "..\src\inkscape-extension\scada.py"
@@ -556,22 +571,25 @@ SetRegView 64
   CreateShortCut "$DESKTOP\JSON-SCADA\_Start_Services.lnk"                "$INSTDIR\platform-windows\start_services.bat"  
   CreateShortCut "$DESKTOP\JSON-SCADA\_Stop_Services.lnk"                 "$INSTDIR\platform-windows\stop_services.bat"  
   CreateShortCut "$DESKTOP\JSON-SCADA\Windows Services.lnk"               "services.msc"  
-  CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB HTTPS.lnk"          "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Chromium Browser.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT $NAVPOSOPT"
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Display.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISTEL $NAVPOSOPT" "$INSTDIR\src\htdocs\images\tela.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Events.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISEVE $NAVPOSOPT" "$INSTDIR\src\htdocs\images\chrono.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Historical.lnk"            "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISHEV $NAVPOSOPT" "$INSTDIR\src\htdocs\images\calendar.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Tabular.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISTAB $NAVPOSOPT" "$INSTDIR\src\htdocs\images\tabular.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Alarms.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISANO $NAVPOSOPT" "$INSTDIR\src\htdocs\images\firstaid.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Grafana.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVGRAFAN $NAVPOSOPT" "$INSTDIR\src\htdocs\images\grafana.ico" 
-  CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Metabase.lnk"              "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVMETABA $NAVPOSOPT" "$INSTDIR\src\htdocs\images\metabase.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB HTTPS.lnk"          "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
+  !insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB.URL" "http://127.0.0.1"
+  !insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB HTTPS.URL" "https://127.0.0.1"
+  
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Chromium Browser.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT $NAVPOSOPT"
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Display.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISTEL $NAVPOSOPT" "$INSTDIR\src\htdocs\images\tela.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Events.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISEVE $NAVPOSOPT" "$INSTDIR\src\htdocs\images\chrono.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Historical.lnk"            "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISHEV $NAVPOSOPT" "$INSTDIR\src\htdocs\images\calendar.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Tabular.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISTAB $NAVPOSOPT" "$INSTDIR\src\htdocs\images\tabular.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Alarms.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISANO $NAVPOSOPT" "$INSTDIR\src\htdocs\images\firstaid.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Grafana.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVGRAFAN $NAVPOSOPT" "$INSTDIR\src\htdocs\images\grafana.ico" 
+  ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Metabase.lnk"              "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVMETABA $NAVPOSOPT" "$INSTDIR\src\htdocs\images\metabase.ico" 
+  
   CreateShortCut "$DESKTOP\JSON-SCADA\Excel Config Spreadsheet.lnk"       "$INSTDIR\conf\json-scada-config.xlsm"
   CreateShortCut "$DESKTOP\JSON-SCADA\Compass (Mongodb GUI Client).lnk"   "$INSTDIR\platform-windows\mongodb-compass-runtime\MongoDBCompass.exe"
   CreateShortCut "$DESKTOP\JSON-SCADA\pgAdmin4 (Postgres GUI Client).lnk" "$INSTDIR\platform-windows\postgresql-runtime\pgAdmin 4\runtime\pgAdmin4.exe"
   CreateShortCut "$DESKTOP\JSON-SCADA\Inkscape SAGE (SVG Editor).lnk"     "$INSTDIR\platform-windows\inkscape-runtime\bin\inkscape.exe"
   CreateShortCut "$DESKTOP\JSON-SCADA\Uninstall.lnk"                      "$INSTDIR\bt-uninst.exe"
-
 
   ; clear chromium cache
   Delete "$INSTDIR\platform-windows\browser-data\Default\Cache\*.*"
@@ -720,6 +738,26 @@ Section "Uninstall"
   ExecWait `"${SC}" delete "JSON_SCADA_plc4xclient"`
   ClearErrors
 
+  ExecWait `"${SC}" stop "JSON_SCADA_modbusclient"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_modbusclient"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_modbusserver"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_modbusserver"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_iccpclient"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_iccpclient"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_iccpserver"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_iccpserver"`
+  ClearErrors
+
   ExecWait `"${SC}" stop "JSON_SCADA_telegraf_listener"`
   Sleep 50
   ExecWait `"${SC}" delete "JSON_SCADA_telegraf_listener"`
@@ -773,6 +811,21 @@ Section "Uninstall"
   ExecWait `"${SC}" stop "JSON_SCADA_grafana"`
   Sleep 50
   ExecWait `"${SC}" delete "JSON_SCADA_grafana"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_n8nclient"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_n8nclient"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_nodered_driver"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_nodered_driver"`
+  ClearErrors
+
+  ExecWait `"${SC}" stop "JSON_SCADA_nodered_runtime"`
+  Sleep 50
+  ExecWait `"${SC}" delete "JSON_SCADA_nodered_runtime"`
   ClearErrors
 
   ExecWait `"${SC}" stop "JSON_SCADA_metabase"`
