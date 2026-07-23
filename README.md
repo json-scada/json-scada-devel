@@ -57,7 +57,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - MongoDB as the real-time core database, persistence layer, config store, SOE historian.
 - Event-based realtime async data processing with MongoDB Change Streams.
 - Portability and modular interoperability over Linux, Windows, Mac OSX, x86/64, ARM.
-- Windows installer available in the [releases section](https://github.com/riclolsen/json-scada/releases/tag/V0.63-alpha).
+- Windows installer available in the [releases section](https://github.com/riclolsen/json-scada/releases/tag/V0.64-alpha).
 - Unlimited tags, servers, and users.
 - Horizontal scalability, from a single computer to big clusters (MongoDB-sharding), Docker containers, VMs, Kubernetes, cloud, or hybrid deployments.
 - Modular distributed architecture. Lightweight redundant data acquisition nodes can connect securely over TLS to the database server. E.g. a Raspberry PI can be a data acquisition node.
@@ -99,7 +99,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 ## Documentation
 
 - [Generic Install Guide](https://github.com/riclolsen/json-scada/blob/master/docs/install.md)
-- [Windows Installer](https://github.com/riclolsen/json-scada/releases/tag/V0.63-alpha)
+- [Windows Installer](https://github.com/riclolsen/json-scada/releases/tag/V0.64-alpha)
 - [RedHat/Rocky/Alma Linux Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#rhel94-and-compatible-systems-automated-installation)
 - [Ubuntu Linux Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#ubuntu-2404-scripted-installation)
 - [Generic Install Guide](https://github.com/riclolsen/json-scada/blob/master/docs/install.md)
@@ -109,21 +109,30 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Config File](https://github.com/riclolsen/json-scada/blob/master/conf/README.md)
 - [SVG Synoptic Display Editor](https://github.com/riclolsen/json-scada/blob/master/src/svg-display-editor/README.md)
 - [IEC61850 Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_client/README.md)
-- [IEC60870-5-104 Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec104server/README.md)
-- [IEC60870-5-104 Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec104client/README.md)
-- [IEC60870-5-101 Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec101server/README.md)
-- [IEC60870-5-101 Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec101client/README.md)
+- [IEC60870-5-104 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104server/README.md)
+- [IEC60870-5-104 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104client/README.md)
+- [IEC60870-5-101 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec101server/README.md)
+- [IEC60870-5-101 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec101client/README.md)
+- [IEC60870-5-104 Server Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec104server/README.md)
+- [IEC60870-5-104 Client Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec104client/README.md)
+- [IEC60870-5-101 Server Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec101server/README.md)
+- [IEC60870-5-101 Client Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/lib60870.netcore/iec101client/README.md)
 - [ICCP TASE2 Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/iccp/iccp-server/README.md)
 - [DNP3 Client C# Driver](https://github.com/riclolsen/json-scada/blob/master/src/dnp3/Dnp3Client/README.md)
 - [DNP3 Client C++ Driver](https://github.com/riclolsen/json-scada/blob/master/src/dnp3/Dnp3ClientCpp/README.md)
 - [DNP3 Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/dnp3/Dnp3Server/README.md)
 - [Telegraf Listener Driver](https://github.com/riclolsen/json-scada/blob/master/src/telegraf-listener/README.md)
+- [Node-RED Integration Driver (bidirectional)](https://github.com/riclolsen/json-scada/blob/master/src/node-red-driver/README.md)
+- [N8N Integration Driver (bidirectional)](https://github.com/riclolsen/json-scada/blob/master/src/n8n-client/README.md)
 - [MQTT Sparkplug-B Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/mqtt-sparkplug/README.md)
 - [OPC-UA Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Client/README.md)
 - [OPC-UA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Server/README.md)
 - [OPC-DA Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Server/README.md)
 - [PLC4X-GO Modbus Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/plc4x-client/README.md)
+- [PLC4J Client Driver (Java alternative for the PLC4X driver)](https://github.com/riclolsen/json-scada/blob/master/src/plc4j-client/README.md)
+- [Modbus Client Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](https://github.com/riclolsen/json-scada/blob/master/src/modbus/README-client.md)
+- [Modbus Server Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](https://github.com/riclolsen/json-scada/blob/master/src/modbus/README-server.md)
 - [CIP Ethernet/IP PLCTags Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/libplctag/PLCTagsClient/README.md)
 - [Calculations](https://github.com/riclolsen/json-scada/blob/master/src/calculations/README.md)
 - [Change Stream Data Processor](https://github.com/riclolsen/json-scada/blob/master/src/cs_data_processor/README.md)
@@ -142,12 +151,16 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] IEC 60870-5-101 Client Serial/TCP
 - [ ] IEC 60870-5-103 Client
 - [x] IEC 61850 MMS Client TCP/TLS
-- [ ] IEC 61850 MMS Server
+- [x] IEC 61850 MMS Server
 - [ ] IEC 61850 GOOSE/SV Client
 - [x] DNP3 Client TCP/UDP/TLS/Serial
 - [x] DNP3 Server TCP/UDP/TLS/Serial
-- [x] Modbus Client via PLC4X-GO
-- [ ] ICCP Client TCP/TLS
+- [x] Modbus Client TCP/TLS/Serial
+- [x] Modbus Server TCP/TLS/Serial
+- [x] Various protocols (Modbus, etc.) via PLC4X-Java/Go
+- [x] Modbus Client (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
+- [x] Modbus Server (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
+- [x] ICCP Client TCP/TLS
 - [x] ICCP Server - Developed with closed source TASE2 library (100% native Go)
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
 - [x] MQTT/Sparkplug-B Pub/Sub TCP/TLS
@@ -200,8 +213,8 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [ ] Kafka/Redpanda/Benthos Integration
 - [ ] Eclipse 4diac
 - [ ] Supabase Integration
-- [ ] NodeRed Integration
-- [ ] n8n Integration
+- [x] Node-RED Integration (bidirectional driver + node-red-contrib-jsonscada)
+- [x] n8n Integration (bidirectional driver + n8n-nodes-jsonscada)
 - [ ] Alerta Integration (https://alerta.io/)
 - [x] PLC4X-GO Integration (https://plc4x.apache.org/)
 - [x] Example templates/API for fast AI-helped custom app developments

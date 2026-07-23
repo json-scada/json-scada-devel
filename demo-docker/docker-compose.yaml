@@ -260,6 +260,41 @@ services:
     networks:
       - jsdemo_net
 
+  # N8N integration driver (bidirectional n8n integration)
+  n8n-client:
+    image: node:22-alpine
+    container_name: jsdemo_n8n-client
+    command:  sh -c "cd /n8n-client && npm install --no-audit --no-fund && sleep 60 && node index.js"
+    restart: unless-stopped
+    expose:
+      - "51930"
+    volumes:
+      - ../src/n8n-client:/n8n-client
+      - ./conf:/conf
+      - ./log:/log
+    links:
+      - jsdemo_mongorsn1
+    networks:
+      - jsdemo_net
+
+  # Optional: n8n workflow-automation platform. n8n is fair-code licensed; this pulls
+  # the public image at runtime (not bundled/redistributed by JSON-SCADA). Enable the
+  # N8N1 demo connection in the AdminUI to try the integration end-to-end.
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: jsdemo_n8n
+    restart: unless-stopped
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - N8N_PORT=5678
+      - GENERIC_TIMEZONE=UTC
+    ports:
+      - 5678:5678
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - jsdemo_net
+
   # OPC-UA Server
   opcua_server:
     image: node:22-alpine
@@ -432,6 +467,39 @@ services:
       - telegraf_listener
     networks:
       - jsdemo_net
+
+#  # Node-RED integration (opt-in). To enable: set the NODE-RED instance
+#  # (protocolDriverInstances) enabled=true in the seed, then uncomment both services.
+#  # The driver builds itself on first start; Node-RED loads node-red-contrib-jsonscada.
+#  nodered_driver:
+#    image: node:22-alpine
+#    container_name: jsdemo_nodered_driver
+#    command: sh -c "cd /node-red-driver && npm install && npm run build && sleep 40 && node dist/main.js 1 1 /conf/json-scada.json"
+#    restart: unless-stopped
+#    volumes:
+#      - ../src/node-red-driver:/node-red-driver
+#      - ./conf:/conf
+#      - ./log:/log
+#    links:
+#      - jsdemo_mongorsn1
+#    networks:
+#      - jsdemo_net
+#
+#  nodered:
+#    image: nodered/node-red:latest
+#    container_name: jsdemo_nodered
+#    restart: unless-stopped
+#    ports:
+#      - "1880:1880"
+#    environment:
+#      # install the palette into the mounted data dir on first boot
+#      - NODE_RED_ENABLE_PROJECTS=false
+#    volumes:
+#      - ./nodered_data:/data
+#    links:
+#      - nodered_driver
+#    networks:
+#      - jsdemo_net
 
 #  # Metabase for dashboards (can connect to MONGODB and POSTGRESQL)
 #  metabase:
