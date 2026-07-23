@@ -184,13 +184,35 @@
 
     <script type="text/javascript" src="lib/jsmpeg.min.js"></script>
     <script type="text/javascript">
-      player = new JSMpeg.Player('ws://localhost:9001', {
-        canvas: document.getElementById('canvas') // Canvas should be a canvas DOM element
-      });
-
-      // Get camera name from URL parameters
+      // Get parameters from the URL:
+      //   CameraName - connection name used for PTZ commands (default CAM001)
+      //   wsUrl      - full WebSocket URL of the JSMpeg stream
+      //   wsPort     - port of the JSMpeg stream on this page's host
+      //   camId      - 3-digit camera id proxied at /camNNN (nginx), e.g. 001
+      // With no parameter the legacy default ws://localhost:9001 is used.
       const urlParams = new URLSearchParams(window.location.search);
       let CameraName = urlParams.get('CameraName') || 'CAM001';
+
+      let wsUrl = urlParams.get('wsUrl');
+      if (!wsUrl) {
+        const wsPort = urlParams.get('wsPort');
+        const camId = urlParams.get('camId');
+        if (wsPort) {
+          wsUrl = 'ws://' + (location.hostname || 'localhost') + ':' + wsPort;
+        } else if (camId && location.host) {
+          wsUrl =
+            (location.protocol === 'https:' ? 'wss://' : 'ws://') +
+            location.host +
+            '/cam' +
+            camId;
+        } else {
+          wsUrl = 'ws://localhost:9001';
+        }
+      }
+
+      const player = new JSMpeg.Player(wsUrl, {
+        canvas: document.getElementById('canvas') // Canvas should be a canvas DOM element
+      });
 
       // Camera control constants
       const CAMERA_ID = CameraName;
@@ -523,15 +545,13 @@
               data.Body.ResponseHeader.RequestHandle !== RequestHandle ||
               data.Body.ResponseHeader.ServiceResult !== OpcStatusCodes.Good
             ) {
-              CNPTO = 0
+              console.warn('Command request failed!')
               return
             }
             if (data.Body.Results[0] !== OpcStatusCodes.Good) {
-              CNPTO = 0
+              console.warn('Command rejected!')
+              return
             }
-
-            // success
-            CHANDLE = data.Body._CommandHandles[0]
 
             // Command log in browser's localStorage
             if (storageAvailable('localStorage')) {
@@ -546,7 +566,7 @@
             }
           })
           .catch(err => {
-            CNPTO = 0
+            console.warn('Command request error!', err)
           })
       }
     </script>

@@ -16,7 +16,10 @@
       "basic": "基本",
       "detailed": "詳細",
       "maximum": "最大"
-    }
+    },
+    "start": "始める",
+    "stop": "停止",
+    "close": "近い"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "統計",
         "actions": "アクション",
         "process": "プロセス",
-        "running": "ランニング"
+        "running": "ランニング",
+        "serviceState": "サービス"
       },
       "addProtocolDriverInstance": "新しいインスタンス",
       "addNewProtocolDriverInstance": "新しいプロトコル ドライバー インスタンスの追加",
@@ -298,7 +302,39 @@
       "newNodeName": "新しいノード名",
       "deleteInstance": "インスタンスの削除",
       "deleteInstanceConfirm": "このプロトコル ドライバー インスタンスを削除してもよろしいですか?",
-      "editInstance": "インスタンスの編集"
+      "editInstance": "インスタンスの編集",
+      "restart": "再起動",
+      "syncServices": "同期サービス",
+      "notManageable": "このインスタンスは、このノード上のOSサービスとして管理されていません。",
+      "serviceManagement": "サービス管理",
+      "managedService": "OSサービスを自動的に管理する",
+      "startMode": "サービス開始モード",
+      "startModes": {
+        "auto": "自動",
+        "manual": "マニュアル"
+      },
+      "autoRestartOnConfigChange": "設定変更時に自動的に再起動する",
+      "executableVariant": "実行可能ファイル",
+      "syncResult": "同期完了: {ensured} 保証済み、{errors} エラー、{orphans} 孤立サービス。",
+      "deleteServiceNote": "OSサービス{service}はノード{node}上で停止され、削除されます。",
+      "serviceStates": {
+        "notManageable": "該当なし",
+        "notInstalled": "インストールされていません",
+        "restartPending": "再起動待ち",
+        "RUNNING": "ランニング",
+        "STOPPED": "停止しました",
+        "STARTING": "起動",
+        "STOPPING": "停止",
+        "FATAL": "致命的",
+        "BACKOFF": "下がれ",
+        "PAUSED": "一時停止",
+        "UNKNOWN": "未知"
+      },
+      "actionResults": {
+        "started": "開始が要求されました",
+        "stopped": "停止要請",
+        "restarted": "再起動を要求しました"
+      }
     },
     "protocolConnections": {
       "title": "接続",
@@ -709,7 +745,11 @@
       "restartProcesses": "プロセスを再起動する",
       "restartProtocols": "再起動プロトコル",
       "sanitizeDatabase": "データベースのサニタイズ",
-      "advancedOptions": "詳細オプション"
+      "advancedOptions": "詳細オプション",
+      "processManagement": "プロセス管理",
+      "processManagementDisabled": "サーバー上でプロセス管理が無効になっています（このホストにはサービスバックエンドがありません）。",
+      "autoManageServices": "インスタンスが変更されたときに、OSサービスを自動的に作成/更新/削除する",
+      "autoRestartOnConnectionChange": "接続が変更されたときにドライバーを自動的に再起動する"
     }
   }
 }

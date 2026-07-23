@@ -30,6 +30,9 @@ const bcrypt = require('bcryptjs')
 const { spawn } = require('child_process')
 const AdmZip = require('adm-zip')
 const { Client } = require('ldapts')
+const ProcessManager = require('../services/process-manager')
+const RestartScheduler = require('../services/restart-scheduler')
+const SystemSettings = require('../services/system-settings')
 const User = db.user
 const Role = db.role
 const Tag = db.tag
@@ -235,6 +238,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3_SERVER',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP_SERVER',
       'ONVIF',
@@ -252,6 +256,9 @@ exports.updateProtocolConnection = async (req, res) => {
         case 'IEC60870-5-104_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:2404'
           break
+        case 'IEC61850_SERVER':
+          req.body.ipAddressLocalBind = '0.0.0.0:102'
+          break
         case 'DNP3_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:20000'
           break
@@ -260,6 +267,9 @@ exports.updateProtocolConnection = async (req, res) => {
           break
         case 'TELEGRAF-LISTENER':
           req.body.ipAddressLocalBind = '0.0.0.0:51920'
+          break
+        case 'N8N':
+          req.body.ipAddressLocalBind = '0.0.0.0:51930'
           break
         case 'ICCP_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:102'
@@ -281,6 +291,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'PLCTAG',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP',
       'ICCP_SERVER',
@@ -295,6 +306,7 @@ exports.updateProtocolConnection = async (req, res) => {
     [
       'OPC-UA',
       'TELEGRAF-LISTENER',
+      'N8N',
       'MQTT-SPARKPLUG-B',
       'IEC61850',
       'PLC4X',
@@ -317,6 +329,7 @@ exports.updateProtocolConnection = async (req, res) => {
   if (
     [
       'MQTT-SPARKPLUG-B',
+      'N8N',
       'OPC-UA_SERVER',
       'IEC61850',
       'PLC4X',
@@ -859,11 +872,56 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   try {
-    await ProtocolConnection.findOneAndUpdate({ _id: req.body._id }, req.body)
-    res.status(200).send({})
+    // findOneAndUpdate returns the pre-update document (used to detect instance moves)
+    const oldConn = await ProtocolConnection.findOneAndUpdate(
+      { _id: req.body._id },
+      req.body
+    )
+      .lean()
+      .exec()
+    const restartInfo = await scheduleConnectionRestart(
+      req.body.protocolDriver,
+      req.body.protocolDriverInstanceNumber,
+      oldConn
+    )
+    res.status(200).send({ ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
+  }
+}
+
+// Schedules a debounced driver restart after a connection change, honoring the
+// global auto-restart setting. Returns flags the UI uses to inform the operator.
+async function scheduleConnectionRestart(driver, instanceNumber, oldConn) {
+  try {
+    const settings = await SystemSettings.getSettings()
+    const auto = settings.autoRestartOnConnectionChange
+    const result = await RestartScheduler.scheduleRestart(
+      driver,
+      instanceNumber,
+      auto
+    )
+    // connection moved between instances: also restart the previous owner
+    if (
+      oldConn &&
+      (oldConn.protocolDriver !== driver ||
+        Math.trunc(Number(oldConn.protocolDriverInstanceNumber)) !==
+          Math.trunc(Number(instanceNumber)))
+    ) {
+      await RestartScheduler.scheduleRestart(
+        oldConn.protocolDriver,
+        oldConn.protocolDriverInstanceNumber,
+        auto
+      )
+    }
+    return {
+      restartScheduled: !!result.scheduled,
+      restartPending: !!result.pending,
+    }
+  } catch (e) {
+    Log.log('scheduleConnectionRestart: ' + e.message)
+    return {}
   }
 }
 
@@ -877,9 +935,21 @@ exports.deleteProtocolConnection = async (req, res) => {
       })
     }
 
-    await ProtocolConnection.findOneAndDelete({ _id: req.body._id })
+    const conn = await ProtocolConnection.findOneAndDelete({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
 
-    res.status(200).send({ error: false })
+    const restartInfo = conn
+      ? await scheduleConnectionRestart(
+          conn.protocolDriver,
+          conn.protocolDriverInstanceNumber,
+          null
+        )
+      : {}
+
+    res.status(200).send({ error: false, ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -945,8 +1015,24 @@ exports.deleteProtocolDriverInstance = async (req, res) => {
   try {
     registerUserAction(req, 'deleteProtocolDriverInstance')
 
+    const doc = await ProtocolDriverInstance.findOne({ _id: req.body._id })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndDelete({ _id: req.body._id })
-    res.status(200).send({ error: false })
+
+    // best-effort: stop and uninstall the OS service for the removed instance
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices && doc) {
+        const r = await ProcessManager.removeService(doc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('deleteProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -1001,12 +1087,35 @@ exports.updateProtocolDriverInstance = async (req, res) => {
       req.body.protocolDriverInstanceNumber
     )
     req.body.logLevel = Math.floor(req.body.logLevel)
+    const oldDoc = await ProtocolDriverInstance.findOne({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndUpdate(
       { _id: req.body._id },
       req.body
     )
     registerUserAction(req, 'updateProtocolDriverInstance')
-    res.status(200).send({ error: false })
+
+    // best-effort: reconcile the OS service to the updated instance definition
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices) {
+        const newDoc = await ProtocolDriverInstance.findOne({
+          _id: req.body._id,
+        })
+          .lean()
+          .exec()
+        const r = await ProcessManager.applyInstanceUpdate(oldDoc, newDoc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('updateProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -1576,36 +1685,55 @@ exports.exportProject = async (req, res) => {
       project.fileName = 'new_project_' + new Date().getTime() / 1000 + '.zip'
     project.fileName = project.fileName.trim()
 
+    // Strictly validate the file name before it ever reaches a shell or the
+    // file system. Only a plain zip file name is allowed: no path separators,
+    // no directory traversal and no shell metacharacters. This neutralizes
+    // both command injection (spawn) and arbitrary file read (res.download)
+    // through the user-supplied name.
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(project.fileName)) {
+      Log.log('Invalid project file name: ' + project.fileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
+    }
+
     let cmd = ''
     let dir = ''
     if (process.platform === 'win32') {
+      dir = 'c:\\json-scada\\tmp'
+      // A .bat file cannot be spawned on Windows without a shell; the strict
+      // file-name validation above guarantees the argument contains no shell
+      // metacharacters, so no injection is possible.
       cmd = spawn(
         'c:\\json-scada\\platform-windows\\export_project.bat',
         [project.fileName],
         { shell: true }
       )
-      dir = 'c:\\json-scada\\tmp\\'
     } else {
-      cmd = spawn(
-        'sh',
-        ['~/json-scada/platform-linux/export_project.sh', project.fileName],
-        { shell: true }
+      dir = path.join(os.homedir(), 'json-scada', 'tmp')
+      const script = path.join(
+        os.homedir(),
+        'json-scada',
+        'platform-linux',
+        'export_project.sh'
       )
-      dir = os.homedir() + '/json-scada/tmp/'
+      // No shell: the file name is passed as a separate argv entry to sh and
+      // is never interpreted by a shell.
+      cmd = spawn('sh', [script, project.fileName])
     }
     cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
     cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
-      if (!fs.existsSync(dir + project.fileName) || code != 0) {
-        Log.log('Project file not found! ' + dir + project.fileName)
-        res
-          .status(200)
-          .send({ error: 'Project file not found! ' + dir + project.fileName })
+      // basename is a further guard even though the name is already validated.
+      const filePath = path.join(dir, path.basename(project.fileName))
+      if (!fs.existsSync(filePath) || code != 0) {
+        Log.log('Project file not found! ' + filePath)
+        res.status(200).send({ error: 'Project file not found! ' + filePath })
         return
       }
       registerUserAction(req, 'exportProject')
-      res.download(dir + project.fileName)
+      res.download(filePath)
     })
   } catch (err) {
     Log.log(err)
@@ -1617,27 +1745,57 @@ exports.exportProject = async (req, res) => {
 exports.importProject = async (req, res) => {
   Log.log('Import project')
   try {
-    const projectFileName = req.body.projectFileName
     if (!req.files || !req.files.projectFileData)
       throw new Error('No project file uploaded!')
+
+    // Strictly validate the uploaded file name. Strip any directory component
+    // with path.basename and allow only a plain zip name, so the name can not
+    // be used to write outside the tmp directory (path traversal).
+    const safeName = path.basename((req.body.projectFileName || '').trim())
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(safeName)) {
+      Log.log('Invalid project file name: ' + req.body.projectFileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
+    }
 
     let projectPath = ''
     let importScript = ''
     if (process.platform === 'win32') {
-      projectPath = 'c:\\json-scada\\tmp\\'
+      projectPath = 'c:\\json-scada\\tmp'
       importScript = 'c:\\json-scada\\platform-windows\\import_project.bat'
     } else {
-      projectPath = '~/json-scada/tmp/'
-      importScript = '~/json-scada/platform-linux/import_project.sh'
+      // Use the resolved home directory: fs/AdmZip do not expand a literal '~'.
+      projectPath = path.join(os.homedir(), 'json-scada', 'tmp')
+      importScript = path.join(
+        os.homedir(),
+        'json-scada',
+        'platform-linux',
+        'import_project.sh'
+      )
     }
-    if (!fs.existsSync(projectPath)) fs.mkdirSync(projectPath)
-    await req.files.projectFileData.mv(projectPath + projectFileName)
-    const zip = new AdmZip(projectPath + projectFileName)
+    if (!fs.existsSync(projectPath))
+      fs.mkdirSync(projectPath, { recursive: true })
 
-    //var zipEntries = zip.getEntries(); // an array of ZipEntry records - add password parameter if entries are password protected
-    //zipEntries.forEach(function (zipEntry) {
-    //    console.log(zipEntry.toString()); // outputs zip entries information
-    //});
+    const zipPath = path.join(projectPath, safeName)
+    await req.files.projectFileData.mv(zipPath)
+    const zip = new AdmZip(zipPath)
+
+    // Zip-Slip guard: reject archives whose entries would be written outside
+    // the extraction directory via path traversal, before extracting anything.
+    const resolvedBase = path.resolve(projectPath)
+    for (const entry of zip.getEntries()) {
+      const resolvedTarget = path.resolve(projectPath, entry.entryName)
+      if (
+        resolvedTarget !== resolvedBase &&
+        !resolvedTarget.startsWith(resolvedBase + path.sep)
+      ) {
+        throw new Error(
+          'ZIP entry attempts to write outside target directory: ' +
+            entry.entryName
+        )
+      }
+    }
 
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)

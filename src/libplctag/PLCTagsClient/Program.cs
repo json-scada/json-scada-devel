@@ -1,23 +1,22 @@
-﻿/* 
+/*
  * PLCTags CIP Ethernet/IP & Modbus TCP Client Protocol driver for {json:scada}
- * {json:scada} - Copyright (c) 2020 - 2024 - Ricardo L. Olsen
+ * {json:scada} - Copyright (c) 2020 - 2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
- * 
- * This program is free software: you can redistribute it and/or modify  
- * it under the terms of the GNU General Public License as published by  
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, version 3.
  *
- * This program is distributed in the hope that it will be useful, but 
- * WITHOUT ANY WARRANTY; without even the implied warranty of 
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
+ * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
 using libplctag;
-using libplctag.DataTypes;
 using System;
 using System.IO;
 using System.Text.Json;
@@ -25,17 +24,37 @@ using System.Threading;
 using MongoDB.Bson;
 using MongoDB.Bson.Serialization.Attributes;
 using MongoDB.Driver;
-using System.Linq;
 using System.Collections.Generic;
+using Tag = libplctag.Tag;
 
 namespace PLCTagDriver
 {
     partial class MainClass
     {
         public static String ProtocolDriverName = "PLCTAG";
-        public static String DriverVersion = "0.1.1";
+        public static String DriverVersion = "0.2.0";
         public static bool Active = false; // indicates this driver instance is the active node in the moment
         public static Int32 DataBufferLimit = 10000; // limit to start dequeuing and discarding data from the acquisition buffer
+
+        public enum PlcDataType
+        {
+            Bool,
+            Sint,
+            Int,
+            Dint,
+            Lint,
+            Real,
+            Lreal
+        }
+
+        public class ScanTag // a PLC tag to scan plus metadata to decode its value(s)
+        {
+            public Tag Tag;
+            public PlcDataType Type;
+            public string TypeName; // asdu type name reported to the database
+            public bool IsArray;
+            public int ArrayLength;
+        }
 
         [BsonIgnoreExtraElements]
         public class
@@ -78,32 +97,19 @@ namespace PLCTagDriver
             public int readCacheMs { get; set; }
             [BsonDefaultValue(1000)]
             public int timeoutMs { get; set; }
-            [BsonDefaultValue("01")]
+            // byte order overrides, only applied when explicitly configured (empty = libplctag protocol default)
+            [BsonDefaultValue("")]
             public string int16ByteOrder { get; set; }
-            [BsonDefaultValue("0123")]
+            [BsonDefaultValue("")]
             public string int32ByteOrder { get; set; }
-            [BsonDefaultValue("01234567")]
+            [BsonDefaultValue("")]
             public string int64ByteOrder { get; set; }
-            [BsonDefaultValue("0123")]
+            [BsonDefaultValue("")]
             public string float32ByteOrder { get; set; }
-            [BsonDefaultValue("01234567")]
+            [BsonDefaultValue("")]
             public string float64ByteOrder { get; set; }
 
-            public List<libplctag.Tag<BoolPlcMapper, bool>> listBoolTags = new List<libplctag.Tag<BoolPlcMapper, bool>>();
-            public List<libplctag.Tag<SintPlcMapper, sbyte>> listSintTags = new List<libplctag.Tag<SintPlcMapper, sbyte>>();
-            public List<libplctag.Tag<IntPlcMapper, short>> listIntTags = new List<libplctag.Tag<IntPlcMapper, short>>();
-            public List<libplctag.Tag<DintPlcMapper, int>> listDintTags = new List<libplctag.Tag<DintPlcMapper, int>>();
-            public List<libplctag.Tag<LintPlcMapper, long>> listLintTags = new List<libplctag.Tag<LintPlcMapper, long>>();
-            public List<libplctag.Tag<RealPlcMapper, float>> listRealTags = new List<libplctag.Tag<RealPlcMapper, float>>();
-            public List<libplctag.Tag<LrealPlcMapper, double>> listLrealTags = new List<libplctag.Tag<LrealPlcMapper, double>>();
-
-            public List<libplctag.Tag<BoolPlcMapper, bool[]>> listBoolArrayTags = new List<libplctag.Tag<BoolPlcMapper, bool[]>>();
-            public List<libplctag.Tag<SintPlcMapper, sbyte[]>> listSintArrayTags = new List<libplctag.Tag<SintPlcMapper, sbyte[]>>();
-            public List<libplctag.Tag<IntPlcMapper, short[]>> listIntArrayTags = new List<libplctag.Tag<IntPlcMapper, short[]>>();
-            public List<libplctag.Tag<DintPlcMapper, int[]>> listDintArrayTags = new List<libplctag.Tag<DintPlcMapper, int[]>>();
-            public List<libplctag.Tag<LintPlcMapper, long[]>> listLintArrayTags = new List<libplctag.Tag<LintPlcMapper, long[]>>();
-            public List<libplctag.Tag<RealPlcMapper, float[]>> listRealArrayTags = new List<libplctag.Tag<RealPlcMapper, float[]>>();
-            public List<libplctag.Tag<LrealPlcMapper, double[]>> listLrealArrayTags = new List<libplctag.Tag<LrealPlcMapper, double[]>>();
+            public List<ScanTag> listTags = new List<ScanTag>();
         }
 
 
@@ -151,85 +157,77 @@ namespace PLCTagDriver
             public rtDataProtocDest[] protocolDestinations { get; set; }
         }
 
+        static PlcType ParsePlcType(string plc)
+        {
+            switch (plc.ToLower())
+            {
+                default:
+                case "lgx":
+                case "compactlogix":
+                case "contrologix":
+                case "controllogix":
+                    return PlcType.ControlLogix;
+                case "pccc":
+                case "lgxpccc":
+                case "logixpccc":
+                    return PlcType.LogixPccc;
+                case "omron":
+                case "omronnjnx":
+                case "omron-njnx":
+                case "micro800":
+                case "micrologix800":
+                case "mlgx800":
+                    return PlcType.Micro800;
+                case "mlgx":
+                case "micrologix":
+                    return PlcType.MicroLogix;
+                case "plc5":
+                    return PlcType.Plc5;
+                case "slc500":
+                    return PlcType.Slc500;
+            }
+        }
+
+        static void ParsePlcDataType(string datatype, out PlcDataType type, out int elementSize, out string typeName)
+        {
+            switch (datatype.ToLower())
+            {
+                case "bool":
+                case "boolean":
+                    type = PlcDataType.Bool; elementSize = 1; typeName = "bool";
+                    break;
+                case "byte":
+                case "sint":
+                case "int8":
+                    type = PlcDataType.Sint; elementSize = 1; typeName = "sint";
+                    break;
+                default:
+                case "int":
+                case "int16":
+                    type = PlcDataType.Int; elementSize = 2; typeName = "int";
+                    break;
+                case "dint":
+                case "int32":
+                    type = PlcDataType.Dint; elementSize = 4; typeName = "dint";
+                    break;
+                case "lint":
+                case "int64":
+                    type = PlcDataType.Lint; elementSize = 8; typeName = "lint";
+                    break;
+                case "real":
+                case "float32":
+                    type = PlcDataType.Real; elementSize = 4; typeName = "real";
+                    break;
+                case "lreal":
+                case "float64":
+                    type = PlcDataType.Lreal; elementSize = 8; typeName = "lreal";
+                    break;
+            }
+        }
+
         public static void Main(string[] args)
         {
-
-            /*
-             * 
-            //Instantiate the tag with the proper mapper and datatype
-            var myTag = new Tag<RealPlcMapper, float>()
-            {
-                Name = "PLC1FLOAT0",
-                Gateway = "127.0.0.1",
-                Path = "1,0",
-                PlcType = PlcType.ControlLogix,
-                Protocol = Protocol.ab_eip,
-                UseConnectedMessaging = true,
-                Timeout = TimeSpan.FromSeconds(5)
-            };
-
-            //Initialize the tag to set up structures and prepare for read/write
-            //This is optional as an optimization before using the tag
-            //If omitted, the tag will initialize on the first Read() or Write()
-            myTag.Initialize();
-
-            //The value is held locally and only synchronized on Read() or Write()
-            myTag.Value = (float)3337.431;
-
-            //Transfer Value to PLC
-            myTag.Write();
-
-            var myTag2 = new Tag<DintPlcMapper, int>()
-            {
-                Name = "PLC1ANA1",
-                Gateway = "127.0.0.1",
-                Path = "1,0",
-                PlcType = PlcType.ControlLogix,
-                UseConnectedMessaging = true,
-                Protocol = Protocol.ab_eip,
-                Timeout = TimeSpan.FromSeconds(5)
-            };
-
-            //Initialize the tag to set up structures and prepare for read/write
-            //This is optional as an optimization before using the tag
-            //If omitted, the tag will initialize on the first Read() or Write()
-            myTag2.Initialize();
-
-            //The value is held locally and only synchronized on Read() or Write()
-            myTag2.Value = 2233;
-
-            //Transfer Value to PLC
-            myTag2.Write();
-
-            var myTag3 = new Tag<RealPlcMapper, float[]>()
-            {
-                Name = "SCADA",
-                Gateway = "127.0.0.1",
-                Path = "1,0",
-                PlcType = PlcType.ControlLogix,
-                UseConnectedMessaging = true,
-                Protocol = Protocol.ab_eip,
-                ArrayDimensions = new int[] { 10, 10 },
-                Timeout = TimeSpan.FromSeconds(5)
-            };
-
-            //Initialize the tag to set up structures and prepare for read/write
-            //This is optional as an optimization before using the tag
-            //If omitted, the tag will initialize on the first Read() or Write()
-            myTag3.Initialize();
-
-            //The value is held locally and only synchronized on Read() or Write()
-            myTag3.Value = new float[] { 1, 2, 3, 4, 5, 6, 7, 8, 9, 0 }; 
-
-            //Transfer Value to PLC
-            myTag3.Write();
-
-            myTag.Dispose();
-            myTag2.Dispose();
-            myTag3.Dispose();
-            */
-
-            Log("{json:scada} PLC TAG Driver - Copyright 2020 RLO");
+            Log("{json:scada} PLC TAG Driver - Copyright 2020-2026 RLO");
             Log("Driver version " + DriverVersion);
             Log("Using libplctag version " + LibPlcTag.VersionMajor + "."  + LibPlcTag.VersionMinor + "." + LibPlcTag.VersionPatch);
 
@@ -388,7 +386,7 @@ namespace PLCTagDriver
             switch (LogLevel)
             {
                 case LogLevelNoLog:
-                    LibPlcTag.DebugLevel = DebugLevel.Detail;
+                    LibPlcTag.DebugLevel = DebugLevel.None;
                     break;
                 default:
                 case LogLevelBasic:
@@ -402,6 +400,17 @@ namespace PLCTagDriver
                     break;
             }
 
+            // route native libplctag log messages to the driver log
+            LibPlcTag.LogEvent += (sender, e) =>
+            {
+                var level = LogLevelDebug;
+                if (e.DebugLevel == DebugLevel.Error || e.DebugLevel == DebugLevel.Warn)
+                    level = LogLevelBasic;
+                else if (e.DebugLevel == DebugLevel.Info)
+                    level = LogLevelDetailed;
+                Log("libplctag: " + e.Message, level);
+            };
+
             // start thread to process redundancy control
             Thread thrMongoRedundacy =
                 new Thread(() =>
@@ -414,401 +423,88 @@ namespace PLCTagDriver
                         ProcessMongo(JSConfig));
             thrMongo.Start();
 
-            Log("Setting up IEC Connections & ASDU handlers...");
+            Log("Setting up PLC Connections & tags...");
             foreach (PLC_connection srv in PLCconns)
             {
                 var collection = DB.GetCollection<rtData>(RealtimeDataCollectionName);
                 var filter = Builders<rtData>.Filter.Eq("protocolSourceConnectionNumber", srv.protocolConnectionNumber);
                 var documents = collection.Find(filter).ToList();
-                var enumerator = documents.GetEnumerator();
+                var plctp = ParsePlcType(srv.plc);
 
-                var tags = Enumerable.Range(0, documents.Count)
-                    .Select(i => {
-                    enumerator.MoveNext();
-                    var plctp = PlcType.ControlLogix;
-                    switch (srv.plc.ToLower())
+                foreach (var document in documents)
+                {
+                    try
                     {
-                        default:
-                        case "lgx":
-                        case "compactlogix":
-                        case "contrologix":
-                        case "controllogix":
-                            plctp = PlcType.ControlLogix;
-                            break;
-                        case "pccc":
-                        case "lgxpccc":
-                        case "logixpccc":
-                            plctp = PlcType.LogixPccc;
-                            break;
-                        case "omron":
-                        case "omronnjnx":
-                        case "omron-njnx":
-                        case "micro800":
-                        case "micrologix800":
-                        case "mlgx800":
-                            plctp = PlcType.Micro800;
-                            break;
-                        case "mlgx":
-                        case "micrologix":
-                            plctp = PlcType.MicroLogix;
-                            break;
-                        case "plc5":
-                            plctp = PlcType.Plc5;
-                            break;
-                        case "slc500":
-                            plctp = PlcType.Slc500;
-                            break;
-                    }
-                    if (enumerator.Current.protocolSourceASDU.ToString().Contains("[") && enumerator.Current.protocolSourceASDU.ToString().Contains("]"))
-                    {
-                        var p1 = enumerator.Current.protocolSourceASDU.ToString().IndexOf("[");
-                        var p2 = enumerator.Current.protocolSourceASDU.ToString().IndexOf("]");
-                        var p3 = enumerator.Current.protocolSourceObjectAddress.ToString().IndexOf("[");
-                        var datatype = enumerator.Current.protocolSourceASDU.ToString().Substring(0, p1).ToLower();
-                        var arrlens = enumerator.Current.protocolSourceASDU.ToString().Substring(p1+1, p2-p1-1);
-                        var arrlen = System.Convert.ToInt32(arrlens);
-                        switch (datatype)
+                        var asdu = document.protocolSourceASDU.ToString();
+                        var objAddr = document.protocolSourceObjectAddress.ToString();
+                        var isArray = asdu.Contains("[") && asdu.Contains("]");
+                        var datatype = asdu;
+                        var tagName = objAddr;
+                        var arrayLength = 0;
+                        if (isArray)
                         {
-                            case "bool":
-                            case "boolean":
-                                {
-                                    var tag = new Tag<BoolPlcMapper, bool[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach ( var tg in srv.listBoolArrayTags )
-                                        {
-                                            if (tg.Name == tag.Name)
-                                                tagFound = true;
-                                        }
-                                    if (!tagFound)
-                                        {
-                                            tag.Initialize();
-                                            srv.listBoolArrayTags.Add(tag);
-                                        }
-                                }
-                                break;
-                            case "byte":
-                            case "sint":
-                            case "int8":
-                                {
-                                    var tag = new Tag<SintPlcMapper, sbyte[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listSintArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listSintArrayTags.Add(tag);
-                                    }
-                            }
-                            break;
-                            default:
-                            case "int":
-                            case "int16":
-                                {
-                                    var tag = new Tag<IntPlcMapper, short[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listIntArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listIntArrayTags.Add(tag);
-                                    }
-                                }
-                                break;
-                            case "dint":
-                            case "int32":
-                                {
-                                    var tag = new Tag<DintPlcMapper, int[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-                                    tag.Initialize();
-                                    srv.listDintArrayTags.Add(tag);
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listDintArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listDintArrayTags.Add(tag);
-                                    }
-                                }
-                                break;
-                            case "lint":
-                            case "int64":
-                                {
-                                    var tag = new Tag<LintPlcMapper, long[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-                                    tag.Initialize();
-                                    srv.listLintArrayTags.Add(tag);
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listLintArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listLintArrayTags.Add(tag);
-                                    }
-                                }
-                                break;
-                            case "real":
-                            case "float32":
-                                {
-                                    var tag = new Tag<RealPlcMapper, float[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p3),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                    };
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listRealArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listRealArrayTags.Add(tag);
-                                    }
-                                }
-                                break;
-                            case "lreal":
-                            case "float64":
-                                {
-                                    var tag = new Tag<LrealPlcMapper, double[]>()
-                                    {
-                                        Name = enumerator.Current.protocolSourceObjectAddress.ToString().Substring(0, p1+1),
-                                        Gateway = srv.ipAddresses[0],
-                                        Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                        PlcType = plctp,
-                                        Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                        UseConnectedMessaging = srv.useConnectedMsg,
-                                        Timeout = TimeSpan.FromMilliseconds(1000),
-                                        ArrayDimensions = new int[] { arrlen, 1 },
-                                        ReadCacheMillisecondDuration = srv.readCacheMs
-                                    };
-                                    var tagFound = false; // avoid tag re-insertion 
-                                    foreach (var tg in srv.listLrealArrayTags)
-                                    {
-                                        if (tg.Name == tag.Name)
-                                            tagFound = true;
-                                    }
-                                    if (!tagFound)
-                                    {
-                                        tag.Initialize();
-                                        srv.listLrealArrayTags.Add(tag);
-                                    }
-                                }
-                                break;
-                            }
-                    }
-                    else
-                    switch (enumerator.Current.protocolSourceASDU.ToString().ToLower())
-                    {
-                        case "bool":
-                        case "boolean":
-                            {
-                                var tag = new Tag<BoolPlcMapper, bool>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listBoolTags.Add(tag);
-                            }
-                            break;
-                        case "byte":
-                        case "sint":
-                        case "int8":
-                            {
-                                var tag = new Tag<SintPlcMapper, sbyte>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listSintTags.Add(tag);
-                            }
-                            break;
-                        default:
-                        case "int":
-                        case "int16":
-                            {
-                                var tag = new Tag<IntPlcMapper, short>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listIntTags.Add(tag);
-                            }
-                            break;
-                        case "dint":
-                        case "int32":
-                            { 
-                                var tag = new Tag<DintPlcMapper, int>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listDintTags.Add(tag);
-                            }
-                            break;
-                        case "lint":
-                        case "int64":
-                            {
-                                var tag = new Tag<LintPlcMapper, long>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listLintTags.Add(tag);
-                            }
-                            break;
-                        case "real":
-                        case "float32":
-                            {
-                                var tag = new Tag<RealPlcMapper, float>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listRealTags.Add(tag);
-                            }
-                            break;
-                        case "lreal":
-                        case "float64":
-                            {
-                                var tag = new Tag<LrealPlcMapper, double>()
-                                {
-                                    Name = enumerator.Current.protocolSourceObjectAddress.ToString(),
-                                    Gateway = srv.ipAddresses[0],
-                                    Path = enumerator.Current.protocolSourceCommonAddress.ToString(),
-                                    PlcType = plctp,
-                                    Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
-                                    UseConnectedMessaging = srv.useConnectedMsg,
-                                    Timeout = TimeSpan.FromMilliseconds(1000),
-                                    ReadCacheMillisecondDuration = srv.readCacheMs
-                                };
-                                tag.Initialize();
-                                srv.listLrealTags.Add(tag);
-                            }
-                            break;
+                            var p1 = asdu.IndexOf("[");
+                            var p2 = asdu.IndexOf("]");
+                            datatype = asdu.Substring(0, p1);
+                            arrayLength = System.Convert.ToInt32(asdu.Substring(p1 + 1, p2 - p1 - 1));
+                            var p3 = objAddr.IndexOf("[");
+                            if (p3 >= 0) tagName = objAddr.Substring(0, p3);
                         }
 
-                    return 0;
-                    })
-                    .ToList();
+                        var tagFound = false; // avoid tag re-insertion (array element points share the same PLC tag)
+                        foreach (var tg in srv.listTags)
+                        {
+                            if (tg.Tag.Name == tagName)
+                                tagFound = true;
+                        }
+                        if (tagFound) continue;
+
+                        ParsePlcDataType(datatype, out var dataType, out var elementSize, out var typeName);
+
+                        var tag = new Tag()
+                        {
+                            Name = tagName,
+                            Gateway = srv.ipAddresses[0],
+                            Path = document.protocolSourceCommonAddress.ToString(),
+                            PlcType = plctp,
+                            Protocol = (srv.protocol.ToLower() == "modbus") ? Protocol.modbus_tcp : Protocol.ab_eip,
+                            UseConnectedMessaging = srv.useConnectedMsg,
+                            Timeout = TimeSpan.FromMilliseconds(srv.timeoutMs),
+                            ReadCacheMillisecondDuration = srv.readCacheMs,
+                            ElementSize = elementSize,
+                        };
+                        if (isArray) // BOOL arrays are packed as 32 bit words
+                            tag.ElementCount = dataType == PlcDataType.Bool ? (arrayLength + 31) / 32 : arrayLength;
+                        if (!string.IsNullOrEmpty(srv.int16ByteOrder)) tag.Int16ByteOrder = srv.int16ByteOrder;
+                        if (!string.IsNullOrEmpty(srv.int32ByteOrder)) tag.Int32ByteOrder = srv.int32ByteOrder;
+                        if (!string.IsNullOrEmpty(srv.int64ByteOrder)) tag.Int64ByteOrder = srv.int64ByteOrder;
+                        if (!string.IsNullOrEmpty(srv.float32ByteOrder)) tag.Float32ByteOrder = srv.float32ByteOrder;
+                        if (!string.IsNullOrEmpty(srv.float64ByteOrder)) tag.Float64ByteOrder = srv.float64ByteOrder;
+
+                        try
+                        {
+                            tag.Initialize();
+                        }
+                        catch (LibPlcTagException e)
+                        {
+                            // keep the tag anyway, it will retry initialization on the next Read() or Write()
+                            Log(srv.name + " - Error initializing tag " + tagName + " - Status: " + e.Status);
+                        }
+                        srv.listTags.Add(new ScanTag()
+                        {
+                            Tag = tag,
+                            Type = dataType,
+                            TypeName = typeName,
+                            IsArray = isArray,
+                            ArrayLength = arrayLength,
+                        });
+                        Log(srv.name + " - Tag " + tagName + " " + typeName + (isArray ? "[" + arrayLength + "]" : ""), LogLevelDetailed);
+                    }
+                    catch (Exception e)
+                    {
+                        Log(srv.name + " - Error creating tag for point " + document.tag + ": " + e.Message);
+                    }
+                }
 
                 // A thread for scanning each connection
                 Thread thrPlcScan =

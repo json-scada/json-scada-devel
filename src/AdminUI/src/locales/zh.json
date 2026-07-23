@@ -16,7 +16,10 @@
       "basic": "基本的",
       "detailed": "详细的",
       "maximum": "最大限度"
-    }
+    },
+    "start": "开始",
+    "stop": "停止",
+    "close": "关闭"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "统计资料",
         "actions": "操作",
         "process": "过程",
-        "running": "跑步"
+        "running": "跑步",
+        "serviceState": "服务"
       },
       "addProtocolDriverInstance": "新实例",
       "addNewProtocolDriverInstance": "添加新的协议驱动程序实例",
@@ -298,7 +302,39 @@
       "newNodeName": "新节点名称",
       "deleteInstance": "删除实例",
       "deleteInstanceConfirm": "您确实要删除该协议驱动程序实例吗？",
-      "editInstance": "编辑实例"
+      "editInstance": "编辑实例",
+      "restart": "重启",
+      "syncServices": "同步服务",
+      "notManageable": "此实例未作为此节点上的操作系统服务进行管理。",
+      "serviceManagement": "服务管理",
+      "managedService": "自动管理操作系统服务",
+      "startMode": "服务启动模式",
+      "startModes": {
+        "auto": "自动的",
+        "manual": "手动的"
+      },
+      "autoRestartOnConfigChange": "配置更改后自动重启",
+      "executableVariant": "可执行变体",
+      "syncResult": "同步完成：{ensured} 个已确保，{errors} 个错误，{orphans} 个孤立服务。",
+      "deleteServiceNote": "操作系统服务 {service} 将在节点 {node} 上停止并移除。",
+      "serviceStates": {
+        "notManageable": "不适用",
+        "notInstalled": "未安装",
+        "restartPending": "重启待定",
+        "RUNNING": "跑步",
+        "STOPPED": "停止",
+        "STARTING": "开始",
+        "STOPPING": "停止",
+        "FATAL": "致命的",
+        "BACKOFF": "退缩",
+        "PAUSED": "暂停",
+        "UNKNOWN": "未知"
+      },
+      "actionResults": {
+        "started": "开始请求",
+        "stopped": "停止请求",
+        "restarted": "请求重启"
+      }
     },
     "protocolConnections": {
       "title": "連接",
@@ -709,7 +745,11 @@
       "restartProcesses": "重启进程",
       "restartProtocols": "重启协议",
       "sanitizeDatabase": "清理数据库",
-      "advancedOptions": "高级选项"
+      "advancedOptions": "高级选项",
+      "processManagement": "流程管理",
+      "processManagementDisabled": "服务器上的进程管理已禁用（此主机上没有服务后端）。",
+      "autoManageServices": "当实例发生变化时，自动创建/更新/删除操作系统服务",
+      "autoRestartOnConnectionChange": "当驱动程序的连接发生变化时，自动重启驱动程序"
     }
   }
 }

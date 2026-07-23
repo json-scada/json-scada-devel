@@ -2,10 +2,11 @@
 
 This driver implements an ICCP/TASE.2 (IEC 60870-6-503) server for JSON-SCADA.
 
-It exposes real-time SCADA data from MongoDB to ICCP/TASE.2 clients using the
-`github.com/riclolsen/tase2` Go library.
+It exposes real-time SCADA data from MongoDB to ICCP/TASE.2 clients.
 
 The driver is implemented in **Golang**.
+
+The ICCP/TASE2 library is not publicly available, but the driver is open source.
 
 ## Architecture
 
@@ -13,15 +14,17 @@ The ICCP server:
 
 - **Reads** tag data from the `realtimeData` MongoDB collection and builds a
   TASE.2 data model with domains (mapped from `group1` property of tags),
-  indication points (analog, digital, string tags), and control points (command
-  tags).
+  indication points (analog and digital tags, with quality and timestamp),
+  and control points (command tags).
 - **Serves** multiple concurrent ICCP client connections, each via its own
   TASE.2 `Server` instance sharing the same `DataModel`.
 - **Pushes** live updates to connected clients when MongoDB change stream events
   are detected for the watched tags.
-- **Accepts** writes from ICCP clients and forwards them as commands to the
-  `commandsQueue` MongoDB collection.
-- **Supports** bilateral table access control and ACSE password authentication.
+- **Accepts** writes and device-control operates from ICCP clients and forwards
+  them as commands to the `commandsQueue` MongoDB collection.
+- **Supports** bilateral table access control (with per-connection topic
+  isolation), ACSE password authentication, and TLS (secure ICCP,
+  IEC 62351-3) with optional mutual certificate authentication.
 - **Supports** Data Set Transfer Set (DSTS) reporting for periodic, integrity,
   and change-based data updates.
 - **Supports** redundancy/high-availability via the standard JSON-SCADA
@@ -74,6 +77,8 @@ db.protocolConnections.insert({
     password: "",
     localCertFilePath: "",
     privateKeyFilePath: "",
+    rootCertFilePath: "",
+    chainValidation: false,
     stats: {}
 });
 ```
@@ -87,15 +92,22 @@ db.protocolConnections.insert({
 - **commandsEnabled** [Boolean] - Enable command forwarding. **Mandatory**.
 - **ipAddressLocalBind** [String] - Listen address and port (e.g. "0.0.0.0:102"). Default port is 102. **Mandatory**.
 - **ipAddresses** [Array of Strings] - Allowed client IP addresses (not yet enforced!). Empty = allow all. **Optional**.
-- **topics** [Array of Strings] - `group1` filter for exposed tags. Empty = all tags. **Optional**.
+- **topics** [Array of Strings] - `group1` filter for exposed tags. Empty = all tags. When `remoteApTitle` is set, topics are enforced on discovery/reads/writes via the bilateral table (only the listed domains are granted); without a `remoteApTitle` (open mode) topics only filter DSTS pushes. **Optional**.
 - **timeoutMs** [Double] - Connection timeout in ms. **Optional**.
 - **localApTitle** [String] - Local AP Title (e.g. "1.1.999.1"). Gets a default if empty. **Optional**.
 - **localAeQualifier** [Integer] - Local AE Qualifier. Default: 12. **Optional**.
 - **remoteApTitle** [String] - Authorized remote AP Title for bilateral table. Empty = open mode. **Optional**.
 - **remoteAeQualifier** [Integer] - Remote AE Qualifier. **Optional**.
-- **useSecurity** [Boolean] - Reserved for future TLS support. **Optional**.
+- **useSecurity** [Boolean] - Enable TLS (secure ICCP, IEC 62351-3). Default: false. **Optional**.
+- **localCertFilePath** [String] - Server certificate (PEM), required for TLS. **Optional**.
+- **privateKeyFilePath** [String] - Server private key (PEM), required for TLS. **Optional**.
+- **rootCertFilePath** [String] - CA certificate (PEM) to verify client certificates. **Optional**.
+- **chainValidation** [Boolean] - Require and verify client certificates (mutual TLS) against the CA. Default: false. **Optional**.
 - **password** [String] - ACSE authentication password. Empty = no auth. **Optional**.
 - **stats** [Object] - Protocol statistics (updated by driver). **Mandatory**.
+
+Note: the host part of `ipAddressLocalBind` is not honored yet (the server
+listens on all interfaces); only the port is used.
 
 ## Command Line Arguments
 
@@ -221,12 +233,14 @@ When a TASE.2 client writes to a control point, the driver:
 | realtimeData | TASE.2 |
 |---|---|
 | `group1` | Domain name |
-| `ungroupedDescription` or `tag` | Point name (sanitized) |
-| `type: "digital"` | State Indication Point (INTEGER32) |
-| `type: "analog"` | Real Indication Point (FLOAT32) |
-| `type: "string"` | Complex Indication Point |
-| `origin: "command"` | Command Control Point (INTEGER32, SBO) |
-| `invalid` | Quality (good/invalid) |
+| `tag` | Point name (sanitized) |
+| `type: "digital"` | StateQTimeTag Indication Point (state + quality + timetag) |
+| `type: "analog"` | RealQTimeTag Indication Point (float32 + quality + timetag) |
+| `type: "analog"` with integer ASDU (int16/32/64, uint16/32/64) | DiscreteQTimeTag Indication Point (int + quality + timetag) |
+| `type: "string"`, `"json"`, others | Not exposed via ICCP |
+| `origin: "command"` | Command Control Point (INTEGER32; SBO when `protocolSourceCommandUseSBO`, else direct operate) |
+| `invalid` | Quality validity (good/invalid) |
+| `timeTagAtSource` (when `timeTagAtSourceOk`) | Point TimeStamp |
 
 ## License
 

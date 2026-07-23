@@ -85,6 +85,11 @@ type protocolConnection struct {
 	RemoteApTitle                string                 `bson:"remoteApTitle"`
 	RemoteAeQualifier            int                    `bson:"remoteAeQualifier"`
 	UseSecurity                  bool                   `bson:"useSecurity"`
+	LocalCertFilePath            string                 `bson:"localCertFilePath"`
+	PrivateKeyFilePath           string                 `bson:"privateKeyFilePath"`
+	PeerCertFilePath             string                 `bson:"peerCertFilePath"`
+	RootCertFilePath             string                 `bson:"rootCertFilePath"`
+	ChainValidation              bool                   `bson:"chainValidation"`
 	Password                     string                 `bson:"password"`
 	HoursShift                   float64                `bson:"hoursShift"`
 	Stats                        map[string]interface{} `bson:"stats"`
@@ -193,7 +198,10 @@ func readConfigFile() (cfg configData, instanceNumber int, instLogLevel int) {
 		cfgFileName = filepath.Join("~", "json-scada", "conf", "json-scada.json")
 	}
 	if _, err := os.Stat(cfgFileName); err != nil {
-		cfgFileName = filepath.Join("c:", "json-scada", "conf", "json-scada.json")
+		cfgFileName = filepath.Join("/json-scada", "conf", "json-scada.json")
+	}
+	if _, err := os.Stat(cfgFileName); err != nil {
+		cfgFileName = filepath.Join("c:/json-scada", "conf", "json-scada.json")
 	}
 	if os.Getenv("JS_CONFIG_FILE") != "" {
 		cfgFileName = os.Getenv("JS_CONFIG_FILE")

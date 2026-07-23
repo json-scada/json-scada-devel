@@ -16,7 +16,10 @@
       "basic": "بنسټیز",
       "detailed": "تفصیلي",
       "maximum": "اعظمي"
-    }
+    },
+    "start": "پیل",
+    "stop": "ودروئ",
+    "close": "تړل"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "احصایې",
         "actions": "کړنې",
         "process": "پروسه",
-        "running": "چلول"
+        "running": "چلول",
+        "serviceState": "خدمت"
       },
       "addProtocolDriverInstance": "نوې بېلګه",
       "addNewProtocolDriverInstance": "د نوي پروتوکول ډرایور مثال اضافه کړئ",
@@ -298,7 +302,39 @@
       "newNodeName": "د نوي نوډ نوم",
       "deleteInstance": "مثال ړنګ کړئ",
       "deleteInstanceConfirm": "ایا تاسو ډاډه یاست چې تاسو د دې پروتوکول چلونکي مثال حذف کول غواړئ؟",
-      "editInstance": "ایډیټ مثال"
+      "editInstance": "ایډیټ مثال",
+      "restart": "بیا پیل کول",
+      "syncServices": "د همغږۍ خدمتونه",
+      "notManageable": "دا مثال په دې نوډ کې د OS خدمت په توګه نه اداره کیږي.",
+      "serviceManagement": "د خدماتو مدیریت",
+      "managedService": "د OS خدمت په اتوماتيک ډول اداره کړئ",
+      "startMode": "د خدماتو د پیل حالت",
+      "startModes": {
+        "auto": "اتوماتیک",
+        "manual": "لارښود"
+      },
+      "autoRestartOnConfigChange": "د تشکیلاتو بدلون سره په اتوماتيک ډول بیا پیل کړئ",
+      "executableVariant": "د اجرا وړ ډول",
+      "syncResult": "همغږي بشپړه شوه: {ډاډمن} ډاډمن شو، {غلطۍ} تېروتنې، {یتیمانو} یتیم خدمتونه.",
+      "deleteServiceNote": "د OS خدمت {خدمت} به په نوډ {نوډ} کې ودرول شي او لرې شي.",
+      "serviceStates": {
+        "notManageable": "نه",
+        "notInstalled": "نه دی نصب شوی",
+        "restartPending": "بیا پیل کول په تمه دي",
+        "RUNNING": "منډه وهل",
+        "STOPPED": "ودرول شو",
+        "STARTING": "پیل کول",
+        "STOPPING": "ودرول",
+        "FATAL": "وژونکی",
+        "BACKOFF": "بیرته راګرځېدل",
+        "PAUSED": "درول شوی",
+        "UNKNOWN": "نامعلوم"
+      },
+      "actionResults": {
+        "started": "د پیل غوښتنه وشوه",
+        "stopped": "د بندولو غوښتنه وشوه",
+        "restarted": "د بیا پیل غوښتنه وشوه"
+      }
     },
     "protocolConnections": {
       "title": "ارتباطات",
@@ -709,7 +745,11 @@
       "restartProcesses": "پروسې بیا پیل کړئ",
       "restartProtocols": "پروتوکولونه بیا پیل کړئ",
       "sanitizeDatabase": "ډیټابیس پاک کړئ",
-      "advancedOptions": "پرمختللي انتخابونه"
+      "advancedOptions": "پرمختللي انتخابونه",
+      "processManagement": "د پروسې مدیریت",
+      "processManagementDisabled": "د پروسې مدیریت په سرور کې غیر فعال دی (په دې کوربه کې د خدماتو بیک اینډ نشته).",
+      "autoManageServices": "کله چې مثالونه بدل شي نو په اتوماتيک ډول د OS خدمات جوړ کړئ/تازه کړئ/لرې کړئ",
+      "autoRestartOnConnectionChange": "کله چې ډرایور اړیکې بدلې شي نو په اتوماتيک ډول یې بیا پیل کړئ"
     }
   }
 }

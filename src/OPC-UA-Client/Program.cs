@@ -31,7 +31,7 @@ partial class MainClass
 {
     public static String CopyrightMessage = "{json:scada} OPC-UA Client Driver - Copyright 2021-2026 RLO";
     public static String ProtocolDriverName = "OPC-UA";
-    public static String DriverVersion = "0.5.0";
+    public static String DriverVersion = "0.6.0";
     public static bool Active = false; // indicates this driver instance is the active node in the moment
     public static UInt32 DataBufferLimit = 50000; // limit to start dequeuing and discarding data from the acquisition buffer
     public static UInt32 CntNotificEvents = 0; // count events of data updates (on notification)
@@ -287,10 +287,16 @@ partial class MainClass
         {
             foreach (OPCUA_connection srv in OPCUAconns)
             {
-                if (srv.connection.failed)
+                // restart a failed connection only when its worker thread has actually exited, and
+                // always on a fresh background thread - never inline on this supervision thread
+                // (Run() blocks indefinitely once connected, and a second concurrent client would
+                //  race on the session and create duplicate subscriptions)
+                if (srv.connection.failed && (srv.thrOPCStack == null || !srv.thrOPCStack.IsAlive))
                 {
-                    Log(srv.name.ToString() + " - Failed!");
-                    srv.connection.Run();
+                    Log(srv.name.ToString() + " - Failed! Restarting connection thread...");
+                    srv.connection.failed = false;
+                    srv.thrOPCStack = new Thread(() => srv.connection.Run());
+                    srv.thrOPCStack.Start();
                 }
             }
 

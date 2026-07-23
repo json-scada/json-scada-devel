@@ -16,7 +16,10 @@
       "basic": "أساسي",
       "detailed": "مفصل",
       "maximum": "الحد الأقصى"
-    }
+    },
+    "start": "يبدأ",
+    "stop": "قف",
+    "close": "يغلق"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "الإحصائيات",
         "actions": "الإجراءات",
         "process": "عملية",
-        "running": "جري"
+        "running": "جري",
+        "serviceState": "خدمة"
       },
       "addProtocolDriverInstance": "حالة جديدة",
       "addNewProtocolDriverInstance": "إضافة مثيل جديد لبرنامج تشغيل البروتوكول",
@@ -298,7 +302,39 @@
       "newNodeName": "اسم العقدة الجديدة",
       "deleteInstance": "حذف المثيل",
       "deleteInstanceConfirm": "هل أنت متأكد أنك تريد حذف مثيل برنامج تشغيل البروتوكول هذا؟",
-      "editInstance": "تعديل المثيل"
+      "editInstance": "تعديل المثيل",
+      "restart": "إعادة تشغيل",
+      "syncServices": "خدمات المزامنة",
+      "notManageable": "لا تتم إدارة هذه النسخة كخدمة نظام تشغيل على هذه العقدة.",
+      "serviceManagement": "إدارة الخدمات",
+      "managedService": "إدارة خدمة نظام التشغيل تلقائيًا",
+      "startMode": "وضع بدء الخدمة",
+      "startModes": {
+        "auto": "معادلة",
+        "manual": "يدوي"
+      },
+      "autoRestartOnConfigChange": "إعادة التشغيل تلقائيًا عند تغيير الإعدادات",
+      "executableVariant": "نسخة قابلة للتنفيذ",
+      "syncResult": "اكتملت المزامنة: {مؤكد} تم التأكد منه، {أخطاء} أخطاء، {أيتام} خدمة (خدمات) يتيمة.",
+      "deleteServiceNote": "سيتم إيقاف خدمة نظام التشغيل {service} وإزالتها على العقدة {node}.",
+      "serviceStates": {
+        "notManageable": "غير متوفر",
+        "notInstalled": "غير مثبت",
+        "restartPending": "إعادة التشغيل معلقة",
+        "RUNNING": "جري",
+        "STOPPED": "توقف",
+        "STARTING": "بدء",
+        "STOPPING": "وقف",
+        "FATAL": "مميت",
+        "BACKOFF": "التراجع",
+        "PAUSED": "توقف مؤقتًا",
+        "UNKNOWN": "مجهول"
+      },
+      "actionResults": {
+        "started": "بدء التشغيل مطلوب",
+        "stopped": "تم طلب الإيقاف",
+        "restarted": "طلب إعادة التشغيل"
+      }
     },
     "protocolConnections": {
       "title": "الاتصالات",
@@ -709,7 +745,11 @@
       "restartProcesses": "عمليات إعادة التشغيل",
       "restartProtocols": "بروتوكولات إعادة التشغيل",
       "sanitizeDatabase": "تطهير قاعدة البيانات",
-      "advancedOptions": "خيارات متقدمة"
+      "advancedOptions": "خيارات متقدمة",
+      "processManagement": "إدارة العمليات",
+      "processManagementDisabled": "تم تعطيل إدارة العمليات على الخادم (لا توجد خدمة خلفية على هذا المضيف).",
+      "autoManageServices": "إنشاء/تحديث/إزالة خدمات نظام التشغيل تلقائيًا عند تغيير الحالات",
+      "autoRestartOnConnectionChange": "إعادة تشغيل برنامج التشغيل تلقائيًا عند تغيير اتصالاته"
     }
   }
 }

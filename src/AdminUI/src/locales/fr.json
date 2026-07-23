@@ -16,7 +16,10 @@
       "basic": "Basique",
       "detailed": "Détaillé",
       "maximum": "Maximum"
-    }
+    },
+    "start": "Commencer",
+    "stop": "Arrêt",
+    "close": "Fermer"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Statistiques",
         "actions": "Actes",
         "process": "Processus",
-        "running": "En cours d'exécution"
+        "running": "En cours d'exécution",
+        "serviceState": "Service"
       },
       "addProtocolDriverInstance": "Nouvelle instance",
       "addNewProtocolDriverInstance": "Ajouter une nouvelle instance de pilote de protocole",
@@ -298,7 +302,39 @@
       "newNodeName": "Nouveau nom de nœud",
       "deleteInstance": "Supprimer l'instance",
       "deleteInstanceConfirm": "Êtes-vous sûr de vouloir supprimer cette instance de pilote de protocole ?",
-      "editInstance": "Modifier l'instance"
+      "editInstance": "Modifier l'instance",
+      "restart": "Redémarrage",
+      "syncServices": "Services de synchronisation",
+      "notManageable": "Cette instance n'est pas gérée comme un service du système d'exploitation sur ce nœud.",
+      "serviceManagement": "Gestion des services",
+      "managedService": "Gérer automatiquement les services du système d'exploitation",
+      "startMode": "mode de démarrage du service",
+      "startModes": {
+        "auto": "Automatique",
+        "manual": "Manuel"
+      },
+      "autoRestartOnConfigChange": "Redémarrage automatique en cas de modification de la configuration",
+      "executableVariant": "Variante exécutable",
+      "syncResult": "Synchronisation terminée : {ensured} assuré, {errors} erreurs, {orphans} service(s) orphelin(s).",
+      "deleteServiceNote": "Le service du système d'exploitation {service} sera arrêté et supprimé sur le nœud {node}.",
+      "serviceStates": {
+        "notManageable": "N / A",
+        "notInstalled": "Non installé",
+        "restartPending": "Redémarrage en attente",
+        "RUNNING": "En cours d'exécution",
+        "STOPPED": "Arrêté",
+        "STARTING": "Départ",
+        "STOPPING": "Arrêt",
+        "FATAL": "Fatal",
+        "BACKOFF": "Reculez",
+        "PAUSED": "En pause",
+        "UNKNOWN": "Inconnu"
+      },
+      "actionResults": {
+        "started": "début demandé",
+        "stopped": "demande d'arrêt",
+        "restarted": "redémarrage demandé"
+      }
     },
     "protocolConnections": {
       "title": "Relations",
@@ -709,7 +745,11 @@
       "restartProcesses": "Redémarrer les processus",
       "restartProtocols": "Protocoles de redémarrage",
       "sanitizeDatabase": "Assainir la base de données",
-      "advancedOptions": "Options avancées"
+      "advancedOptions": "Options avancées",
+      "processManagement": "Gestion des processus",
+      "processManagementDisabled": "La gestion des processus est désactivée sur le serveur (aucun service backend sur cet hôte).",
+      "autoManageServices": "Création, mise à jour et suppression automatiques des services du système d'exploitation lors de la modification des instances",
+      "autoRestartOnConnectionChange": "Redémarrage automatique du pilote en cas de changement de ses connexions"
     }
   }
 }

@@ -16,7 +16,10 @@
       "basic": "Basic",
       "detailed": "Detailed",
       "maximum": "Maximum"
-    }
+    },
+    "start": "Start",
+    "stop": "Stop",
+    "close": "Close"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Stats",
         "actions": "Actions",
         "process": "Process",
-        "running": "Running"
+        "running": "Running",
+        "serviceState": "Service"
       },
       "addProtocolDriverInstance": "New Instance",
       "addNewProtocolDriverInstance": "Add New Protocol Driver Instance",
@@ -298,7 +302,39 @@
       "newNodeName": "New node name",
       "deleteInstance": "Delete Instance",
       "deleteInstanceConfirm": "Are you sure you want to delete this protocol driver instance?",
-      "editInstance": "Edit Instance"
+      "editInstance": "Edit Instance",
+      "restart": "Restart",
+      "syncServices": "Sync Services",
+      "notManageable": "This instance is not managed as an OS service on this node.",
+      "serviceManagement": "Service Management",
+      "managedService": "Manage OS service automatically",
+      "startMode": "Service start mode",
+      "startModes": {
+        "auto": "Automatic",
+        "manual": "Manual"
+      },
+      "autoRestartOnConfigChange": "Restart automatically on configuration change",
+      "executableVariant": "Executable variant",
+      "syncResult": "Sync complete: {ensured} ensured, {errors} errors, {orphans} orphan service(s).",
+      "deleteServiceNote": "The OS service {service} will be stopped and removed on node {node}.",
+      "serviceStates": {
+        "notManageable": "N/A",
+        "notInstalled": "Not installed",
+        "restartPending": "Restart pending",
+        "RUNNING": "Running",
+        "STOPPED": "Stopped",
+        "STARTING": "Starting",
+        "STOPPING": "Stopping",
+        "FATAL": "Fatal",
+        "BACKOFF": "Backoff",
+        "PAUSED": "Paused",
+        "UNKNOWN": "Unknown"
+      },
+      "actionResults": {
+        "started": "start requested",
+        "stopped": "stop requested",
+        "restarted": "restart requested"
+      }
     },
     "protocolConnections": {
       "title": "Connections",
@@ -709,7 +745,11 @@
       "restartProcesses": "Restart Processes",
       "restartProtocols": "Restart Protocols",
       "sanitizeDatabase": "Sanitize Database",
-      "advancedOptions": "Advanced Options"
+      "advancedOptions": "Advanced Options",
+      "processManagement": "Process Management",
+      "processManagementDisabled": "Process management is disabled on the server (no service backend on this host).",
+      "autoManageServices": "Automatically create/update/remove OS services when instances change",
+      "autoRestartOnConnectionChange": "Automatically restart the driver when its connections change"
     }
   }
 }

@@ -116,8 +116,6 @@ namespace Iec10XDriver
             public bool chainValidation { get; set; }
             [BsonDefaultValue(false)]
             public bool autoCreateTags { get; set; }
-            [BsonDefaultValue(1)]
-            public int autoCreateTagsCommonAddress { get; set; }
             [BsonDefaultValue(new string[] { })]
             public string[] topics { get; set; }
             public Server server;

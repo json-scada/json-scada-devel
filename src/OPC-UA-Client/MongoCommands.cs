@@ -17,6 +17,7 @@
 */
 
 using System;
+using System.Collections.Generic;
 using MongoDB.Bson;
 using MongoDB.Driver;
 using System.Threading;
@@ -65,8 +66,8 @@ partial class MainClass
                                     continue;
 
                                 // test for command expired
-                                int timeDif = DateTime.Now.ToLocalTime()
-                                        .Subtract(change.FullDocument.timeTag.ToLocalTime()).Seconds;
+                                double timeDif = DateTime.Now.ToLocalTime()
+                                        .Subtract(change.FullDocument.timeTag.ToLocalTime()).TotalSeconds;
                                 if (timeDif > 10)
                                 {
                                     // update as expired
@@ -80,9 +81,9 @@ partial class MainClass
                                     break;
                                 }
 
-                                if (!srv.connection.session.Connected || !srv.commandsEnabled)
+                                if (srv.connection?.session == null || !srv.connection.session.Connected || !srv.commandsEnabled)
                                 {
-                                    // update as canceled (not connected)
+                                    // update as canceled (not connected / disabled) and stop processing this command
                                     Log("MongoDB CMD CS - " +
                                         srv.name + " Address " + change.FullDocument.protocolSourceObjectAddress +
                                         " value " + change.FullDocument.value +
@@ -91,6 +92,74 @@ partial class MainClass
                                     update = new BsonDocument("$set", new BsonDocument("cancelReason",
                                                 srv.commandsEnabled ? "not connected" : "commands disabled"));
                                     await collection.UpdateOneAsync(filter, update);
+                                    break;
+                                }
+
+                                // OPC UA methods are invoked via the Call service, not written as a Value attribute
+                                if (change.FullDocument.protocolSourceASDU.ToString().Equals("method", StringComparison.OrdinalIgnoreCase))
+                                {
+                                    var okresM = false;
+                                    var resultDescriptionM = "";
+                                    try
+                                    {
+                                        var methodId = new NodeId(change.FullDocument.protocolSourceObjectAddress.ToString());
+
+                                        // resolve the parent object that owns this method (required by the Call service)
+                                        srv.connection.session.Browse(null, null, methodId, 0u, BrowseDirection.Inverse,
+                                            ReferenceTypeIds.HierarchicalReferences, true, (uint)NodeClass.Object,
+                                            out _, out var parentRefs);
+                                        if (parentRefs == null || parentRefs.Count == 0)
+                                            throw new Exception("could not resolve parent object for method");
+                                        var objectId = ExpandedNodeId.ToNodeId(parentRefs[0].NodeId, srv.connection.session.NamespaceUris);
+
+                                        // optional input arguments, provided as a JSON array in valueString (best-effort typing)
+                                        object[] callArgs = Array.Empty<object>();
+                                        var argJson = change.FullDocument.valueString.ToString();
+                                        if (!string.IsNullOrEmpty(argJson))
+                                        {
+                                            var argNode = JsonNode.Parse(argJson);
+                                            if (argNode is JsonArray argArray)
+                                            {
+                                                var list = new List<object>();
+                                                foreach (var el in argArray)
+                                                {
+                                                    if (el is JsonValue jv)
+                                                    {
+                                                        if (jv.TryGetValue<bool>(out var b)) list.Add(b);
+                                                        else if (jv.TryGetValue<long>(out var l)) list.Add(l);
+                                                        else if (jv.TryGetValue<double>(out var dd)) list.Add(dd);
+                                                        else if (jv.TryGetValue<string>(out var s)) list.Add(s);
+                                                        else list.Add(jv.ToString());
+                                                    }
+                                                    else list.Add(el?.ToString());
+                                                }
+                                                callArgs = list.ToArray();
+                                            }
+                                        }
+
+                                        var outputs = srv.connection.session.Call(objectId, methodId, callArgs);
+                                        okresM = true;
+                                        resultDescriptionM = outputs == null || outputs.Count == 0 ? "OK" : "OK: " + string.Join(",", outputs);
+                                        Log("MongoDB CMD CS - " + srv.name + " - Method called: " + methodId + " - " + resultDescriptionM);
+                                    }
+                                    catch (Exception exm)
+                                    {
+                                        okresM = false;
+                                        resultDescriptionM = exm.Message;
+                                        Log("MongoDB CMD CS - " + srv.name + " - Method call error: " + exm.Message);
+                                    }
+
+                                    filter = new BsonDocument(new BsonDocument("_id", change.FullDocument.id));
+                                    update = new BsonDocument{ {"$set",
+                                                                new BsonDocument{
+                                                                    { "delivered", true },
+                                                                    { "ack", okresM },
+                                                                    { "ackTimeTag", new BsonDateTime(DateTime.Now) },
+                                                                    { "resultDescription", resultDescriptionM }
+                                                                }
+                                                            } };
+                                    await collection.UpdateOneAsync(filter, update);
+                                    break;
                                 }
 
                                 // when variable, write
@@ -262,7 +331,9 @@ partial class MainClass
                                                 WriteVal.Value.Value = Convert.ToDouble(change.FullDocument.value);
                                                 break;
                                             case "datetime":
-                                                WriteVal.Value.Value = new DateTime((long)change.FullDocument.value.AsDouble);
+                                                // acquisition publishes datetimes as Unix milliseconds; convert back the same way
+                                                WriteVal.Value.Value = DateTimeOffset.FromUnixTimeMilliseconds(
+                                                    Convert.ToInt64(change.FullDocument.value)).UtcDateTime;
                                                 break;
                                             case "string":
                                             case "bytestring":
@@ -279,8 +350,9 @@ partial class MainClass
                                             case "variant":
                                             case "diagnosticinfo":
                                             case "datavalue":
-                                                WriteVal.Value.Value = JsonNode.Parse(change.FullDocument.valueString.ToString());
-                                                break;
+                                                // the UA stack cannot encode a raw JSON node into these structured types
+                                                throw new ArgumentException("writing complex type '" +
+                                                    change.FullDocument.protocolSourceASDU + "' is not supported");
                                         }
                                     }
                                 }
@@ -290,6 +362,17 @@ partial class MainClass
                                     // update as canceled (not type conversion error)
                                     filter = new BsonDocument(new BsonDocument("_id", change.FullDocument.id));
                                     update = new BsonDocument("$set", new BsonDocument("cancelReason", "type conversion error"));
+                                    await collection.UpdateOneAsync(filter, update);
+                                    break;
+                                }
+
+                                // no case matched the ASDU: refuse rather than writing a null value to the server
+                                if (WriteVal.Value.Value == null)
+                                {
+                                    Log("MongoDB CMD CS - " + srv.name + " - Unsupported command ASDU '" +
+                                        change.FullDocument.protocolSourceASDU + "', ignoring.");
+                                    filter = new BsonDocument(new BsonDocument("_id", change.FullDocument.id));
+                                    update = new BsonDocument("$set", new BsonDocument("cancelReason", "unsupported command type"));
                                     await collection.UpdateOneAsync(filter, update);
                                     break;
                                 }
@@ -330,8 +413,8 @@ partial class MainClass
                                 }
 
                                 var okres = false;
-                                var resultDescription = "";
-                                if (results.Count > 0)
+                                var resultDescription = "no result returned";
+                                if (results != null && results.Count > 0)
                                 {
                                     resultDescription = results[0].ToString();
                                     if (StatusCode.IsGood(results[0])) okres = true;
@@ -340,7 +423,7 @@ partial class MainClass
                                 Log("MongoDB CMD CS - " + srv.name + " - Address: " +
                                     change.FullDocument.protocolSourceObjectAddress +
                                     " value: " + change.FullDocument.value + " valueString: " + change.FullDocument.valueString +
-                                    " - Command delivered - " + results[0].ToString());
+                                    " - Command delivered - " + resultDescription);
 
                                 // update as delivered
                                 filter = new BsonDocument(new BsonDocument("_id", change.FullDocument.id));

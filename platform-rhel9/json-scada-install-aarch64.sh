@@ -141,9 +141,15 @@ sudo systemctl enable telegraf
 
 sudo dnf -y install supervisor
 sudo cp *.ini /etc/supervisord.d/
+# JSON-SCADA process manager: dir for driver services created from the AdminUI.
+# Owned by jsonscada so services can be managed without root; scanned by supervisord.
+mkdir -p ~/json-scada/conf/supervisor.d
+if ! grep -q 'json-scada/conf/supervisor.d' /etc/supervisord.conf; then
+  sudo sed -i "s#^files *= *supervisord.d/\*.ini#files = supervisord.d/*.ini $HOME/json-scada/conf/supervisor.d/*.ini#" /etc/supervisord.conf
+fi
 sudo systemctl enable supervisord
 
-sudo yum install -y https://dl.grafana.com/grafana/release/12.4.3/grafana_12.4.3_24388279614_linux_$JS_ARCH.rpm
+sudo yum install -y https://dl.grafana.com/grafana/release/13.1.0/grafana_13.1.0_28013217238_linux_$JS_ARCH.rpm
 #sudo dnf -y install grafana
 sudo cp grafana.ini /etc/grafana
 sudo systemctl enable grafana-server

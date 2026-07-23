@@ -96,11 +96,11 @@ Common parameters for _CIP Ethernet/IP_ and _Modbus TCP_ communication.
 - _**useConnectedMsg**_ [Boolean] - Use or not connected messages method. **Mandatory parameter**.
 - _**readCacheMs**_ [Double] - Use this attribute to cause the tag read operations to cache data the requested number of milliseconds. This can be used to lower the actual number of requests against the PLC. **Mandatory parameter**.
 - _**timeoutMs**_ [Double] - Timeout for read/write/init operations. **Mandatory parameter**.
-- _**int16ByteOrder**_ [String] - Reserved parameter. **Optional parameter**.
-- _**int32ByteOrder**_ [String] - Reserved parameter. **Optional parameter**.
-- _**int64ByteOrder**_ [String] - Reserved parameter. **Optional parameter**.
-- _**float32ByteOrder**_ [String] - Reserved parameter. **Optional parameter**.
-- _**float64ByteOrder**_ [String] - Reserved parameter. **Optional parameter**.
+- _**int16ByteOrder**_ [String] - Byte order override for 16 bit integers, e.g. "01" or "10". Leave empty to use the protocol default (ab_eip: "01", modbus: "10"). **Optional parameter**.
+- _**int32ByteOrder**_ [String] - Byte order override for 32 bit integers, e.g. "0123" or "3210". Leave empty to use the protocol default (ab_eip: "0123", modbus: "3210"). **Optional parameter**.
+- _**int64ByteOrder**_ [String] - Byte order override for 64 bit integers, e.g. "01234567" or "76543210". Leave empty to use the protocol default (ab_eip: "01234567", modbus: "76543210"). **Optional parameter**.
+- _**float32ByteOrder**_ [String] - Byte order override for 32 bit floats, e.g. "0123" or "3210". Leave empty to use the protocol default (ab_eip: "0123", modbus: "3210"). **Optional parameter**.
+- _**float64ByteOrder**_ [String] - Byte order override for 64 bit floats, e.g. "01234567" or "76543210". Leave empty to use the protocol default (ab_eip: "01234567", modbus: "76543210"). **Optional parameter**.
 
 ### Multi-drop
 

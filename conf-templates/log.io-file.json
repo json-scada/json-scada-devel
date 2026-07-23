@@ -96,6 +96,16 @@
     },
     {
       "source": "node1",
+      "stream": "iec61850server",
+      "config": {
+        "path": "/json-scada/log/iec61850server.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
       "stream": "dnp3client",
       "config": {
         "path": "/json-scada/log/dnp3client.log",
@@ -196,9 +206,39 @@
     },
     {
       "source": "node1",
+      "stream": "plc4jclient",
+      "config": {
+        "path": "/json-scada/log/plc4jclient.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
       "stream": "telegraf_listener",
       "config": {
         "path": "/json-scada/log/telegraf_listener.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
+      "stream": "n8nclient",
+      "config": {
+        "path": "/json-scada/log/n8nclient.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
+      "stream": "onvif",
+      "config": {
+        "path": "/json-scada/log/onvif.log",
         "watcherOptions": {
           "usePolling": true
         }

@@ -16,7 +16,10 @@
       "basic": "Базовий",
       "detailed": "Детальний",
       "maximum": "Максимум"
-    }
+    },
+    "start": "Початок",
+    "stop": "СТІЙ",
+    "close": "Закрити"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "статистика",
         "actions": "Дії",
         "process": "процес",
-        "running": "Біг"
+        "running": "Біг",
+        "serviceState": "Сервіс"
       },
       "addProtocolDriverInstance": "Новий екземпляр",
       "addNewProtocolDriverInstance": "Додати новий екземпляр драйвера протоколу",
@@ -298,7 +302,39 @@
       "newNodeName": "Нова назва вузла",
       "deleteInstance": "Видалити екземпляр",
       "deleteInstanceConfirm": "Ви впевнені, що бажаєте видалити цей екземпляр драйвера протоколу?",
-      "editInstance": "Редагувати екземпляр"
+      "editInstance": "Редагувати екземпляр",
+      "restart": "Перезавантажити",
+      "syncServices": "Синхронізація служб",
+      "notManageable": "Цей екземпляр не керується як служба ОС на цьому вузлі.",
+      "serviceManagement": "Управління послугами",
+      "managedService": "Автоматичне керування службою ОС",
+      "startMode": "Режим запуску служби",
+      "startModes": {
+        "auto": "Автоматичний",
+        "manual": "Ручний"
+      },
+      "autoRestartOnConfigChange": "Автоматичний перезапуск після зміни конфігурації",
+      "executableVariant": "Виконуваний варіант",
+      "syncResult": "Синхронізацію завершено: {ensured} забезпечено, {errors} помилок, {orphans} неактивних служб.",
+      "deleteServiceNote": "Службу ОС {service} буде зупинено та видалено на вузлі {node}.",
+      "serviceStates": {
+        "notManageable": "Немає даних",
+        "notInstalled": "Не встановлено",
+        "restartPending": "Очікується перезапуск",
+        "RUNNING": "Біг",
+        "STOPPED": "Зупинено",
+        "STARTING": "Початок",
+        "STOPPING": "Зупинка",
+        "FATAL": "Фатальний",
+        "BACKOFF": "Відстрочка",
+        "PAUSED": "Призупинено",
+        "UNKNOWN": "Невідомо"
+      },
+      "actionResults": {
+        "started": "запит на початок",
+        "stopped": "запит на зупинку",
+        "restarted": "запит на перезапуск"
+      }
     },
     "protocolConnections": {
       "title": "Зв'язки",
@@ -709,7 +745,11 @@
       "restartProcesses": "Перезапустіть процеси",
       "restartProtocols": "Перезапустіть протоколи",
       "sanitizeDatabase": "Очистити базу даних",
-      "advancedOptions": "Додаткові параметри"
+      "advancedOptions": "Додаткові параметри",
+      "processManagement": "Управління процесами",
+      "processManagementDisabled": "Керування процесами вимкнено на сервері (на цьому хості немає серверної частини служби).",
+      "autoManageServices": "Автоматично створювати/оновлювати/видаляти служби ОС при зміні екземплярів",
+      "autoRestartOnConnectionChange": "Автоматично перезапускати драйвер при зміні його з'єднань"
     }
   }
 }

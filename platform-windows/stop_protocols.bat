@@ -12,17 +12,23 @@ net stop JSON_SCADA_mongofw
 net stop JSON_SCADA_mongowr
 net stop JSON_SCADA_iec104client
 net stop JSON_SCADA_iec101client
+net stop JSON_SCADA_iec103client
 net stop JSON_SCADA_dnp3client
 net stop JSON_SCADA_opcuaclient
 net stop JSON_SCADA_opcdaclient
 net stop JSON_SCADA_iec61850client
+net stop JSON_SCADA_iec61850server
 net stop JSON_SCADA_i104m
 net stop JSON_SCADA_plctags
 net stop JSON_SCADA_iccpclient
 net stop JSON_SCADA_mqttsparkplugclient
 net stop JSON_SCADA_plc4xclient
+net stop JSON_SCADA_plc4jclient
 net stop JSON_SCADA_telegraf_runtime
 net stop JSON_SCADA_telegraf_listener
+net stop JSON_SCADA_nodered_driver
+net stop JSON_SCADA_nodered_runtime
+net stop JSON_SCADA_n8nclient
 net stop JSON_SCADA_onvif
 ping -n 2
 

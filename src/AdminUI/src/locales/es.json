@@ -16,7 +16,10 @@
       "basic": "Básico",
       "detailed": "Detallado",
       "maximum": "Máximo"
-    }
+    },
+    "start": "Comenzar",
+    "stop": "Detener",
+    "close": "Cerca"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Estadísticas",
         "actions": "Comportamiento",
         "process": "Proceso",
-        "running": "Correr"
+        "running": "Correr",
+        "serviceState": "Servicio"
       },
       "addProtocolDriverInstance": "Nueva instancia",
       "addNewProtocolDriverInstance": "Agregar nueva instancia de controlador de protocolo",
@@ -298,7 +302,39 @@
       "newNodeName": "Nuevo nombre de nodo",
       "deleteInstance": "Eliminar instancia",
       "deleteInstanceConfirm": "¿Está seguro de que desea eliminar esta instancia del controlador de protocolo?",
-      "editInstance": "Editar instancia"
+      "editInstance": "Editar instancia",
+      "restart": "Reanudar",
+      "syncServices": "Servicios de sincronización",
+      "notManageable": "Esta instancia no se gestiona como un servicio del sistema operativo en este nodo.",
+      "serviceManagement": "Gestión de servicios",
+      "managedService": "Administrar automáticamente el servicio del sistema operativo",
+      "startMode": "Modo de inicio del servicio",
+      "startModes": {
+        "auto": "Automático",
+        "manual": "Manual"
+      },
+      "autoRestartOnConfigChange": "Reiniciar automáticamente al cambiar la configuración.",
+      "executableVariant": "Variante ejecutable",
+      "syncResult": "Sincronización completa: {ensured} asegurada, {errors} errores, {orphans} servicio(s) huérfano(s).",
+      "deleteServiceNote": "El servicio del sistema operativo {service} se detendrá y se eliminará en el nodo {node}.",
+      "serviceStates": {
+        "notManageable": "N / A",
+        "notInstalled": "No instalado",
+        "restartPending": "Reinicio pendiente",
+        "RUNNING": "Correr",
+        "STOPPED": "Interrumpido",
+        "STARTING": "A partir de",
+        "STOPPING": "Parada",
+        "FATAL": "Fatal",
+        "BACKOFF": "Retrocede",
+        "PAUSED": "Pausa",
+        "UNKNOWN": "Desconocido"
+      },
+      "actionResults": {
+        "started": "inicio solicitado",
+        "stopped": "Se solicita parada",
+        "restarted": "Se solicita reiniciar"
+      }
     },
     "protocolConnections": {
       "title": "Conexiones",
@@ -709,7 +745,11 @@
       "restartProcesses": "Reiniciar procesos",
       "restartProtocols": "Protocolos de reinicio",
       "sanitizeDatabase": "Sanitizar base de datos",
-      "advancedOptions": "Opciones avanzadas"
+      "advancedOptions": "Opciones avanzadas",
+      "processManagement": "Gestión de procesos",
+      "processManagementDisabled": "La gestión de procesos está deshabilitada en el servidor (no hay ningún servicio backend en este host).",
+      "autoManageServices": "Crear/actualizar/eliminar automáticamente los servicios del sistema operativo cuando cambien las instancias.",
+      "autoRestartOnConnectionChange": "Reiniciar automáticamente el controlador cuando cambien sus conexiones."
     }
   }
 }

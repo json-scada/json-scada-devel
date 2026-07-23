@@ -34,20 +34,85 @@ const { MongoClient, Double } = require('mongodb')
 const Log = require('./simple-logger')
 const AppDefs = require('./app-defs')
 const { LoadConfig, getMongoConnectionOptions } = require('./load-config')
+const {
+  createHistorianBackend,
+  installTagHistory,
+  isTagEligibleForHistory,
+  convertHistValue,
+} = require('./historian')
 let HintMongoIsConnected = true
 
 process.on('uncaughtException', (err) =>
-  Log.log('Uncaught Exception: ' + err.message)
+  Log.log('Uncaught Exception: ' + (err?.stack || err?.message || err))
+)
+process.on('unhandledRejection', (reason) =>
+  Log.log(
+    'Unhandled Rejection: ' + (reason?.stack || reason?.message || reason)
+  )
 )
 ;(async () => {
   const jsConfig = LoadConfig() // load and parse config file
   Log.levelCurrent = jsConfig.LogLevel
 
   let clientMongo = null
+  let servers = [] // OPC-UA server instances, tracked across (re)connections for shutdown
+
+  // gracefully shut down and forget all running OPC-UA servers
+  const shutdownServers = async () => {
+    if (servers.length === 0) return
+    Log.log('Shutting down OPC-UA server(s)!')
+    for (const srv of servers) {
+      try {
+        if (srv._histBackend) srv._histBackend.close()
+      } catch (e) {
+        Log.log('Error closing historian backend: ' + e)
+      }
+      try {
+        await srv.shutdownChannels()
+        await srv.shutdown()
+      } catch (e) {
+        Log.log('Error shutting down OPC-UA server: ' + e)
+      }
+    }
+    servers.length = 0
+  }
+
+  // graceful shutdown on termination signals: drop OPC-UA clients and close
+  // the Mongo client cleanly before the process exits (e.g. systemctl/nssm
+  // stop, docker stop, CTRL+C)
+  let isShuttingDown = false
+  const gracefulShutdown = async (signal) => {
+    if (isShuttingDown) return
+    isShuttingDown = true
+    Log.log('Received ' + signal + ', shutting down...')
+    // force exit if a clean shutdown stalls (e.g. a hung endpoint)
+    const forceTimer = setTimeout(() => {
+      Log.log('Shutdown timed out, forcing exit.')
+      process.exit(1)
+    }, 10000)
+    if (forceTimer.unref) forceTimer.unref()
+    try {
+      await shutdownServers()
+    } catch (e) {
+      Log.log('Error shutting down OPC-UA server(s): ' + e)
+    }
+    try {
+      if (clientMongo) await clientMongo.close()
+    } catch (e) {
+      Log.log('Error closing MongoDB client: ' + e)
+    }
+    clearTimeout(forceTimer)
+    process.exit(0)
+  }
+  process.on('SIGINT', () => gracefulShutdown('SIGINT'))
+  process.on('SIGTERM', () => gracefulShutdown('SIGTERM'))
 
   while (true) {
-    if (clientMongo === null)
-      // if disconnected
+    if (clientMongo === null) {
+      // if disconnected, shut down any servers left from a previous
+      // connection before trying to (re)connect (avoids leaking
+      // instances and port-in-use errors on rebind)
+      await shutdownServers()
       await MongoClient.connect(
         // try to (re)connect
         jsConfig.mongoConnectionString,
@@ -61,7 +126,6 @@ process.on('uncaughtException', (err) =>
             Log.levelMin
           )
           clientMongo = client
-          const servers = []
           let allGroups1ToFilterCS = []
 
           // specify db and collections
@@ -84,7 +148,7 @@ process.on('uncaughtException', (err) =>
             process.exit(1)
           }
 
-          connections.forEach(async (connection) => {
+          connections.forEach((connection) => {
             if (connection.enabled === false) {
               return
             }
@@ -93,8 +157,32 @@ process.on('uncaughtException', (err) =>
               Log.log('Fatal error: malformed record for connection found!')
               return
             }
+
+            // accumulate the union of group1 topics across all enabled
+            // connections for the shared change-stream filter; null means
+            // at least one connection serves all tags (watch everything)
+            if (allGroups1ToFilterCS !== null) {
+              if (
+                'topics' in connection &&
+                Array.isArray(connection.topics) &&
+                connection.topics.length > 0
+              ) {
+                allGroups1ToFilterCS = allGroups1ToFilterCS.concat(
+                  connection.topics
+                )
+              } else {
+                allGroups1ToFilterCS = null
+              }
+            }
+
+            connection.historyEnabled = connection.historyEnabled ?? true
+
             startOpcuaServer(connection, rtCollection, cmdCollection)
           })
+
+          // one shared change stream dispatches updates to every server
+          // (replaces the previous one-stream-per-connection approach)
+          setupChangeStream(rtCollection, allGroups1ToFilterCS)
 
           async function startOpcuaServer(
             connection,
@@ -104,7 +192,7 @@ process.on('uncaughtException', (err) =>
             async function sendCommand(tag, variant) {
               let cmdRes = await rtCollection.findOne({ tag: tag })
 
-              if (!('_id' in cmdRes)) {
+              if (!cmdRes || !('_id' in cmdRes)) {
                 Log.log('Command not found! Tag: ' + tag)
                 return StatusCodes.BadNotFound
               }
@@ -119,61 +207,62 @@ process.on('uncaughtException', (err) =>
                 let supRes = await rtCollection.findOne({
                   _id: cmdRes.supervisedOfCommand,
                 })
-                if ('_id' in supRes) {
+                if (supRes && '_id' in supRes) {
                   if (supRes?.commandBlocked !== false) {
                     Log.log('Command blocked (sup)! Tag: ' + tag)
                     return StatusCodes.BadNotWritable
                   }
                 }
+              }
 
-                let doubleVal = variant.value
-                let strVal = variant.value.toString()
+              let doubleVal = variant.value
+              let strVal = variant.value.toString()
 
-                switch (variant.dataType) {
-                  case DataType.Boolean:
-                    doubleVal = variant.value ? 1 : 0
-                    strVal = variant.value.toString()
-                    break
-                  case DataType.SByte:
-                  case DataType.Byte:
-                  case DataType.Byte:
-                  case DataType.Int16:
-                  case DataType.UInt16:
-                  case DataType.Int32:
-                  case DataType.UInt32:
-                  case DataType.Int64:
-                  case DataType.UInt64:
-                  case DataType.Float:
-                  case DataType.Double:
-                    doubleVal = variant.value
-                    strVal = variant.value.toString()
-                    break
-                  case DataType.Variant:
-                  case DataType.StatusCode:
-                  case DataType.Guid:
-                  case DataType.QualifiedName:
-                  case DataType.LocalizedText:
-                  case DataType.DiagnosticInfo:
-                  case DataType.ByteString:
-                  case DataType.ExpandedNodeId:
-                  case DataType.NodeId:
-                  case DataType.XmlElement:
-                  case DataType.String:
-                    doubleVal = parseFloat(variant.value)
-                    strVal = variant.value.toString()
-                    break
-                }
+              switch (variant.dataType) {
+                case DataType.Boolean:
+                  doubleVal = variant.value ? 1 : 0
+                  strVal = variant.value.toString()
+                  break
+                case DataType.SByte:
+                case DataType.Byte:
+                case DataType.Int16:
+                case DataType.UInt16:
+                case DataType.Int32:
+                case DataType.UInt32:
+                case DataType.Int64:
+                case DataType.UInt64:
+                case DataType.Float:
+                case DataType.Double:
+                  doubleVal = variant.value
+                  strVal = variant.value.toString()
+                  break
+                case DataType.Variant:
+                case DataType.StatusCode:
+                case DataType.Guid:
+                case DataType.QualifiedName:
+                case DataType.LocalizedText:
+                case DataType.DiagnosticInfo:
+                case DataType.ByteString:
+                case DataType.ExpandedNodeId:
+                case DataType.NodeId:
+                case DataType.XmlElement:
+                case DataType.String:
+                  doubleVal = parseFloat(variant.value)
+                  strVal = variant.value.toString()
+                  break
+              }
 
-                // clear to send command
-                Log.log(
-                  'Inserting command: ' +
-                    cmdRes.tag +
-                    ' ' +
-                    doubleVal +
-                    ' ' +
-                    strVal
-                )
-                cmdCollection.insertOne({
+              // clear to send command
+              Log.log(
+                'Inserting command: ' +
+                  cmdRes.tag +
+                  ' ' +
+                  doubleVal +
+                  ' ' +
+                  strVal
+              )
+              try {
+                await cmdCollection.insertOne({
                   protocolSourceConnectionNumber:
                     cmdRes?.protocolSourceConnectionNumber,
                   protocolSourceCommonAddress:
@@ -197,9 +286,12 @@ process.on('uncaughtException', (err) =>
                   originatorIpAddress: '',
                   timeTag: new Date(),
                 })
-
-                return StatusCodes.BadNotFound
+              } catch (e) {
+                Log.log('Error inserting command! Tag: ' + tag + ' ' + e)
+                return StatusCodes.BadInternalError
               }
+
+              return StatusCodes.Good
             }
 
             let port = 4840
@@ -232,6 +324,33 @@ process.on('uncaughtException', (err) =>
               }
             }
 
+            // OPC UA Historical Access capabilities (published only when
+            // history is enabled for this connection)
+            const historyMaxReturn =
+              parseInt(connection.historyMaxReturnDataValues) || 20000
+            let historyProp = {}
+            if (connection?.historyEnabled === true) {
+              historyProp = {
+                serverCapabilities: {
+                  historyServerCapabilities: {
+                    accessHistoryDataCapability: true,
+                    accessHistoryEventsCapability: false,
+                    maxReturnDataValues: historyMaxReturn,
+                    maxReturnEventValues: 0,
+                    insertDataCapability: false,
+                    replaceDataCapability: false,
+                    updateDataCapability: false,
+                    deleteRawCapability: false,
+                    deleteAtTimeCapability: false,
+                    insertEventCapability: false,
+                    replaceEventCapability: false,
+                    updateEventCapability: false,
+                    deleteEventCapability: false,
+                  },
+                },
+              }
+            }
+
             // Let's create an instance of OPCUAServer
             const server = new OPCUAServer({
               port: port, // the port of the listening socket of the server
@@ -250,6 +369,7 @@ process.on('uncaughtException', (err) =>
               timeout: timeout,
               ...certificateProp,
               ...privateKeyProp,
+              ...historyProp,
               // securityModes: [],
               // securityPolicies: [],
               // defaultSecureTokenLifetime: 10000000,
@@ -261,11 +381,40 @@ process.on('uncaughtException', (err) =>
             await server.initialize()
             Log.log('OPC-UA Server initialized.')
 
-            //const namespace = server.engine.addressSpace.getOwnNamespace()
-            const ns = server.engine.addressSpace.getOwnNamespace().namespaceUri
-            const namespace = server.engine.addressSpace.registerNamespace(
+            const addressSpace = server.engine.addressSpace
+            //const namespace = addressSpace.getOwnNamespace()
+            const ns = addressSpace.getOwnNamespace().namespaceUri
+            const namespace = addressSpace.registerNamespace(
               ns + '_' + connection.name
             )
+
+            // Historical Access: create the backend for this connection and
+            // enable aggregate (ReadProcessed) support on the address space.
+            let histBackend = null
+            if (connection?.historyEnabled === true) {
+              histBackend = createHistorianBackend(
+                connection,
+                jsConfig,
+                () => clientMongo,
+                Log
+              )
+              server._histBackend = histBackend
+              Log.log(
+                'History enabled (' +
+                  histBackend.backendName +
+                  ') for connection ' +
+                  connection.name
+              )
+              try {
+                const { addAggregateSupport } = require('node-opcua-aggregates')
+                addAggregateSupport(addressSpace)
+              } catch (e) {
+                Log.log(
+                  'Historian - aggregate (ReadProcessed) support unavailable: ' +
+                    (e.message || e)
+                )
+              }
+            }
             // we create a new folder under RootFolder
             const folderJsonScada = namespace.addFolder('ObjectsFolder', {
               browseName: 'JsonScadaServer',
@@ -287,6 +436,20 @@ process.on('uncaughtException', (err) =>
               })
             })
 
+            // returns true when the given remote address is allowed to
+            // connect. An empty/absent ipAddresses list allows any address.
+            // A blank remote address is allowed (can't be matched reliably).
+            const isRemoteAddressAllowed = (remoteAddress) => {
+              if (
+                !Array.isArray(connection.ipAddresses) ||
+                connection.ipAddresses.length === 0
+              )
+                return true
+              const addr = (remoteAddress || '').replace('::ffff:', '')
+              if (addr === '') return true
+              return connection.ipAddresses.includes(addr)
+            }
+
             server.on('newChannel', function (channel, endpoint) {
               Log.log(
                 'New Channel, remote address: ' +
@@ -294,6 +457,21 @@ process.on('uncaughtException', (err) =>
                   ', endpoint: ' +
                   endpoint
               )
+
+              // enforce the IP allow-list at the channel level, before any
+              // session is created (primary gate)
+              if (!isRemoteAddressAllowed(channel?.remoteAddress)) {
+                Log.log(
+                  'IP not authorized: closing channel! ' + channel?.remoteAddress
+                )
+                try {
+                  channel.close()
+                } catch (e) {
+                  try {
+                    channel.abruptlyInterrupt()
+                  } catch (e2) {}
+                }
+              }
             })
 
             server.on('create_session', function (session) {
@@ -304,25 +482,16 @@ process.on('uncaughtException', (err) =>
               )
               Log.log('Remote Address: ' + session?.channel?.remoteAddress)
 
-              if (
-                'ipAddresses' in connection &&
-                'length' in connection.ipAddresses
-              ) {
-                if (
-                  connection.ipAddresses.length > 0 &&
-                  session?.channel?.remoteAddress != ''
-                )
-                  if (
-                    !connection.ipAddresses.includes(
-                      session.channel.remoteAddress.replace('::ffff:', '')
-                    )
-                  ) {
-                    Log.log('IP not authorized: closing session!')
-                    try {
-                      session.close()
-                    } catch (e) {}
-                    session.dispose()
-                  }
+              // fallback IP allow-list enforcement at session level (the
+              // 'newChannel' handler is the primary gate)
+              if (!isRemoteAddressAllowed(session?.channel?.remoteAddress)) {
+                Log.log('IP not authorized: closing session!')
+                try {
+                  session.close()
+                } catch (e) {}
+                try {
+                  session.dispose()
+                } catch (e) {}
               }
             })
 
@@ -333,10 +502,6 @@ process.on('uncaughtException', (err) =>
             if ('topics' in connection && 'length' in connection.topics) {
               if (connection.topics.length > 0) {
                 filterGroup1.group1 = { $in: connection.topics }
-                if (allGroups1ToFilterCS !== null) {
-                  if (connection.topics.length === 0) allGroups1ToFilterCS == null
-                  else allGroups1ToFilterCS = allGroups1ToFilterCS.concat(connection.topics)
-                }
                 Log.log('Filter tags: ' + JSON.stringify(filterGroup1))
               }
             }
@@ -377,6 +542,7 @@ process.on('uncaughtException', (err) =>
                     protocolSourceASDU: 1,
                     protocolSourceObjectAddress: 1,
                     protocolSourceAccessLevel: 1,
+                    historianPeriod: 1,
                   },
                 }
               )
@@ -420,14 +586,17 @@ process.on('uncaughtException', (err) =>
               if (res[i].group1 == '' || res[i].group2 == '') {
                 continue
               }
-              if (res[i].group2 in group2List) {
-                res[i]._componentOf = group2List[res[i].group2]
+              // key by full path so equal group2 names under different
+              // group1 parents don't collide into a single folder
+              const g2Key = JSON.stringify([res[i].group1, res[i].group2])
+              if (g2Key in group2List) {
+                res[i]._componentOf = group2List[g2Key]
                 continue
               }
               let folder = namespace.addFolder(res[i]._componentOf, {
                 browseName: res[i].group2,
               })
-              group2List[res[i].group2] = folder
+              group2List[g2Key] = folder
               res[i]._componentOf = folder
             }
 
@@ -445,14 +614,21 @@ process.on('uncaughtException', (err) =>
               ) {
                 continue
               }
-              if (res[i].group3 in group3List) {
-                res[i]._componentOf = group3List[res[i].group3]
+              // key by full path so equal group3 names under different
+              // group1/group2 parents don't collide into a single folder
+              const g3Key = JSON.stringify([
+                res[i].group1,
+                res[i].group2,
+                res[i].group3,
+              ])
+              if (g3Key in group3List) {
+                res[i]._componentOf = group3List[g3Key]
                 continue
               }
               let folder = namespace.addFolder(res[i]._componentOf, {
                 browseName: res[i].group3,
               })
-              group3List[res[i].group3] = folder
+              group3List[g3Key] = folder
               res[i]._componentOf = folder
             }
 
@@ -618,7 +794,7 @@ process.on('uncaughtException', (err) =>
                   ) {
                     if (!isNaN(parseInt(element.protocolSourceAccessLevel)))
                       writeFlag =
-                        parseInt(element.protocolSourceAccessLevel) &&
+                        parseInt(element.protocolSourceAccessLevel) &
                         AccessLevelFlag.CurrentWrite
                   }
 
@@ -673,6 +849,32 @@ process.on('uncaughtException', (err) =>
                         : element.timeTagAtSource
                     )
                   }
+
+                  // install OPC UA Historical Access on eligible tags
+                  if (
+                    histBackend &&
+                    isTagEligibleForHistory(connection, element)
+                  ) {
+                    try {
+                      installTagHistory(
+                        namespace,
+                        addressSpace,
+                        server._metrics[element.tag],
+                        element,
+                        histBackend,
+                        connection,
+                        Log
+                      )
+                    } catch (e) {
+                      Log.log(
+                        'Historian - install error for tag ' +
+                          element.tag +
+                          ': ' +
+                          (e.message || e),
+                        Log.levelMin
+                      )
+                    }
+                  }
                 }
               } catch (e) {
                 Log.log(
@@ -685,16 +887,22 @@ process.on('uncaughtException', (err) =>
             }
 
             Log.log(`Finished creating OPC UA Variables.`)
+          }
 
+          // Single shared change stream feeding all servers. Using one
+          // stream (instead of one per connection) avoids O(N^2) redundant
+          // updates and prevents a single stream's error/close/end from
+          // tearing down the Mongo client shared by every connection.
+          function setupChangeStream(rtColl, groups1ToFilter) {
             let csFilterGroup1 = {
               'fullDocument.group1': {
                 $exists: true,
               },
             }
 
-            if (allGroups1ToFilterCS !== null && allGroups1ToFilterCS?.length > 0) {
+            if (groups1ToFilter !== null && groups1ToFilter?.length > 0) {
               csFilterGroup1 = {
-                'fullDocument.group1': { $in: allGroups1ToFilterCS },
+                'fullDocument.group1': { $in: groups1ToFilter },
               }
             }
 
@@ -732,7 +940,7 @@ process.on('uncaughtException', (err) =>
               },
             ]
 
-            const changeStream = rtCollection.watch(csPipeline, {
+            const changeStream = rtColl.watch(csPipeline, {
               fullDocument: 'updateLookup',
             })
 
@@ -806,6 +1014,7 @@ process.on('uncaughtException', (err) =>
           clientMongo = null
           Log.log(err)
         })
+    }
 
     // wait 5 seconds
     await new Promise((resolve) => setTimeout(resolve, 5000))
@@ -822,12 +1031,9 @@ process.on('uncaughtException', (err) =>
         if (clientMongo) clientMongo.close()
         clientMongo = null
       }
-    if (!clientMongo && server) {
-      Log.log('Shutting down OPC-UA server!')
-      await server.shutdownChannels()
-      await server.shutdown()
-      server = null
-    }
+    // if disconnected from mongo, shut down the OPC-UA server(s) so clients
+    // are dropped and can reconnect once the database is available again
+    if (!clientMongo) await shutdownServers()
   }
 })()
 
@@ -865,10 +1071,11 @@ async function checkConnectedMongo(client) {
     res = await client.db('admin').command({ ping: 1 })
     clearTimeout(tr)
   } catch (e) {
+    clearTimeout(tr)
     Log.log('Error on mongodb connection!')
     return false
   }
-  if ('ok' in res && res.ok) {
+  if (res && 'ok' in res && res.ok) {
     HintMongoIsConnected = true
     return true
   } else {
@@ -882,10 +1089,14 @@ function convertValueVariant(rtData) {
     dataType = '',
     arrayType = null
   switch (rtData?.type) {
-    case 'digital':
-      dataType = DataType.Boolean
-      value = rtData.value === 0 ? false : true
+    case 'digital': {
+      // delegate to the shared scalar converter (see historian.js) so live
+      // and historical conversion cannot drift
+      const r = convertHistValue('digital', rtData.protocolSourceASDU, rtData.value)
+      dataType = r.dataType
+      value = r.value
       break
+    }
     case 'json':
       let obj = null
       try {
@@ -1029,101 +1240,25 @@ function convertValueVariant(rtData) {
         }
       }
       break
-    case 'string':
-      switch (rtData.protocolSourceASDU) {
-        default:
-        case 'string':
-          dataType = DataType.String
-          break
-        case 'guid':
-          dataType = DataType.Guid
-          break
-        case 'bytestring':
-          dataType = DataType.ByteString
-          break
-        case 'xmlelement':
-          dataType = DataType.XmlElement
-          break
-        case 'nodeid':
-          dataType = DataType.NodeId
-          break
-        case 'expandednodeid':
-          dataType = DataType.ExpandedNodeId
-          break
-        case 'qualifiedname':
-          dataType = DataType.QualifiedName
-          break
-        case 'localizedtext':
-          dataType = DataType.LocalizedText
-          break
-        case 'nodeid':
-          dataType = DataType.NodeId
-          break
-      }
-      if ('valueString' in rtData) value = rtData.valueString
-      else value = '' + rtData?.value
+    case 'string': {
+      // delegate to the shared scalar converter (see historian.js)
+      const r = convertHistValue(
+        'string',
+        rtData.protocolSourceASDU,
+        rtData.value,
+        'valueString' in rtData ? rtData.valueString : undefined
+      )
+      dataType = r.dataType
+      value = r.value
       break
-    case 'analog':
-      switch (rtData.protocolSourceASDU) {
-        default:
-        case 'double':
-          dataType = DataType.Double
-          value = parseFloat(rtData.value)
-          break
-        case 'datavalue':
-          dataType = DataType.DataValue
-          value = parseFloat(rtData.value)
-          break
-        case 'statuscode':
-          dataType = DataType.StatusCode
-          value = parseInt(rtData.value) & 0xffffffff
-          break
-        case 'float':
-          dataType = DataType.Float
-          value = parseFloat(rtData.value)
-          break
-        case 'int16':
-          dataType = DataType.Int16
-          value = parseInt(rtData.value) & 0xffff
-          break
-        case 'uint16':
-          dataType = DataType.UInt16
-          value = parseInt(rtData.value) & 0xffff
-          break
-        case 'int32':
-          dataType = DataType.Int32
-          value = parseInt(rtData.value) & 0xffffffff
-          break
-        case 'uint32':
-          dataType = DataType.UInt32
-          value = parseInt(rtData.value) & 0xffffffff
-          break
-        case 'int64':
-          dataType = DataType.Int64
-          value = parseInt(rtData.value)
-          break
-        case 'uint64':
-          dataType = DataType.UInt64
-          value = parseInt(rtData.value)
-          break
-        case 'byte':
-          dataType = DataType.Byte
-          value = parseInt(rtData.value) & 0xff
-          break
-        case 'sbyte':
-          dataType = DataType.SByte
-          value = parseInt(rtData.value) & 0xff
-          break
-        case 'boolean':
-          dataType = DataType.Boolean
-          value = rtData.value === 0 ? false : true
-          break
-        case 'datetime':
-          dataType = DataType.DateTime
-          value = new Date(rtData.value)
-          break
-      }
+    }
+    case 'analog': {
+      // delegate to the shared scalar converter (see historian.js)
+      const r = convertHistValue('analog', rtData.protocolSourceASDU, rtData.value)
+      dataType = r.dataType
+      value = r.value
       break
+    }
     default:
   }
 

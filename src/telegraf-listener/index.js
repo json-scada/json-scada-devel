@@ -21,7 +21,7 @@
 
 const APP_NAME = 'TELEGRAF-LISTENER'
 const APP_MSG = '{json:scada} - Telegraf UDP JSON Client Driver'
-const VERSION = '0.1.3'
+const VERSION = '0.1.4'
 let ProcessActive = false // for redundancy control
 let jsConfigFile = '../../conf/json-scada.json'
 let UdpBindPort = process.env.JS_TELEGRAF_LISTENER_BIND_PORT || 51920
@@ -35,13 +35,14 @@ const LogLevelMin = 0,
 const fs = require('fs')
 const { MongoClient, ReadPreference, Double } = require('mongodb')
 const Queue = require('queue-fifo')
-const { setInterval } = require('timers')
 const dgram = require('dgram')
 const serverUdpSocket = dgram.createSocket({ type: 'udp4' })
 let bindCount = 0
 const grpSep = '~'
 
-process.on('uncaughtException', err => console.log('Uncaught Exception:' + JSON.stringify(err)))
+process.on('uncaughtException', (err) =>
+  console.log('Uncaught Exception: ' + (err?.stack || err))
+)
 
 let ListCreatedTags = []
 let ValuesQueue = new Queue() // queue of values to update
@@ -129,6 +130,11 @@ serverUdpSocket.on('message', (msg, rinfo) => {
 })
 
 const processMessageJSON = function (data) {
+  if (data === null || typeof data !== 'object') return
+  const tags = data.tags !== null && typeof data.tags === 'object' ? data.tags : {}
+  const fields =
+    data.fields !== null && typeof data.fields === 'object' ? data.fields : {}
+
   let grouping = '',
     group1 = '',
     group2 = '',
@@ -136,48 +142,48 @@ const processMessageJSON = function (data) {
     ungroupedDescription = ''
 
   // add group1 or measurement name
-  if (notEmpty(data.tags?.group1)) {
-    grouping += addGrpIfNotEmpty(data.tags.group1)
-    group1 = data.tags.group1
+  if (notEmpty(tags.group1)) {
+    grouping += addGrpIfNotEmpty(tags.group1)
+    group1 = tags.group1
   } else {
     grouping += addGrpIfNotEmpty(data?.name)
     group1 = data?.name
   }
 
   // add group2 or topic or and host name as group2
-  if (notEmpty(data.tags?.group2)) {
-    grouping += addGrpIfNotEmpty(data.tags.group2)
-    group2 = data.tags.group2
+  if (notEmpty(tags.group2)) {
+    grouping += addGrpIfNotEmpty(tags.group2)
+    group2 = tags.group2
   } else {
-    // grouping += addGrpIfNotEmpty(data.tags?.objectname)
-    if (notEmpty(data.tags?.topic)) {
-      let pos = data.tags.topic.lastIndexOf('/')
+    // grouping += addGrpIfNotEmpty(tags.objectname)
+    if (notEmpty(tags.topic)) {
+      let pos = tags.topic.lastIndexOf('/')
       if (pos === -1) {
-        group2 = data.tags.topic
-        ungroupedDescription = data.tags.topic
+        group2 = tags.topic
+        ungroupedDescription = tags.topic
       } else {
-        group2 = data.tags.topic.substring(0, pos)
-        ungroupedDescription = data.tags.topic.substring(pos + 1)
+        group2 = tags.topic.substring(0, pos)
+        ungroupedDescription = tags.topic.substring(pos + 1)
       }
       grouping += group2 + grpSep
     } else {
-      if (notEmpty(data.tags?.host)) {
-        grouping += addGrpIfNotEmpty(data.tags.host)
-        group2 = data.tags.host
+      if (notEmpty(tags.host)) {
+        grouping += addGrpIfNotEmpty(tags.host)
+        group2 = tags.host
       }
     }
   }
 
-  if (notEmpty(data.tags?.group3)) {
-    group3 = data.tags.group3
+  if (notEmpty(tags.group3)) {
+    group3 = tags.group3
   }
 
   // add group3 if exists
-  grouping += addGrpIfNotEmpty(data.tags?.group3)
+  grouping += addGrpIfNotEmpty(tags.group3)
 
   // add other tags to grouping, when group2 or group3 are not defined
-  if (!data.tags.group2 || !data.tags.group3)
-    for (var [key, val] of Object.entries(data.tags)) {
+  if (!tags.group2 || !tags.group3)
+    for (var [key, val] of Object.entries(tags)) {
       if (
         ![
           'instance',
@@ -192,47 +198,53 @@ const processMessageJSON = function (data) {
           'group3',
         ].includes(key)
       )
-        if (val !== '' && grouping.indexOf(val) === -1) {
+        if (val !== '' && !grouping.split(grpSep).includes(String(val))) {
           grouping += `${val}${grpSep}`
           // ungroupedDescription += `${value}${grpSep}`
         }
     }
 
   // add instance if exists
-  if (data.tags?.instance != '') {
-    grouping += addGrpIfNotEmpty(data.tags?.instance)
+  grouping += addGrpIfNotEmpty(tags.instance)
+
+  // source timestamp in seconds, fall back to current time when absent/invalid
+  let timeTagAtSource = new Date(1000 * data.timestamp)
+  if (isNaN(timeTagAtSource.getTime())) timeTagAtSource = new Date()
+
+  // scan all fields for quality before enqueuing any value,
+  // so the invalid flag does not depend on field order
+  let invalid = false
+  for (var [key, value] of Object.entries(fields)) {
+    if (key === 'Quality' && value !== null && value !== undefined)
+      if (value.toString().indexOf('OK') === -1) invalid = true
   }
 
-  let invalid = false
-  for (var [key, value] of Object.entries(data.fields)) {
+  for (var [key, value] of Object.entries(fields)) {
+    if (key === 'Quality') continue
+    if (value === null || value === undefined) continue
     let tag
-    if (key === 'Quality') {
-      if (value.toString().indexOf('OK') === -1) invalid = true
+    if (key === 'value') {
+      // remove the ~ at the end
+      if (ungroupedDescription === '') tag = grouping.replace(/~\s*$/, '')
+      else tag = grouping + ungroupedDescription
     } else {
-      if (key === 'value') {
-        // remove the ~ at the end
-        if (ungroupedDescription === '') tag = grouping.replace(/~\s*$/, '')
-        else tag = grouping + ungroupedDescription
-      } else {
-        tag = `${grouping}${key}`
-        ungroupedDescription = key
-      }
-
-      let entry = {
-        tag: tag,
-        value: value,
-        group1: group1,
-        group2: group2,
-        group3: group3,
-        description: tag,
-        ungroupedDescription: ungroupedDescription,
-        invalidAtSource: invalid,
-        timeTagAtSource: new Date(1000 * data.timestamp),
-      }
-      if (LogLevel >= LogLevelDebug)
-        console.log('Tag - ' + JSON.stringify(entry))
-      ValuesQueue.enqueue(entry)
+      tag = `${grouping}${key}`
+      ungroupedDescription = key
     }
+
+    let entry = {
+      tag: tag,
+      value: value,
+      group1: group1,
+      group2: group2,
+      group3: group3,
+      description: tag,
+      ungroupedDescription: ungroupedDescription,
+      invalidAtSource: invalid,
+      timeTagAtSource: timeTagAtSource,
+    }
+    if (LogLevel >= LogLevelDebug) console.log('Tag - ' + JSON.stringify(entry))
+    ValuesQueue.enqueue(entry)
   }
 }
 
@@ -261,11 +273,21 @@ const rtData = function (measurement) {
     origin: 'supervised',
     tag: measurement.tag,
     type:
-      typeof measurement.value === 'number' &&
-      !isNaN(parseFloat(measurement.value))
+      typeof measurement.value === 'boolean'
+        ? 'digital'
+        : typeof measurement.value === 'number' &&
+          !isNaN(parseFloat(measurement.value))
         ? 'analog'
         : 'string',
-    value: new Double(measurement.value),
+    value: new Double(
+      typeof measurement.value === 'boolean'
+        ? measurement.value
+          ? 1
+          : 0
+        : typeof measurement.value === 'number'
+        ? measurement.value
+        : 0
+    ),
     valueString: measurement.value.toString(),
     alarmDisabled: false,
     alerted: false,
@@ -326,92 +348,108 @@ if (
 ;(async () => {
   let collection = null
 
+  let drainInProgress = false // avoids reentrant executions when a cycle takes more than the interval
   setInterval(async function () {
-    let cnt = 0
-    if (clientMongo && collection)
-      while (!ValuesQueue.isEmpty()) {
-        let data = ValuesQueue.peek()
+    if (drainInProgress) return
+    drainInProgress = true
+    try {
+      let cnt = 0
+      if (clientMongo && collection)
+        while (!ValuesQueue.isEmpty()) {
+          let data = ValuesQueue.peek()
 
-        // if not sure tag is created, try to find, if not found create it
-        if (AutoCreateTags)
-          if (!ListCreatedTags.includes(data.tag)) {
-            // possibly not created tag, must check
-            let res = await collection
-              .find({
+          // if not sure tag is created, try to find, if not found create it
+          if (AutoCreateTags)
+            if (!ListCreatedTags.includes(data.tag)) {
+              // possibly not created tag, must check
+              let res = await collection
+                .find({
+                  protocolSourceConnectionNumber: ConnectionNumber,
+                  protocolSourceObjectAddress: data.tag,
+                })
+                .toArray()
+
+              if ('length' in res && res.length === 0) {
+                // not found, then create
+                let newTag = rtData(data)
+                if (LogLevel >= LogLevelDetailed)
+                  console.log('Tag not found, will create: ' + data.tag)
+                try {
+                  let resIns = await collection.insertOne(newTag)
+                  if (resIns.acknowledged) ListCreatedTags.push(data.tag)
+                } catch (e) {
+                  console.log('Error on insert: ' + e)
+                }
+              } else {
+                // found (already exists, no need to create), just list as created
+                ListCreatedTags.push(data.tag)
+              }
+            }
+
+          // now update tag
+
+          // try to parse value as JSON
+          let valueJson = null
+          try {
+            valueJson = JSON.parse(data.value)
+          } catch (e) {}
+
+          if (LogLevel >= LogLevelDetailed)
+            console.log(
+              'Update - ' +
+                data.timeTagAtSource +
+                ' : ' +
+                data.tag +
+                ' : ' +
+                data.value
+            )
+
+          let updTag = {
+            valueAtSource:
+              typeof data.value === 'boolean'
+                ? data.value
+                  ? 1
+                  : 0
+                : parseFloat(data.value),
+            valueStringAtSource: data.value.toString(),
+            valueJsonAtSource: valueJson,
+            asduAtSource: '',
+            causeOfTransmissionAtSource: '3',
+            timeTagAtSource: data.timeTagAtSource,
+            timeTagAtSourceOk: false, // signal that it is not really from field time
+            timeTag: new Date(),
+            originator: APP_NAME + '|' + ConnectionNumber,
+            notTopicalAtSource: false,
+            invalidAtSource: data.invalidAtSource,
+            overflowAtSource: false,
+            blockedAtSource: false,
+            substitutedAtSource: false,
+          }
+          try {
+            await collection.updateOne(
+              {
                 protocolSourceConnectionNumber: ConnectionNumber,
                 protocolSourceObjectAddress: data.tag,
-              })
-              .toArray()
-
-            if ('length' in res && res.length === 0) {
-              // not found, then create
-              let newTag = rtData(data)
-              if (logLevel >= LogLevelDetailed)
-                console.log('Tag not found, will create: ' + data.tag)
-              try {
-                let resIns = await collection.insertOne(newTag)
-                if (resIns.acknowledged) ListCreatedTags.push(data.tag)
-              } catch (e) {
-                console.log('Error on insert: ' + e)
-              }
-            } else {
-              // found (already exists, no need to create), just list as created
-              ListCreatedTags.push(data.tag)
-            }
+              },
+              { $set: { sourceDataUpdate: updTag } }
+            )
+          } catch (e) {
+            // keep entry queued, stop this cycle and retry later
+            console.log('Error on update: ' + e)
+            break
           }
 
-        // now update tag
-
-        // try to parse value as JSON
-        let valueJson = null
-        try {
-          valueJson = JSON.parse(data.value)
-        } catch (e) {}
-
-        if (LogLevel >= LogLevelDetailed)
-          console.log(
-            'Update - ' +
-              data.timeTagAtSource +
-              ' : ' +
-              data.tag +
-              ' : ' +
-              data.value
-          )
-
-        let updTag = {
-          valueAtSource: parseFloat(data.value),
-          valueStringAtSource: data.value.toString(),
-          valueJsonAtSource: valueJson,
-          asduAtSource: '',
-          causeOfTransmissionAtSource: '3',
-          timeTagAtSource: data.timeTagAtSource,
-          timeTagAtSourceOk: false, // signal that it is not really from field time
-          timeTag: new Date(),
-          originator: APP_NAME + '|' + ConnectionNumber,
-          notTopicalAtSource: false,
-          invalidAtSource: data.invalidAtSource,
-          overflowAtSource: false,
-          blockedAtSource: false,
-          substitutedAtSource: false,
+          ValuesQueue.dequeue()
+          cnt++
         }
-        collection.updateOne(
-          {
-            protocolSourceConnectionNumber: ConnectionNumber,
-            protocolSourceObjectAddress: data.tag,
-          },
-          { $set: { sourceDataUpdate: updTag } }
-        )
-
-        ValuesQueue.dequeue()
-        cnt++
-      }
-    if (cnt)
-      if (LogLevel >= LogLevelNormal) console.log('Mongo - Updates: ' + cnt)
+      if (cnt)
+        if (LogLevel >= LogLevelNormal) console.log('Mongo - Updates: ' + cnt)
+    } finally {
+      drainInProgress = false
+    }
   }, 500)
 
   let connOptions = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
     appname: APP_NAME + ' Version:' + VERSION + ' Instance:' + Instance,
     maxPoolSize: 20,
     readPreference: ReadPreference.PRIMARY,
@@ -455,75 +493,70 @@ if (
           collection = db.collection(RealtimeDataCollectionName)
 
           // find the connection number, if not found abort (only one connection per instance is allowed for this protocol)
-          db.collection(ProtocolConnectionsCollectionName)
+          const results = await db
+            .collection(ProtocolConnectionsCollectionName)
             .find({
               protocolDriver: APP_NAME,
               protocolDriverInstanceNumber: Instance,
             })
-            .toArray(async function (err, results) {
-              if (err) console.log(err)
-              else if (results) {
-                if (results.length == 0) {
-                  console.log('No protocol connection found!')
-                  process.exit(1)
-                } else {
-                  if (!('protocolConnectionNumber' in results[0])) {
-                    console.log('No protocol connection found on record!')
-                    process.exit(2)
-                  }
-                  if (results[0].enabled === false) {
-                    console.log(
-                      'Connection disabled, exiting! (connection:' +
-                        results[0].protocolConnectionNumber +
-                        ')'
-                    )
-                    process.exit(3)
-                  }
-                  if ('autoCreateTags' in results[0]) {
-                    AutoCreateTags = results[0].autoCreateTags ? true : false
-                  }
-                  if ('ipAddressLocalBind' in results[0]) {
-                    if (results[0].ipAddressLocalBind.trim() !== '') {
-                      let aux = results[0].ipAddressLocalBind.split(':')
-                      UdpBindAddress = aux[0]
-                      if (aux.length > 1 && !isNaN(parseInt(aux[1])))
-                        UdpBindPort = parseInt(aux[1])
-                    }
-                  }
-                  if ('ipAddresses' in results[0]) {
-                    RestrictIPOrigins = results[0].ipAddresses
-                  }
+            .toArray()
 
-                  if (bindCount === 0) {
-                    console.log(
-                      'Binding to ' + UdpBindAddress + ':' + UdpBindPort
-                    )
-                    serverUdpSocket.bind(UdpBindPort, UdpBindAddress)
-                    bindCount++
-                  }
+          if (!results || results.length === 0) {
+            console.log('No protocol connection found!')
+            process.exit(1)
+          }
+          if (!('protocolConnectionNumber' in results[0])) {
+            console.log('No protocol connection found on record!')
+            process.exit(2)
+          }
+          if (results[0].enabled === false) {
+            console.log(
+              'Connection disabled, exiting! (connection:' +
+                results[0].protocolConnectionNumber +
+                ')'
+            )
+            process.exit(3)
+          }
+          if ('autoCreateTags' in results[0]) {
+            AutoCreateTags = results[0].autoCreateTags ? true : false
+          }
+          if ('ipAddressLocalBind' in results[0]) {
+            if (results[0].ipAddressLocalBind.trim() !== '') {
+              let aux = results[0].ipAddressLocalBind.split(':')
+              UdpBindAddress = aux[0]
+              if (aux.length > 1 && !isNaN(parseInt(aux[1])))
+                UdpBindPort = parseInt(aux[1])
+            }
+          }
+          if (Array.isArray(results[0].ipAddresses)) {
+            RestrictIPOrigins = results[0].ipAddresses
+          }
 
-                  ConnectionNumber = results[0]?.protocolConnectionNumber
-                  console.log('Connection - ' + ConnectionNumber)
+          if (bindCount === 0) {
+            console.log('Binding to ' + UdpBindAddress + ':' + UdpBindPort)
+            serverUdpSocket.bind(UdpBindPort, UdpBindAddress)
+            bindCount++
+          }
 
-                  // find biggest point key (_id) on range and ajdust automatic key
-                  AutoKeyId = ConnectionNumber * AutoKeyMultiplier
-                  let resLastKey = await collection
-                    .find({
-                      _id: {
-                        $gt: AutoKeyId,
-                        $lt: (ConnectionNumber + 1) * AutoKeyMultiplier,
-                      },
-                    })
-                    .sort({ _id: -1 })
-                    .limit(1)
-                    .toArray()
-                  if (resLastKey.length > 0 && '_id' in resLastKey[0]) {
-                    if (parseInt(resLastKey[0]._id) >= AutoKeyId)
-                      AutoKeyId = parseInt(resLastKey[0]._id)
-                  }
-                }
-              }
+          ConnectionNumber = results[0]?.protocolConnectionNumber
+          console.log('Connection - ' + ConnectionNumber)
+
+          // find biggest point key (_id) on range and ajdust automatic key
+          AutoKeyId = ConnectionNumber * AutoKeyMultiplier
+          let resLastKey = await collection
+            .find({
+              _id: {
+                $gt: AutoKeyId,
+                $lt: (ConnectionNumber + 1) * AutoKeyMultiplier,
+              },
             })
+            .sort({ _id: -1 })
+            .limit(1)
+            .toArray()
+          if (resLastKey.length > 0 && '_id' in resLastKey[0]) {
+            if (parseInt(resLastKey[0]._id) >= AutoKeyId)
+              AutoKeyId = parseInt(resLastKey[0]._id)
+          }
 
           let lastActiveNodeKeepAliveTimeTag = null
           let countKeepAliveNotUpdated = 0
@@ -537,116 +570,112 @@ if (
               return
             }
 
-            // look for process instance entry, if not found create a new entry
-            db.collection(ProtocolDriverInstancesCollectionName)
-              .find({
-                protocolDriver: APP_NAME,
-                protocolDriverInstanceNumber: Instance,
-              })
-              .toArray(function (err, results) {
-                if (err) console.log(err)
-                else if (results) {
-                  if (results.length === 0) {
-                    // not found, then create
-                    ProcessActive = true
-                    console.log(
-                      'Redundancy - Instance config not found, creating one...'
-                    )
-                    db.collection(
-                      ProtocolDriverInstancesCollectionName
-                    ).insertOne({
-                      protocolDriver: APP_NAME,
-                      protocolDriverInstanceNumber: new Double(1),
-                      enabled: true,
-                      logLevel: new Double(1),
-                      nodeNames: [],
-                      activeNodeName: jsConfig.nodeName,
-                      activeNodeKeepAliveTimeTag: new Date(),
-                    })
-                  } else {
-                    // check for disabled or node not allowed
-                    let instance = results[0]
+            try {
+              // look for process instance entry, if not found create a new entry
+              const results = await db
+                .collection(ProtocolDriverInstancesCollectionName)
+                .find({
+                  protocolDriver: APP_NAME,
+                  protocolDriverInstanceNumber: Instance,
+                })
+                .toArray()
 
-                    let instKeepAliveTimeTag = null
+              if (!results || results.length === 0) {
+                // not found, then create
+                ProcessActive = true
+                console.log(
+                  'Redundancy - Instance config not found, creating one...'
+                )
+                await db
+                  .collection(ProtocolDriverInstancesCollectionName)
+                  .insertOne({
+                    protocolDriver: APP_NAME,
+                    protocolDriverInstanceNumber: new Double(Instance),
+                    enabled: true,
+                    logLevel: new Double(1),
+                    nodeNames: [],
+                    activeNodeName: jsConfig.nodeName,
+                    activeNodeKeepAliveTimeTag: new Date(),
+                  })
+                return
+              }
 
-                    if ('activeNodeKeepAliveTimeTag' in instance)
-                      instKeepAliveTimeTag =
-                        instance.activeNodeKeepAliveTimeTag.toISOString()
+              // check for disabled or node not allowed
+              let instance = results[0]
 
-                    if (instance?.enabled === false) {
-                      console.log('Redundancy - Instance disabled, exiting...')
-                      process.exit()
-                    }
-                    if (
-                      instance?.nodeNames !== null &&
-                      instance.nodeNames.length > 0
-                    ) {
-                      if (!instance.nodeNames.includes(jsConfig.nodeName)) {
-                        console.log(
-                          'Redundancy - Node name not allowed, exiting...'
-                        )
-                        process.exit()
-                      }
-                    }
-                    if (instance?.activeNodeName === jsConfig.nodeName) {
-                      if (!ProcessActive)
-                        console.log('Redundancy - Node activated!')
-                      countKeepAliveNotUpdated = 0
-                      ProcessActive = true
-                    } else {
-                      // other node active
-                      if (ProcessActive) {
-                        console.log('Redundancy - Node deactivated!')
-                        countKeepAliveNotUpdated = 0
-                      }
-                      ProcessActive = false
-                      if (
-                        lastActiveNodeKeepAliveTimeTag === instKeepAliveTimeTag
-                      ) {
-                        countKeepAliveNotUpdated++
-                        console.log(
-                          'Redundancy - Keep-alive from active node not updated. ' +
-                            countKeepAliveNotUpdated
-                        )
-                      } else {
-                        countKeepAliveNotUpdated = 0
-                        console.log(
-                          'Redundancy - Keep-alive updated by active node. Staying inactive.'
-                        )
-                      }
-                      lastActiveNodeKeepAliveTimeTag = instKeepAliveTimeTag
-                      if (
-                        countKeepAliveNotUpdated > countKeepAliveUpdatesLimit
-                      ) {
-                        // cnt exceeded, be active
-                        countKeepAliveNotUpdated = 0
-                        console.log('Redundancy - Node activated!')
-                        ProcessActive = true
-                      }
-                    }
+              let instKeepAliveTimeTag = null
 
-                    if (ProcessActive) {
-                      // process active, then update keep alive
-                      db.collection(
-                        ProtocolDriverInstancesCollectionName
-                      ).updateOne(
-                        {
-                          protocolDriver: APP_NAME,
-                          protocolDriverInstanceNumber: new Double(Instance),
-                        },
-                        {
-                          $set: {
-                            activeNodeName: jsConfig.nodeName,
-                            activeNodeKeepAliveTimeTag: new Date(),
-                            softwareVersion: VERSION,
-                            stats: {},
-                          },
-                        }
-                      )
-                    }
-                  }
+              if ('activeNodeKeepAliveTimeTag' in instance)
+                instKeepAliveTimeTag =
+                  instance.activeNodeKeepAliveTimeTag.toISOString()
+
+              if (instance?.enabled === false) {
+                console.log('Redundancy - Instance disabled, exiting...')
+                process.exit()
+              }
+              if (
+                instance?.nodeNames !== null &&
+                instance.nodeNames.length > 0
+              ) {
+                if (!instance.nodeNames.includes(jsConfig.nodeName)) {
+                  console.log('Redundancy - Node name not allowed, exiting...')
+                  process.exit()
                 }
-              })
+              }
+              if (instance?.activeNodeName === jsConfig.nodeName) {
+                if (!ProcessActive) console.log('Redundancy - Node activated!')
+                countKeepAliveNotUpdated = 0
+                ProcessActive = true
+              } else {
+                // other node active
+                if (ProcessActive) {
+                  console.log('Redundancy - Node deactivated!')
+                  countKeepAliveNotUpdated = 0
+                }
+                ProcessActive = false
+                if (lastActiveNodeKeepAliveTimeTag === instKeepAliveTimeTag) {
+                  countKeepAliveNotUpdated++
+                  console.log(
+                    'Redundancy - Keep-alive from active node not updated. ' +
+                      countKeepAliveNotUpdated
+                  )
+                } else {
+                  countKeepAliveNotUpdated = 0
+                  console.log(
+                    'Redundancy - Keep-alive updated by active node. Staying inactive.'
+                  )
+                }
+                lastActiveNodeKeepAliveTimeTag = instKeepAliveTimeTag
+                if (countKeepAliveNotUpdated > countKeepAliveUpdatesLimit) {
+                  // cnt exceeded, be active
+                  countKeepAliveNotUpdated = 0
+                  console.log('Redundancy - Node activated!')
+                  ProcessActive = true
+                }
+              }
+
+              if (ProcessActive) {
+                // process active, then update keep alive
+                await db
+                  .collection(ProtocolDriverInstancesCollectionName)
+                  .updateOne(
+                    {
+                      protocolDriver: APP_NAME,
+                      protocolDriverInstanceNumber: new Double(Instance),
+                    },
+                    {
+                      $set: {
+                        activeNodeName: jsConfig.nodeName,
+                        activeNodeKeepAliveTimeTag: new Date(),
+                        softwareVersion: VERSION,
+                        stats: {},
+                      },
+                    }
+                  )
+              }
+            } catch (err) {
+              console.log('Redundancy - Error: ' + (err?.message || err))
+            }
           }
 
           // check and update redundancy control

@@ -95,8 +95,8 @@ partial class MainClass
 
                         if (ov.selfPublish)
                         {
-                            // find the json-scada connection for this received value 
-                            int conn_index = 0;
+                            // find the json-scada connection for this received value
+                            int conn_index = -1;
                             for (int index = 0; index < OPCUAconns.Count; index++)
                             {
                                 if (OPCUAconns[index].protocolConnectionNumber == ov.conn_number)
@@ -105,6 +105,14 @@ partial class MainClass
                                     break;
                                 }
                             }
+                            if (conn_index == -1)
+                            {
+                                // unknown connection number: do not fall back to index 0 (would create the tag
+                                // under the wrong connection); skip the insert for this value
+                                Log(ov.conn_name + " - Connection number not found for address " + ov.address + ", skipping tag insert", LogLevelDetailed);
+                            }
+                            else
+                            {
 
                             string tag = TagFromOPCParameters(ov);
                             if (OPCUAconns[conn_index].InsertedAddresses.Add(ov.address))
@@ -174,6 +182,7 @@ partial class MainClass
 
                                 // will imediatelly be followed by an update below (to the same tag)
                             }
+                            } // end else (connection found)
                         }
 
                         // update one existing document with received tag value (realtimeData)

@@ -213,8 +213,11 @@ partial class MainClass
                 };
             }
 
+            var endpointAttempt = 0;
             do
             {
+                // rotate through the configured endpoint URLs so failover to a redundant server happens on retry
+                var endpointUrl = OPCUA_conn.endpointURLs[endpointAttempt % OPCUA_conn.endpointURLs.Length];
                 try
                 {
                     EndpointDescription selectedEndpoint = null;
@@ -247,7 +250,7 @@ partial class MainClass
                             OPCUA_conn.securityPolicy = "None";
                         }
 
-                        using (var discoveryClient = DiscoveryClient.Create(new Uri(OPCUA_conn.endpointURLs[0])))
+                        using (var discoveryClient = DiscoveryClient.Create(new Uri(endpointUrl)))
                         {
                             var discoveredEndpoints = discoveryClient.GetEndpoints(null);
 
@@ -318,7 +321,7 @@ partial class MainClass
 
                             selectedEndpoint = new EndpointDescription
                             {
-                                EndpointUrl = OPCUA_conn.endpointURLs[0],
+                                EndpointUrl = endpointUrl,
                                 SecurityMode = mode,
                                 SecurityPolicyUri = policyUri,
                                 // SecurityLevel = 0,
@@ -431,10 +434,15 @@ partial class MainClass
                     Log(conn_name + " - " + "FATAL: error creating session!", LogLevelNoLog);
                     failed = true;
                     exitCode = ExitCode.ErrorCreateSession;
+                    endpointAttempt++; // advance to the next configured endpoint URL on the next retry
                     Thread.Sleep(5000);
                 }
             }
             while (session == null || !session.Connected);
+
+            // session is connected: clear any failed state set during the retry loop so the
+            // main-loop watchdog does not spawn a second, concurrent client for this connection
+            failed = false;
 
             if (OPCUA_conn.autoCreateTags)
             {
@@ -596,9 +604,10 @@ partial class MainClass
                             ConvertOpcValue(dataValues[i], out string tp, out double dblValue, out string strValue, out string jsonValue, out bool isArray);
 
                             var createCommandForSupervised = false;
+                            // CurrentWrite is a flag inside the access-level bitmask; test the bit rather than
+                            // comparing for equality (servers commonly OR in HistoryRead, StatusWrite, etc.)
                             if (OPCUA_conn.commandsEnabled &&
-                                ((sourceNodes[i] as VariableNode).UserAccessLevel == AccessLevels.CurrentReadOrWrite ||
-                                (sourceNodes[i] as VariableNode).UserAccessLevel == AccessLevels.CurrentWrite))
+                                ((sourceNodes[i] as VariableNode).UserAccessLevel & AccessLevels.CurrentWrite) != 0)
                                 createCommandForSupervised = true; // variable can be written, create a command for it
                             OPC_Value iv =
                                     new OPC_Value()
@@ -640,8 +649,8 @@ partial class MainClass
                 exitCode = ExitCode.ErrorMonitoredItem;
                 OPCUA_conn.ListMon.ForEach(i => i.Notification += OnNotification);
                 //OPCUA_conn.connection.session.Notification += OnSessionNotification;
-                OPCUA_conn.ListMon.ForEach(i => i.SamplingInterval = System.Convert.ToInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagSamplingInterval) * 1000));
-                OPCUA_conn.ListMon.ForEach(i => i.QueueSize = System.Convert.ToUInt32(System.Convert.ToDouble(OPCUA_conn.autoCreateTagQueueSize)));
+                // note: each MonitoredItem keeps the sampling interval / queue size it was created with
+                // (autotag defaults for discovered nodes, per-tag DB values for pre-configured nodes)
                 Log(conn_name + " - " + OPCUA_conn.ListMon.Count + " variables added to monitoring.");
 
                 Log(conn_name + " - " + "Create a subscription with publishing interval of " + System.Convert.ToDouble(OPCUA_conn.autoCreateTagPublishingInterval) + " seconds");
@@ -689,7 +698,7 @@ partial class MainClass
                             DisplayName = tm.ungroupedDescription,
                             StartNodeId = tm.protocolSourceObjectAddress,
                             SamplingInterval = (int)(tm.protocolSourceSamplingInterval * 1000),
-                            QueueSize = (uint)OPCUA_conn.autoCreateTagQueueSize,
+                            QueueSize = (uint)tm.protocolSourceQueueSize,
                             MonitoringMode = MonitoringMode.Reporting,
                             DiscardOldest = true,
                             AttributeId = Attributes.Value,
@@ -784,7 +793,6 @@ partial class MainClass
                 {
                     if (value.Value != null)
                     {
-                        CntNotificEvents++;
 
                         try
                         {
@@ -895,7 +903,8 @@ partial class MainClass
                             {
                                 dblValue = 0;
                                 strValue = value.WrappedValue.ToString();
-                                jsonValue = "\"" + value.WrappedValue.ToString() + "\"";
+                                // serialize as a JSON string so quotes/backslashes in the XML stay valid JSON
+                                jsonValue = JsonSerializer.Serialize(strValue, jsonSerOpts);
                             }
                             else
                             if (base_type == "bytestring" && !isArray)
@@ -922,7 +931,7 @@ partial class MainClass
                                 base_type == "localeid" ||
                                 base_type == "localizedtext" ||
                                 base_type == "xmlelement" ||
-                                base_type == "gualifiedname" ||
+                                base_type == "qualifiedname" ||
                                 base_type == "guid")
                             {
                                 dblValue = 0;
@@ -1213,14 +1222,9 @@ partial class MainClass
                     }
                 } while (repeatBrowse);
 
-                if (maxNodesPerBrowse == 0)
-                {
-                    // browseDescriptionCollection.Clear();
-                }
-                else
-                {
-                    browseDescriptionCollection = browseDescriptionCollection.Skip(browseResultCollection.Count).ToArray();
-                }
+                // remove the descriptions processed in this iteration so the outer loop makes progress
+                // (when maxNodesPerBrowse == 0 the whole collection was browsed at once, so this empties it)
+                browseDescriptionCollection = browseDescriptionCollection.Skip(browseResultCollection.Count).ToArray();
 
                 // Browse next
                 var continuationPoints = PrepareBrowseNext(browseResultCollection);
@@ -1285,9 +1289,6 @@ partial class MainClass
                 browseDescriptionCollection.AddRange(unprocessedOperations);
             }
             stopWatch.Stop();
-
-            var result = new ReferenceDescriptionCollection(referenceDescriptions.Values.Select(v => v.Reference));
-            result.Sort((x, y) => (x.NodeId.CompareTo(y.NodeId)));
 
             Log(string.Format("BrowseFullAddressSpace found {0} references on server in {1}ms.",
                 referenceDescriptions.Count, stopWatch.ElapsedMilliseconds));

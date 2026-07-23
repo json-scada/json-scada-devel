@@ -43,18 +43,22 @@ dotnet publish --no-self-contained --runtime win-x64 -c Release -o %BINPATH% IEC
 cd %SRCPATH%\iec61850_client
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINPATH%
 
-cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
-dotnet build --no-self-contained --runtime win-x64 -c Release
-dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
-cd %SRCPATH%\lib60870.netcore\iec101client\
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-cd %SRCPATH%\lib60870.netcore\iec101server\
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-cd %SRCPATH%\lib60870.netcore\iec104client\ 
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-cd %SRCPATH%\lib60870.netcore\iec104server\ 
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-cd %SRCPATH%\dnp3\Dnp3Client\ 
+rem IEC 60870-5-101/104 drivers are now built in Go (src\iec60870-5), see the Go section below.
+rem The legacy C# drivers remain in src\lib60870.netcore as reference; to build them instead,
+rem re-enable the dotnet publish lines for iec101client/iec101server/iec104client/iec104server.
+rem cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
+rem dotnet build --no-self-contained --runtime win-x64 -c Release
+rem dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
+rem cd %SRCPATH%\lib60870.netcore\iec101client\
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+rem cd %SRCPATH%\lib60870.netcore\iec101server\
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+rem cd %SRCPATH%\lib60870.netcore\iec104client\ 
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+rem cd %SRCPATH%\lib60870.netcore\iec104server\ 
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+
+cd %SRCPATH%\dnp3\Dnp3Client\
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% Dnp3Client.csproj
 dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINWINPATH% Dnp3Client.csproj
 
@@ -116,9 +120,27 @@ copy /Y i104m.exe %BINPATH%
 
 cd %SRCPATH%\plc4x-client
 go get -u ./...
-go mod tidy 
+go mod tidy
 go build -ldflags="-s -w"
 copy /Y plc4x-client.exe %BINPATH%
+
+cd %SRCPATH%\iec60870-5
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec104client.exe .\cmd\iec104client
+go build -ldflags="-s -w" -o %BINPATH%\iec104server.exe .\cmd\iec104server
+go build -ldflags="-s -w" -o %BINPATH%\iec101client.exe .\cmd\iec101client
+go build -ldflags="-s -w" -o %BINPATH%\iec101server.exe .\cmd\iec101server
+go build -ldflags="-s -w" -o %BINPATH%\iec103client.exe .\cmd\iec103client
+
+rem PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
+where mvn >nul 2>nul
+if %ERRORLEVEL% neq 0 goto skip_plc4j
+cd %SRCPATH%\plc4j-client
+call mvn -B -ntp -DskipTests package
+copy /Y target\plc4j-client.jar %BINPATH%
+copy /Y plc4j-client.bat %BINPATH%
+:skip_plc4j
 
 cd %SRCPATH%\cs_data_processor
 call %NPM% i --package-lock-only
@@ -168,6 +190,14 @@ call %NPM% update
 cd %SRCPATH%\OPC-UA-Server
 call %NPM% i --package-lock-only
 call %NPM% update
+cd %SRCPATH%\modbus
+call %NPM% i --package-lock-only
+call %NPM% update
+call %NPM% run build
+cd %SRCPATH%\node-red-driver
+call %NPM% i --package-lock-only
+call %NPM% update
+call %NPM% run build
 cd %SRCPATH%\carbone-reports
 call %NPM% i --package-lock-only
 call %NPM% update

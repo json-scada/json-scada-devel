@@ -16,7 +16,10 @@
       "basic": "Базовый",
       "detailed": "Подробный",
       "maximum": "Максимум"
-    }
+    },
+    "start": "Начинать",
+    "stop": "Останавливаться",
+    "close": "Закрывать"
   },
   "app": {
     "title": "JSON-SCADA",
@@ -280,7 +283,8 @@
         "stats": "Статистика",
         "actions": "Действия",
         "process": "Процесс",
-        "running": "Бег"
+        "running": "Бег",
+        "serviceState": "Услуга"
       },
       "addProtocolDriverInstance": "Новый экземпляр",
       "addNewProtocolDriverInstance": "Добавить новый экземпляр драйвера протокола",
@@ -298,7 +302,39 @@
       "newNodeName": "Новое имя узла",
       "deleteInstance": "Удалить экземпляр",
       "deleteInstanceConfirm": "Вы уверены, что хотите удалить этот экземпляр драйвера протокола?",
-      "editInstance": "Редактировать экземпляр"
+      "editInstance": "Редактировать экземпляр",
+      "restart": "Перезапуск",
+      "syncServices": "Службы синхронизации",
+      "notManageable": "Данный экземпляр не управляется как служба операционной системы на этом узле.",
+      "serviceManagement": "Управление услугами",
+      "managedService": "Автоматическое управление службами ОС",
+      "startMode": "режим запуска службы",
+      "startModes": {
+        "auto": "Автоматический",
+        "manual": "Руководство"
+      },
+      "autoRestartOnConfigChange": "Автоматический перезапуск при изменении конфигурации.",
+      "executableVariant": "Исполняемый вариант",
+      "syncResult": "Синхронизация завершена: {ensured} гарантировано, {errors} ошибки, {orphans} служба(ы)-сирота.",
+      "deleteServiceNote": "Служба операционной системы {service} будет остановлена ​​и удалена на узле {node}.",
+      "serviceStates": {
+        "notManageable": "Н/Д",
+        "notInstalled": "Не установлено",
+        "restartPending": "Ожидается перезапуск",
+        "RUNNING": "Бег",
+        "STOPPED": "Остановлено",
+        "STARTING": "Начало",
+        "STOPPING": "Остановка",
+        "FATAL": "Смертельный исход",
+        "BACKOFF": "Отступление",
+        "PAUSED": "Приостановлено",
+        "UNKNOWN": "Неизвестный"
+      },
+      "actionResults": {
+        "started": "начало запроса",
+        "stopped": "запрошена остановка",
+        "restarted": "запрошен перезапуск"
+      }
     },
     "protocolConnections": {
       "title": "Связи",
@@ -709,7 +745,11 @@
       "restartProcesses": "Перезапуск процессов",
       "restartProtocols": "Протоколы перезапуска",
       "sanitizeDatabase": "Очистить базу данных",
-      "advancedOptions": "Расширенные параметры"
+      "advancedOptions": "Расширенные параметры",
+      "processManagement": "Управление процессами",
+      "processManagementDisabled": "Управление процессами на сервере отключено (на этом хосте отсутствует серверная часть).",
+      "autoManageServices": "Автоматическое создание/обновление/удаление служб ОС при изменении экземпляров.",
+      "autoRestartOnConnectionChange": "Автоматический перезапуск драйвера при изменении его соединений."
     }
   }
 }

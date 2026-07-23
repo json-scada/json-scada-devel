@@ -33,7 +33,7 @@ const MongoStatus = { HintMongoIsConnected: false }
 const LowestPriorityThatBeeps = 1 // will beep for priorities zero and one
 
 process.on('uncaughtException', (err) =>
-  Log.log('Uncaught Exception:' + JSON.stringify(err))
+  Log.log('Uncaught Exception: ' + (err?.stack || err?.message || JSON.stringify(err)))
 )
 
 const args = process.argv.slice(2)
@@ -50,7 +50,7 @@ const jsConfig = LoadConfig(confFile, logLevel, inst)
 let DivideProcessingExpression = {}
 if (
   AppDefs.ENV_PREFIX + 'DIVIDE_EXP' in process.env &&
-  process.env[AppDefs.ENV_PREFIX + DIVIDE_EXP].trim() !== ''
+  process.env[AppDefs.ENV_PREFIX + 'DIVIDE_EXP'].trim() !== ''
 ) {
   try {
     DivideProcessingExpression = JSON.parse(
@@ -86,7 +86,7 @@ const pipeline = [
           'updateDescription.updatedFields.sourceDataUpdate': { $exists: true },
         },
         {
-          $or: [{ operationType: 'update' }],
+          $or: [{ operationType: 'update' }, { operationType: 'insert' }],
         },
       ],
     },
@@ -498,15 +498,17 @@ const pipeline = [
                 resumeToken = changeStream.resumeToken
                 if (change.operationType === 'delete') return
 
+                const fullDocument = change.fullDocument
+
                 // // for older versions of mongodb
                 // if (
                 //   change.operationType === 'replace' &&
                 //   !change?.updateDescription?.updatedFields &&
-                //   change.fullDocument.sourceDataUpdate
+                //   fullDocument.sourceDataUpdate
                 // ) {
                 //   change['updateDescription'] = {
                 //     updatedFields: {
-                //       sourceDataUpdate: change.fullDocument.sourceDataUpdate,
+                //       sourceDataUpdate: fullDocument.sourceDataUpdate,
                 //     },
                 //   }
                 // }
@@ -518,24 +520,28 @@ const pipeline = [
                   // document inserted
                   Log.log(
                     'INSERT ' +
-                      change.fullDocument._id +
+                      fullDocument._id +
                       ' ' +
-                      change.fullDocument.tag +
+                      fullDocument.tag +
                       ' ' +
-                      value
+                      fullDocument.value
                   )
 
                   sqlRtDataQueue.enqueue(
                     "'" +
-                      change.fullDocument.tag +
+                      fullDocument.tag.replaceAll("'", "''") +
                       "'," +
                       "'" +
                       new Date().toISOString() +
                       "'," +
                       "to_json('" +
-                      JSON.stringify(change.fullDocument) +
+                      JSON.stringify(fullDocument).replaceAll(
+                        "'",
+                        "''"
+                      ) +
                       "'::text)"
                   )
+                  return
                 }
 
                 if (!Redundancy.ProcessStateIsActive())
@@ -550,9 +556,11 @@ const pipeline = [
                   // if not a Source Data Update (protocol update), return
                   return
 
+                const sourceDataUpdate =
+                  change.updateDescription.updatedFields.sourceDataUpdate
+
                 let delay =
-                  new Date().getTime() -
-                  change.updateDescription.updatedFields.sourceDataUpdate.timeTag.getTime()
+                  new Date().getTime() - sourceDataUpdate.timeTag.getTime()
                 latencyAccTotal += delay
                 latencyTotalCnt++
                 latencyAccMinute += delay
@@ -561,22 +569,15 @@ const pipeline = [
 
                 // consider SOE when digital changes has field timestamp
                 // or analog with isEvent true
-                if (
-                  'timeTagAtSource' in
-                  change.updateDescription.updatedFields.sourceDataUpdate
-                )
-                  if (
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .timeTagAtSource !== null
-                  )
+                if ('timeTagAtSource' in sourceDataUpdate)
+                  if (sourceDataUpdate.timeTagAtSource !== null)
                     if (
-                      change.fullDocument.type === 'digital' ||
-                      (change.fullDocument.type === 'analog' &&
-                        change.fullDocument.isEvent)
+                      fullDocument.type === 'digital' ||
+                      (fullDocument.type === 'analog' &&
+                        fullDocument.isEvent)
                     ) {
                       if (
-                        change.updateDescription.updatedFields.sourceDataUpdate.timeTagAtSource.getFullYear() >
-                        1899
+                        sourceDataUpdate.timeTagAtSource.getFullYear() > 1899
                       ) {
                         isSOE = true
                       }
@@ -590,86 +591,36 @@ const pipeline = [
                   carry = false,
                   substituted = false,
                   blocked = false
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .invalidAtSource === 'boolean'
-                ) {
-                  invalid =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .invalidAtSource
+                if (typeof sourceDataUpdate.invalidAtSource === 'boolean') {
+                  invalid = sourceDataUpdate.invalidAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .notTopicalAtSource === 'boolean'
-                ) {
-                  invalid =
-                    invalid ||
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .notTopicalAtSource
-                  nottopical =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .notTopicalAtSource
+                if (typeof sourceDataUpdate.notTopicalAtSource === 'boolean') {
+                  invalid = invalid || sourceDataUpdate.notTopicalAtSource
+                  nottopical = sourceDataUpdate.notTopicalAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .overflowAtSource === 'boolean'
-                ) {
-                  invalid =
-                    invalid ||
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .overflowAtSource
-                  overflow =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .overflowAtSource
+                if (typeof sourceDataUpdate.overflowAtSource === 'boolean') {
+                  invalid = invalid || sourceDataUpdate.overflowAtSource
+                  overflow = sourceDataUpdate.overflowAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .transientAtSource === 'boolean'
-                ) {
-                  invalid =
-                    invalid ||
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .transientAtSource
-                  transient =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .transientAtSource
+                if (typeof sourceDataUpdate.transientAtSource === 'boolean') {
+                  invalid = invalid || sourceDataUpdate.transientAtSource
+                  transient = sourceDataUpdate.transientAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .carryAtSource === 'boolean'
-                ) {
-                  carry =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .carryAtSource
+                if (typeof sourceDataUpdate.carryAtSource === 'boolean') {
+                  carry = sourceDataUpdate.carryAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .substitutedAtSource === 'boolean'
-                ) {
-                  substituted =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .substitutedAtSource
+                if (typeof sourceDataUpdate.substitutedAtSource === 'boolean') {
+                  substituted = sourceDataUpdate.substitutedAtSource
                 }
-                if (
-                  typeof change.updateDescription.updatedFields.sourceDataUpdate
-                    .blockedAtSource === 'boolean'
-                ) {
-                  blocked =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .blockedAtSource
+                if (typeof sourceDataUpdate.blockedAtSource === 'boolean') {
+                  blocked = sourceDataUpdate.blockedAtSource
                 }
 
-                let value =
-                  change.updateDescription.updatedFields.sourceDataUpdate
-                    .valueAtSource
-                let valueString =
-                  change.updateDescription.updatedFields.sourceDataUpdate
-                    ?.valueStringAtSource || ''
-                let valueJson =
-                  change.updateDescription.updatedFields.sourceDataUpdate
-                    ?.valueJsonAtSource || ''
+                let value = sourceDataUpdate.valueAtSource
+                let valueString = sourceDataUpdate?.valueStringAtSource || ''
+                let valueJson = sourceDataUpdate?.valueJsonAtSource || ''
                 if (typeof valueJson !== 'string') valueJson = ''
-                let alarmed = change.fullDocument.alarmed
+                let alarmed = fullDocument.alarmed
 
                 // avoid undefined, null or NaN values
                 if (value === null || value === undefined || isNaN(value)) {
@@ -687,24 +638,17 @@ const pipeline = [
                 txtQualif = txtQualif + (substituted ? '[SB]' : '')
                 txtQualif = txtQualif + (blocked ? '[BK]' : '')
 
-                if (change.fullDocument.type === 'digital') {
+                if (fullDocument.type === 'digital') {
                   // test for double point status
-                  if (
-                    'asduAtSource' in
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                  ) {
-                    if (
-                      change.updateDescription.updatedFields.sourceDataUpdate.asduAtSource.indexOf(
-                        'M_DP_'
-                      ) === 0
-                    ) {
+                  if ('asduAtSource' in sourceDataUpdate) {
+                    if (sourceDataUpdate.asduAtSource.indexOf('M_DP_') === 0) {
                       if (value === 0 || value === 3) {
                         transient = true
                         invalid = true
                         if (txtQualif.indexOf('[IV]') < 0)
-                          txtQualif = txtQualif + (transient ? '[IV]' : '')
+                          txtQualif = txtQualif + '[IV]'
                         if (txtQualif.indexOf('[TR]') < 0)
-                          txtQualif = txtQualif + (transient ? '[TR]' : '')
+                          txtQualif = txtQualif + '[TR]'
                         if (txtQualif !== '') txtQualif = ' ' + txtQualif
                       }
                       value = (value & 0x01) == 0 ? 1 : 0
@@ -712,41 +656,39 @@ const pipeline = [
                   }
 
                   // process inversions (kconv1=-1)
-                  if (change.fullDocument.kconv1 === -1)
+                  if (fullDocument.kconv1 === -1)
                     value = value === 0 ? 1 : 0
                   if (
-                    value != change.fullDocument.value &&
-                    !change.fullDocument.alarmDisabled
+                    value != fullDocument.value &&
+                    !fullDocument.alarmDisabled
                   )
                     alarmed = true
                   if (value)
                     valueString =
-                      change.fullDocument.stateTextTrue +
-                      (change.fullDocument.unit != ''
-                        ? ' ' + change.fullDocument.unit
+                      fullDocument.stateTextTrue +
+                      (fullDocument.unit != ''
+                        ? ' ' + fullDocument.unit
                         : '') +
                       txtQualif
                   else
                     valueString =
-                      change.fullDocument.stateTextFalse +
-                      (change.fullDocument.unit != ''
-                        ? ' ' + change.fullDocument.unit
+                      fullDocument.stateTextFalse +
+                      (fullDocument.unit != ''
+                        ? ' ' + fullDocument.unit
                         : '') +
                       txtQualif
-                } else if (change.fullDocument.type === 'analog') {
+                } else if (fullDocument.type === 'analog') {
                   if (txtQualif != '') txtQualif = ' ' + txtQualif
 
                   // apply conversion factors
                   value =
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .valueAtSource *
-                      change.fullDocument.kconv1 +
-                    change.fullDocument.kconv2
+                    sourceDataUpdate.valueAtSource * fullDocument.kconv1 +
+                    fullDocument.kconv2
 
-                  if ('zeroDeadband' in change.fullDocument)
+                  if ('zeroDeadband' in fullDocument)
                     if (
-                      change.fullDocument.zeroDeadband !== 0 &&
-                      Math.abs(value) < change.fullDocument.zeroDeadband
+                      fullDocument.zeroDeadband !== 0 &&
+                      Math.abs(value) < fullDocument.zeroDeadband
                     )
                       value = 0.0
 
@@ -754,97 +696,90 @@ const pipeline = [
                     '' +
                     parseFloat(value.toFixed(4)) +
                     ' ' +
-                    change.fullDocument.unit +
+                    fullDocument.unit +
                     txtQualif
 
-                  if (
-                    'asduAtSource' in
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                  )
-                    if (
-                      change.updateDescription.updatedFields.sourceDataUpdate.asduAtSource.indexOf(
-                        'M_BO_'
-                      ) === 0
-                    ) {
+                  if ('asduAtSource' in sourceDataUpdate)
+                    if (sourceDataUpdate.asduAtSource.indexOf('M_BO_') === 0) {
                       // test for bitstring
                       valueString =
                         value.toString(2) +
                         ' ' +
-                        change.fullDocument.unit +
+                        fullDocument.unit +
                         txtQualif
                     }
 
                   let hysteresis = 0
-                  if (change.fullDocument?.hysteresis)
-                    hysteresis = parseFloat(change.fullDocument.hysteresis)
+                  if (fullDocument?.hysteresis)
+                    hysteresis = parseFloat(fullDocument.hysteresis)
 
                   // check for limits
                   if (
-                    // value != change.fullDocument.value &&
-                    'hiLimit' in change.fullDocument &&
-                    change.fullDocument.hiLimit !== null &&
-                    'loLimit' in change.fullDocument &&
-                    change.fullDocument.loLimit !== null &&
-                    !change.fullDocument.alarmDisabled
+                    // value != fullDocument.value &&
+                    'hiLimit' in fullDocument &&
+                    fullDocument.hiLimit !== null &&
+                    'loLimit' in fullDocument &&
+                    fullDocument.loLimit !== null &&
+                    !fullDocument.alarmDisabled
                   ) {
-                    if (value > change.fullDocument.hiLimit + hysteresis) {
+                    if (value > fullDocument.hiLimit + hysteresis) {
                       alarmRange = 1
                     } else if (
                       value <
-                      change.fullDocument.loLimit - hysteresis
+                      fullDocument.loLimit - hysteresis
                     ) {
                       alarmRange = -1
                     } else if (
-                      value < change.fullDocument.hiLimit - hysteresis &&
-                      value > change.fullDocument.loLimit + hysteresis
+                      value < fullDocument.hiLimit - hysteresis &&
+                      value > fullDocument.loLimit + hysteresis
                     ) {
                       alarmed = false
                       alarmRange = 0
-                    } else if (change.fullDocument?.alarmRange)
+                    } else if (fullDocument?.alarmRange)
                       // keep the old range if out of range
-                      alarmRange = change.fullDocument.alarmRange
+                      alarmRange = fullDocument.alarmRange
 
                     // create a SOE entry for the limits alarm/normalization when analog alarm condition changes
-                    //if (alarmed != change.fullDocument.alarmed)
+                    //if (alarmed != fullDocument.alarmed)
                     //if (
-                    //    change.fullDocument.value <= change.fullDocument.hiLimit + hysteresis &&
-                    //    value > change.fullDocument.hiLimit + hysteresis
+                    //    fullDocument.value <= fullDocument.hiLimit + hysteresis &&
+                    //    value > fullDocument.hiLimit + hysteresis
                     //    ||
-                    //    change.fullDocument.value >= change.fullDocument.hiLimit - hysteresis &&
-                    //    value < change.fullDocument.hiLimit - hysteresis
+                    //    fullDocument.value >= fullDocument.hiLimit - hysteresis &&
+                    //    value < fullDocument.hiLimit - hysteresis
                     //    ||
-                    //    change.fullDocument.value >= change.fullDocument.loLimit - hysteresis  &&
-                    //    value < change.fullDocument.loLimit - hysteresis
+                    //    fullDocument.value >= fullDocument.loLimit - hysteresis  &&
+                    //    value < fullDocument.loLimit - hysteresis
                     //    ||
-                    //    change.fullDocument.value <= change.fullDocument.loLimit + hysteresis  &&
-                    //    value > change.fullDocument.loLimit + hysteresis
+                    //    fullDocument.value <= fullDocument.loLimit + hysteresis  &&
+                    //    value > fullDocument.loLimit + hysteresis
                     //      )
-                    if (!change.fullDocument.alarmDisabled)
-                      if (change.fullDocument?.alarmRange != alarmRange) {
+                    if (!fullDocument.alarmDisabled)
+                      if (fullDocument?.alarmRange != alarmRange) {
                         if (alarmRange != 0) alarmed = true
                         const eventDate = new Date()
                         const eventText =
                           parseFloat(value.toFixed(3)) +
                           ' ' +
-                          change.fullDocument.unit +
+                          fullDocument.unit +
                           (Math.abs(value) >
-                          Math.abs(change.fullDocument?.value)
+                          Math.abs(fullDocument?.value)
                             ? ' ⤉'
                             : Math.abs(value) <
-                              Math.abs(change.fullDocument?.value)
+                              Math.abs(fullDocument?.value)
                             ? ' ⤈'
                             : '') +
                           (alarmed ? ' 🚩' : ' 🆗')
                         db.collection(jsConfig.SoeDataCollectionName)
                           .insertOne(
                             {
-                              tag: change.fullDocument.tag,
-                              pointKey: change.fullDocument._id,
-                              group1: change.fullDocument.group1,
-                              description: change.fullDocument.description,
+                              tag: fullDocument.tag,
+                              pointKey: fullDocument._id,
+                              group1: fullDocument.group1,
+                              description: fullDocument.description,
                               eventText: eventText,
                               invalid: false,
-                              priority: change.fullDocument.priority,
+                              priority: fullDocument.priority,
                               timeTag: eventDate,
                               timeTagAtSource: eventDate,
                               timeTagAtSourceOk: true,
@@ -863,41 +798,39 @@ const pipeline = [
                   }
 
                   // analog tags can produce SOE events when marked as isEvent and valid value change, or having source timestamp
-                  if (!change.fullDocument.alarmDisabled)
+                  if (!fullDocument.alarmDisabled)
                     if (
-                      (change.fullDocument?.isEvent === true &&
+                      (fullDocument?.isEvent === true &&
                         !invalid &&
-                        value !== change.fullDocument?.value) ||
+                        value !== fullDocument?.value) ||
                       isSOE
                     ) {
                       const eventText =
                         parseFloat(value.toFixed(3)) +
                         ' ' +
-                        change.fullDocument.unit +
-                        (Math.abs(value) > Math.abs(change.fullDocument?.value)
+                        fullDocument.unit +
+                        (Math.abs(value) > Math.abs(fullDocument?.value)
                           ? ' ↑'
                           : Math.abs(value) <
-                            Math.abs(change.fullDocument?.value)
+                            Math.abs(fullDocument?.value)
                           ? ' ↓'
                           : '')
                       db.collection(jsConfig.SoeDataCollectionName)
                         .insertOne(
                           {
-                            tag: change.fullDocument.tag,
-                            pointKey: change.fullDocument._id,
-                            group1: change.fullDocument.group1,
-                            description: change.fullDocument.description,
+                            tag: fullDocument.tag,
+                            pointKey: fullDocument._id,
+                            group1: fullDocument.group1,
+                            description: fullDocument.description,
                             eventText: eventText,
                             invalid: false,
-                            priority: change.fullDocument.priority,
+                            priority: fullDocument.priority,
                             timeTag: new Date(),
                             timeTagAtSource: isSOE
-                              ? change.updateDescription.updatedFields
-                                  .sourceDataUpdate.timeTagAtSource
+                              ? sourceDataUpdate.timeTagAtSource
                               : new Date(),
                             timeTagAtSourceOk: isSOE
-                              ? change.updateDescription.updatedFields
-                                  .sourceDataUpdate.timeTagAtSourceOk
+                              ? sourceDataUpdate.timeTagAtSourceOk
                               : false,
                             ack: 1, // enter as acknowledged as it is not an alarm
                           },
@@ -915,47 +848,47 @@ const pipeline = [
 
                 let alarmTime = null
                 // if changed to alarmed state, or digital change or soe, register new alarm tag
-                if (!change.fullDocument.alarmDisabled && alarmed) {
+                if (!fullDocument.alarmDisabled && alarmed) {
                   if (
-                    !change.fullDocument.alarmed ||
-                    (change.fullDocument.type === 'digital' &&
-                      value !== change.fullDocument.value) ||
-                    (change.fullDocument.type === 'digital' && isSOE)
+                    !fullDocument.alarmed ||
+                    (fullDocument.type === 'digital' &&
+                      value !== fullDocument.value) ||
+                    (fullDocument.type === 'digital' && isSOE)
                   ) {
                     alarmTime = new Date()
                   }
                 }
 
                 // update only realtimeData if changed or for SOE, must not be historical backfill
-                if ( 
+                if (
                   (isSOE ||
-                    change.updateDescription.updatedFields.sourceDataUpdate?.rangeCheck ||
-                    value !== change.fullDocument.value && !(!isSOE && change.fullDocument.type === 'digital' && change.fullDocument.isEvent === true) ||
-                    (change.fullDocument.type === 'string' && valueString !== change.fullDocument.valueString) ||
-                    (change.fullDocument.type === 'json' && valueJson !== change.fullDocument.valueJson) ||
-                    change.updateDescription.updatedFields.sourceDataUpdate?.timeTagAtSource && 
-                      (change.fullDocument?.timeTagAtSource !== change.updateDescription.updatedFields.sourceDataUpdate?.timeTagAtSource) ||
-                    change.fullDocument.timeTag === null ||
-                    invalid !== change.fullDocument.invalid) &&
-                  !change.updateDescription.updatedFields.sourceDataUpdate?.isHistorical
+                    sourceDataUpdate?.rangeCheck ||
+                    value !== fullDocument.value && !(!isSOE && fullDocument.type === 'digital' && fullDocument.isEvent === true) ||
+                    (fullDocument.type === 'string' && valueString !== fullDocument.valueString) ||
+                    (fullDocument.type === 'json' && valueJson !== fullDocument.valueJson) ||
+                    sourceDataUpdate?.timeTagAtSource &&
+                      (fullDocument?.timeTagAtSource?.getTime() !== sourceDataUpdate.timeTagAtSource.getTime()) ||
+                    fullDocument.timeTag === null ||
+                    invalid !== fullDocument.invalid) &&
+                  !sourceDataUpdate?.isHistorical
                 ) {
                   let dt = new Date()
 
-                  if (!change.fullDocument.alarmDisabled) {
+                  if (!fullDocument.alarmDisabled) {
                     if (
                       (alarmed &&
                         isSOE &&
-                        change.fullDocument?.isEvent === true &&
-                        change.fullDocument.type === 'digital' &&
+                        fullDocument?.isEvent === true &&
+                        fullDocument.type === 'digital' &&
                         value != 0) ||
                       (alarmed &&
-                        change.fullDocument?.isEvent === false &&
-                        change.fullDocument.type === 'digital') ||
-                      (alarmed && change.fullDocument?.alarmed === false)
+                        fullDocument?.isEvent === false &&
+                        fullDocument.type === 'digital') ||
+                      (alarmed && fullDocument?.alarmed === false)
                     ) {
                       // a new alarm, then update beep var
-                      Log.log('NEW BEEP, tag: ' + change.fullDocument.tag)
-                      if (change.fullDocument.priority === 0)
+                      Log.log('NEW BEEP, tag: ' + fullDocument.tag)
+                      if (fullDocument.priority === 0)
                         // signal an important beep (for alarm of priority 0)
                         mongoRtDataQueue.enqueue({
                           _id: beepPointKey,
@@ -964,11 +897,11 @@ const pipeline = [
                           valueString: 'Beep Active',
                           timeTag: dt,
                           $addToSet: {
-                            beepGroup1List: change.fullDocument.group1,
+                            beepGroup1List: fullDocument.group1,
                           },
                         })
                       else if (
-                        change.fullDocument.priority <= LowestPriorityThatBeeps
+                        fullDocument.priority <= LowestPriorityThatBeeps
                       )
                         mongoRtDataQueue.enqueue({
                           _id: beepPointKey,
@@ -976,11 +909,11 @@ const pipeline = [
                           valueString: 'Beep Active',
                           timeTag: dt,
                           $addToSet: {
-                            beepGroup1List: change.fullDocument.group1,
+                            beepGroup1List: fullDocument.group1,
                           },
                         })
                     }
-                    if (change.fullDocument.type === 'digital') {
+                    if (fullDocument.type === 'digital') {
                       digitalUpdatesCount++
                       mongoRtDataQueue.enqueue({
                         _id: cntUpdatesPointKey,
@@ -993,29 +926,28 @@ const pipeline = [
 
                   // historianPeriod<0 or update is not for historical record, excludes from historian
                   let insertIntoHistorian = true
-                  if ('historianPeriod' in change.fullDocument) {
+                  if ('historianPeriod' in fullDocument) {
                     if (
-                      change.fullDocument.historianPeriod < 0 ||
-                      change.updateDescription.updatedFields.sourceDataUpdate
-                        ?.isNotForHistorical
+                      fullDocument.historianPeriod < 0 ||
+                      sourceDataUpdate?.isNotForHistorical
                     ) {
                       insertIntoHistorian = false
                     } else {
                       // historianPeriod >= 0, will test dead band for analogs
                       if (
-                        change.fullDocument?.type === 'analog' &&
-                        'historianDeadBand' in change.fullDocument
+                        fullDocument?.type === 'analog' &&
+                        'historianDeadBand' in fullDocument
                       ) {
                         if (
-                          'historianLastValue' in change.fullDocument &&
-                          change.fullDocument.historianLastValue !== null &&
-                          change.fullDocument.historianDeadBand > 0
+                          'historianLastValue' in fullDocument &&
+                          fullDocument.historianLastValue !== null &&
+                          fullDocument.historianDeadBand > 0
                         ) {
                           // test for variation less than absolute dead band
                           if (
                             Math.abs(
-                              value - change.fullDocument.historianLastValue
-                            ) < Math.abs(change.fullDocument.historianDeadBand)
+                              value - fullDocument.historianLastValue
+                            ) < Math.abs(fullDocument.historianDeadBand)
                           ) {
                             insertIntoHistorian = false
                           }
@@ -1025,11 +957,11 @@ const pipeline = [
                   }
 
                   let update = {
-                    _id: change.fullDocument._id,
+                    _id: fullDocument._id,
                     value: new Double(value),
                     valueString: valueString,
                     valueJson: valueJson,
-                    ...(change.fullDocument?.type === 'analog' &&
+                    ...(fullDocument?.type === 'analog' &&
                     insertIntoHistorian
                       ? { historianLastValue: new Double(value) }
                       : {}),
@@ -1040,10 +972,10 @@ const pipeline = [
                     frozen: false,
                     timeTagAtSource: null,
                     timeTagAtSourceOk: null,
-                    updatesCnt: new Double(change.fullDocument.updatesCnt + 1),
+                    updatesCnt: new Double(fullDocument.updatesCnt + 1),
                     alarmRange: new Double(alarmRange),
                     alarmed:
-                      change.fullDocument?.alarmDisabled === true
+                      fullDocument?.alarmDisabled === true
                         ? false
                         : alarmed,
                   }
@@ -1051,39 +983,35 @@ const pipeline = [
 
                   // update source time when available
                   if (
-                    'timeTagAtSource' in
-                      change.updateDescription.updatedFields.sourceDataUpdate &&
-                    change.updateDescription.updatedFields.sourceDataUpdate
-                      .timeTagAtSource !== null
+                    'timeTagAtSource' in sourceDataUpdate &&
+                    sourceDataUpdate.timeTagAtSource !== null
                   ) {
-                    update.timeTagAtSource =
-                      change.updateDescription.updatedFields.sourceDataUpdate.timeTagAtSource
+                    update.timeTagAtSource = sourceDataUpdate.timeTagAtSource
                     update.timeTagAtSourceOk =
-                      change.updateDescription.updatedFields.sourceDataUpdate.timeTagAtSourceOk
+                      sourceDataUpdate.timeTagAtSourceOk
                   }
 
                   // do not update protection-like events for state OFF, do not update when not for historical backfill
                   if (
                     !(
-                      change.fullDocument.isEvent &&
-                      change.fullDocument.type === 'digital' &&
+                      fullDocument.isEvent &&
+                      fullDocument.type === 'digital' &&
                       value === 0 &&
-                      !change.updateDescription.updatedFields.sourceDataUpdate
-                        ?.isHistorical
+                      !sourceDataUpdate?.isHistorical
                     )
                   ) {
                     mongoRtDataQueue.enqueue(update)
 
                     Log.log(
                       'UPD ' +
-                        change.fullDocument._id +
+                        fullDocument._id +
                         ' ' +
-                        change.fullDocument.tag +
+                        fullDocument.tag +
                         ' ' +
                         value +
                         ' DELAY ' +
                         (new Date().getTime() -
-                          change.updateDescription.updatedFields.sourceDataUpdate.timeTag.getTime()) +
+                          sourceDataUpdate.timeTag.getTime()) +
                         'ms',
                       Log.levelDetailed
                     )
@@ -1100,10 +1028,9 @@ const pipeline = [
                             ? '0'
                             : '1'
                           : '1', // time tag at source invalid
-                      b5 = change.fullDocument.type === 'analog' ? '1' : '0', // analog
+                      b5 = fullDocument.type === 'analog' ? '1' : '0', // analog
                       b4 =
-                        change.updateDescription.updatedFields.sourceDataUpdate
-                          .causeOfTransmissionAtSource === '20'
+                        sourceDataUpdate.causeOfTransmissionAtSource === '20'
                           ? '1'
                           : '0', // integrity?
                       b3 = '0', // reserved
@@ -1128,16 +1055,16 @@ const pipeline = [
                     sqlHistQueue.enqueue({
                       sql:
                         "'" +
-                        change.fullDocument.tag.replaceAll("'", "''") +
+                        fullDocument.tag.replaceAll("'", "''") +
                         "'," +
                         "'" +
-                        change.updateDescription.updatedFields.sourceDataUpdate.timeTag.toISOString() +
+                        sourceDataUpdate.timeTag.toISOString() +
                         "'," +
                         value +
                         `,('{"v":'||trim('${trimS}' FROM to_json('${vj}'::text)::jsonb #>> '{}')||',"s":'||to_json('${vs}'::text)||'}'::text)::jsonb,` +
                         (update.timeTagAtSource !== null
                           ? "'" +
-                            change.updateDescription.updatedFields.sourceDataUpdate.timeTagAtSource.toISOString() +
+                            sourceDataUpdate.timeTagAtSource.toISOString() +
                             "'"
                           : 'null') +
                         ',' +
@@ -1152,14 +1079,12 @@ const pipeline = [
                         b0 +
                         "'",
                       obj: {
-                        tag: change.fullDocument.tag,
-                        timeTag:
-                          change.updateDescription.updatedFields
-                            .sourceDataUpdate.timeTag,
+                        tag: fullDocument.tag,
+                        timeTag: sourceDataUpdate.timeTag,
                         value:
-                          change.fullDocument.type === 'string'
+                          fullDocument.type === 'string'
                             ? valueString
-                            : change.fullDocument.type === 'json'
+                            : fullDocument.type === 'json'
                             ? valueJson
                             : value,
                         invalid: invalid,
@@ -1169,46 +1094,44 @@ const pipeline = [
                         ...(update.timeTagAtSourceOk !== null
                           ? { timeTagAtSourceOk: update.timeTagAtSourceOk }
                           : {}),
-                        ...(change.updateDescription.updatedFields
-                          .sourceDataUpdate?.causeOfTransmissionAtSource
+                        ...(sourceDataUpdate?.causeOfTransmissionAtSource
                           ? {
-                              cot: change.updateDescription.updatedFields
-                                .sourceDataUpdate.causeOfTransmissionAtSource,
+                              cot: sourceDataUpdate.causeOfTransmissionAtSource,
                             }
                           : {}),
                       },
                     })
                   }
 
-                  // update change.fullDocument with new data just to stringify it and queue update for postgresql update
-                  change.fullDocument.value = value
-                  change.fullDocument.valueString = valueString
-                  change.fullDocument.valueJson = valueJson
-                  change.fullDocument.timeTag = dt
-                  change.fullDocument.overflow = overflow
-                  change.fullDocument.invalid = invalid
-                  change.fullDocument.transient = transient
-                  change.fullDocument.updatesCnt =
-                    change.fullDocument.updatesCnt + 1
-                  change.fullDocument.alarmed = alarmed
+                  // update fullDocument with new data just to stringify it and queue update for postgresql update
+                  fullDocument.value = value
+                  fullDocument.valueString = valueString
+                  fullDocument.valueJson = valueJson
+                  fullDocument.timeTag = dt
+                  fullDocument.overflow = overflow
+                  fullDocument.invalid = invalid
+                  fullDocument.transient = transient
+                  fullDocument.updatesCnt =
+                    fullDocument.updatesCnt + 1
+                  fullDocument.alarmed = alarmed
                   let queueStr =
                     "'" +
-                    change.fullDocument.tag.replaceAll("'", "''") +
+                    fullDocument.tag.replaceAll("'", "''") +
                     "'," +
                     "'" +
                     new Date().toISOString() +
                     "'," +
                     "'" +
-                    JSON.stringify(change.fullDocument).replaceAll("'", "''") +
+                    JSON.stringify(fullDocument).replaceAll("'", "''") +
                     "'"
                   sqlRtDataQueue.enqueue(queueStr)
                 } else
                   Log.log(
                     'Not changed ' +
-                      change.fullDocument.tag +
+                      fullDocument.tag +
                       ' DELAY ' +
                       (new Date().getTime() -
-                        change.updateDescription.updatedFields.sourceDataUpdate.timeTag.getTime()) +
+                        sourceDataUpdate.timeTag.getTime()) +
                       'ms',
                     Log.levelDetailed
                   )
@@ -1216,34 +1139,29 @@ const pipeline = [
                 // prepare update to soeData collection, do not put into SOE when alarm disabled or update is not for historical record
                 if (
                   isSOE &&
-                  change.fullDocument.type !== 'analog' &&
-                  !change.fullDocument.alarmDisabled &&
-                  !change.updateDescription.updatedFields.sourceDataUpdate
-                    ?.isNotForHistorical
+                  fullDocument.type !== 'analog' &&
+                  !fullDocument.alarmDisabled &&
+                  !sourceDataUpdate?.isNotForHistorical
                 )
-                  if (!(value === 0 && change.fullDocument.isEvent)) {
-                    let eventText = change.fullDocument.eventTextFalse
+                  if (!(value === 0 && fullDocument.isEvent)) {
+                    let eventText = fullDocument.eventTextFalse
                     if (value !== 0) {
-                      eventText = change.fullDocument.eventTextTrue
+                      eventText = fullDocument.eventTextTrue
                     }
 
                     db.collection(jsConfig.SoeDataCollectionName)
                       .insertOne(
                         {
-                          tag: change.fullDocument.tag,
-                          pointKey: change.fullDocument._id,
-                          group1: change.fullDocument.group1,
-                          description: change.fullDocument.description,
+                          tag: fullDocument.tag,
+                          pointKey: fullDocument._id,
+                          group1: fullDocument.group1,
+                          description: fullDocument.description,
                           eventText: eventText,
                           invalid: invalid,
-                          priority: change.fullDocument.priority,
+                          priority: fullDocument.priority,
                           timeTag: new Date(),
-                          timeTagAtSource:
-                            change.updateDescription.updatedFields
-                              .sourceDataUpdate.timeTagAtSource,
-                          timeTagAtSourceOk:
-                            change.updateDescription.updatedFields
-                              .sourceDataUpdate.timeTagAtSourceOk,
+                          timeTagAtSource: sourceDataUpdate.timeTagAtSource,
+                          timeTagAtSourceOk: sourceDataUpdate.timeTagAtSourceOk,
                           ack: 0,
                         },
                         {
@@ -1257,15 +1175,13 @@ const pipeline = [
                       })
                     Log.log(
                       'SOE ' +
-                        change.fullDocument._id +
+                        fullDocument._id +
                         ' ' +
-                        change.fullDocument.tag +
+                        fullDocument.tag +
                         ' ' +
-                        change.updateDescription.updatedFields.sourceDataUpdate
-                          .valueAtSource +
+                        sourceDataUpdate.valueAtSource +
                         ' ' +
-                        change.updateDescription.updatedFields.sourceDataUpdate
-                          .timeTagAtSource,
+                        sourceDataUpdate.timeTagAtSource,
                       Log.levelDetailed
                     )
                   }
@@ -1324,10 +1240,11 @@ async function checkConnectedMongo(client) {
   let res = null
   try {
     res = await client.db('admin').command({ ping: 1 })
-    clearTimeout(tr)
   } catch (e) {
     Log.log('Error on mongodb connection!')
     return false
+  } finally {
+    clearTimeout(tr)
   }
   if ('ok' in res && res.ok) {
     MongoStatus.HintMongoIsConnected = true
@@ -1395,7 +1312,7 @@ async function createSpecialTags(collection) {
         substituted: false,
         supervisedOfCommand: new Double(0.0),
         tag: '_System.Status.AlarmBeep',
-        timeTag: { $date: '2000-01-01T00:00:00.000Z' },
+        timeTag: new Date('2000-01-01T00:00:00.000Z'),
         transient: false,
         type: 'analog',
         ungroupedDescription: 'Alarm Beep',
@@ -1471,7 +1388,7 @@ async function createSpecialTags(collection) {
         substituted: false,
         supervisedOfCommand: new Double(0.0),
         tag: '_System.Status.DigitalUpdatesCnt',
-        timeTag: { $date: '2000-01-01T00:00:00.000Z' },
+        timeTag: new Date('2000-01-01T00:00:00.000Z'),
         transient: false,
         type: 'analog',
         ungroupedDescription: 'Digital Updates Count',

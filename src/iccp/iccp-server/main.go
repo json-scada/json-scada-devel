@@ -70,9 +70,8 @@ func (r *serverRegistry) add(srv *tase2.Server, ep *tase2.Endpoint, conn protoco
 func (r *serverRegistry) remove(srv *tase2.Server) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	if e, ok := r.entries[srv]; ok {
-		e.endpoint.Transport.Close()
-	}
+	// The per-connection transport is already closed by ServeClients before
+	// the post-disconnect hook (which calls remove) runs.
 	delete(r.entries, srv)
 	return len(r.entries)
 }
@@ -286,7 +285,11 @@ func main() {
 						}
 					}
 					if hasCmdEnabled {
-						cp := domain.AddControlPoint(pointName, tase2.ControlTypeCommand, tase2.DeviceClassSBO)
+						deviceClass := tase2.DeviceClassDirect
+						if tag.ProtocolSourceCommandUseSBO {
+							deviceClass = tase2.DeviceClassSBO
+						}
+						cp := domain.AddControlPoint(pointName, tase2.ControlTypeCommand, deviceClass)
 						cp.CurrentValue = convertToDataValue(tag)
 						cpByTag[tag.Tag] = cp
 						continue
@@ -425,6 +428,12 @@ func main() {
 							port = p
 						}
 					}
+					// The tase2 library listens on all interfaces; a specific
+					// bind host cannot be honored yet.
+					if host := parts[0]; host != "" && host != "0.0.0.0" && host != "::" {
+						LogMsg(LogLevelMin, "ICCP - Connection %q: bind host %q ignored, listening on all interfaces (port %d)",
+							conn.Name, host, port)
+					}
 				}
 
 				localAPTitle := conn.LocalApTitle
@@ -458,6 +467,18 @@ func main() {
 				endpoint.SetLocalAPTitle(localAPTitle, localAEQual)
 				endpoint.SetMaxTPDUSizeParam(maxTPDUSizeParam)
 
+				// Secure ICCP (IEC 62351-3): TLS wraps the whole association.
+				// chainValidation=true additionally requires and verifies
+				// client certificates (mutual TLS) against rootCertFilePath.
+				if conn.UseSecurity {
+					if err := endpoint.EnableTLS(conn.LocalCertFilePath, conn.PrivateKeyFilePath,
+						conn.RootCertFilePath, conn.ChainValidation); err != nil {
+						LogMsg(LogLevelMin, "ICCP - Connection %q: TLS setup failed, not listening: %v", conn.Name, err)
+						continue
+					}
+					LogMsg(LogLevelMin, "ICCP - Connection %q: TLS enabled (mutual: %v)", conn.Name, conn.ChainValidation)
+				}
+
 				if err := endpoint.Listen(port); err != nil {
 					LogMsg(LogLevelMin, "ICCP - Cannot listen on port %d: %v", port, err)
 					continue
@@ -466,25 +487,35 @@ func main() {
 				LogMsg(LogLevelMin, "ICCP - Connection %q listening on port %d (AP: %s, AE: %d)",
 					conn.Name, port, localAPTitle, localAEQual)
 
-				// Accept loop for each connection
+				// Serve clients: ServeClients runs the accept loop, one server
+				// goroutine per association, and closes each transport when the
+				// association ends; the post-disconnect hook keeps the registry
+				// in sync for change-stream fan-out and client counting.
 				go func(ep *tase2.Endpoint, conn protocolConnection, srvCfg tase2.ServerConfig) {
-					for {
-						ce, err := ep.AcceptEndpoint()
-						if err != nil {
-							if errors.Is(err, net.ErrClosed) {
-								LogMsg(LogLevelNormal, "ICCP - Listener closed for %s", conn.Name)
-								return
+					err := ep.ServeClients(
+						func(ce *tase2.Endpoint) *tase2.Server {
+							// IP filtering is done at the ICCP bilateral-table
+							// level; IP-based access control can be added in a
+							// future version.
+							srv := buildServer(dataModel, ce, srvCfg, conn, datasetDefs, collectionCommands)
+							n := registry.add(srv, ce, conn)
+							LogMsg(LogLevelNormal, "ICCP - Client associated! %s (%d active client(s))",
+								conn.Name, n)
+							return srv
+						},
+						func(ce *tase2.Endpoint, srv *tase2.Server, serveErr error) {
+							if serveErr != nil {
+								LogMsg(LogLevelNormal, "ICCP - Server error for %s: %v", conn.Name, serveErr)
 							}
-							LogMsg(LogLevelMin, "ICCP - Accept error for %s: %v", conn.Name, err)
-							continue
-						}
-
-						// IP filtering is done at the ICCP bilateral-table level;
-						// IP-based access control can be added in a future version.
-
-						LogMsg(LogLevelNormal, "ICCP - Client connected to %s", conn.Name)
-
-						go serveClient(ce, dataModel, srvCfg, conn, registry, datasetDefs, collectionCommands)
+							n := registry.remove(srv)
+							LogMsg(LogLevelNormal, "ICCP - Client disconnected from %s (%d active client(s))",
+								conn.Name, n)
+						},
+					)
+					if errors.Is(err, net.ErrClosed) {
+						LogMsg(LogLevelNormal, "ICCP - Listener closed for %s", conn.Name)
+					} else if err != nil {
+						LogMsg(LogLevelMin, "ICCP - Serve loop ended for %s: %v", conn.Name, err)
 					}
 				}(endpoint, conn, cfg)
 			}
@@ -530,32 +561,6 @@ func configureTASE2Logging(level int) {
 	}
 }
 
-// serveClient builds and runs a TASE2 Server for one accepted client connection.
-func serveClient(
-	ce *tase2.Endpoint,
-	dataModel *tase2.DataModel,
-	cfg tase2.ServerConfig,
-	conn protocolConnection,
-	registry *serverRegistry,
-	datasetDefs []datasetDef,
-	cmdCollection *mongo.Collection,
-) {
-	// Build per-connection server
-	srv := buildServer(dataModel, ce, cfg, conn, datasetDefs, cmdCollection)
-
-	n := registry.add(srv, ce, conn)
-	LogMsg(LogLevelNormal, "ICCP - Client associated! %s (%d active client(s))",
-		conn.Name, n)
-
-	if err := srv.Start(); err != nil {
-		LogMsg(LogLevelNormal, "ICCP - Server error for %s: %v", conn.Name, err)
-	}
-
-	n = registry.remove(srv)
-	LogMsg(LogLevelNormal, "ICCP - Client disconnected from %s (%d active client(s))",
-		conn.Name, n)
-}
-
 // buildServer creates a per-connection TASE2 Server.
 func buildServer(
 	dataModel *tase2.DataModel,
@@ -567,18 +572,29 @@ func buildServer(
 ) *tase2.Server {
 	srv := tase2.NewServerWithConfig(dataModel, ce, cfg)
 
-	// Add bilateral table entries if remote AP titles are configured
+	// Add bilateral table entries if remote AP titles are configured.
+	// When Topics are configured, only those domains are granted — the library
+	// enforces the BLT on discovery, reads, and writes, so topics become real
+	// per-connection data isolation (not just a DSTS push filter).
 	if conn.RemoteApTitle != "" {
 		blt := tase2.NewBilateralTable(
 			fmt.Sprintf("BLT_%d", conn.ProtocolConnectionNumber),
 			conn.RemoteApTitle,
 			conn.RemoteAeQualifier,
 		)
-		// Grant access to all domains
+		granted := 0
 		for _, domainName := range dataModel.GetDomains() {
+			if len(conn.Topics) > 0 && !contains(conn.Topics, domainName) {
+				continue
+			}
 			blt.AddDomainAccess(domainName)
+			granted++
 		}
 		srv.AddBilateralTable(blt)
+		LogMsg(LogLevelNormal, "ICCP - BLT for %s: %d domain(s) granted to %s", conn.Name, granted, conn.RemoteApTitle)
+	} else if len(conn.Topics) > 0 {
+		LogMsg(LogLevelMin, "ICCP - Connection %q: topics configured but no remoteApTitle set; "+
+			"open mode - topics cannot be enforced on reads/discovery, only on DSTS pushes", conn.Name)
 	}
 
 	// Create datasets in this connection's TransferSetStore
@@ -598,52 +614,62 @@ func buildServer(
 	LogMsg(LogLevelNormal, "ICCP - Server built for %s: %d datasets, %d total items, topics=%v",
 		conn.Name, len(datasetDefs), totalItems, conn.Topics)
 
-	// Register device control handlers for command forwarding
+	// Register device control handlers for command forwarding.
+	// Control-point writes currently route to the write-data handler; the
+	// operate handler shares the same forwarding path so commands are not
+	// silently acknowledged-but-dropped if a future library version routes
+	// device-control operates there.
 	if conn.CommandsEnabled {
+		forward := func(service, domain, item string, value *tase2.DataValue) tase2.HandlerResult {
+			LogMsg(LogLevelNormal, "ICCP - %s %s/%s = %v", service, domain, item, value.String())
+			return forwardCommand(cmdCollection, conn, domain, item, value)
+		}
+
 		srv.SetOperateHandler(func(domain, item string, value *tase2.DataValue) tase2.HandlerResult {
-			LogMsg(LogLevelNormal, "ICCP - Operate %s/%s = %v", domain, item, value.String())
-			return tase2.ResultSuccess
+			return forward("Operate", domain, item, value)
 		})
 
 		srv.SetSelectHandler(func(domain, item string, value *tase2.DataValue) tase2.HandlerResult {
-			LogMsg(LogLevelNormal, "ICCP - Select %s/%s = %v", domain, item, value.String())
+			LogMsg(LogLevelNormal, "ICCP - Select %s/%s", domain, item)
+			// Only validate that the control point maps to a known command tag.
+			if findTagByDomainItem(domain, item) == "" {
+				return tase2.ResultFailure
+			}
 			return tase2.ResultSuccess
 		})
 
 		srv.SetWriteDataHandler(func(domain, item string, value *tase2.DataValue) tase2.HandlerResult {
-			LogMsg(LogLevelNormal, "ICCP - Write %s/%s = %v", domain, item, value.String())
-
-			// Find the corresponding command tag and forward to commandsQueue
-			// We need to find the original tag from realtimeData by matching domain+pointName
-			tag := findTagByDomainItem(domain, item)
-			if tag == "" {
-				LogMsg(LogLevelMin, "ICCP - Cannot find tag for %s/%s", domain, item)
-				return tase2.ResultFailure
-			}
-
-			// Convert DataValue to command value
-			cmdValue, cmdValueStr := extractCommandValue(value)
-
-			// Create a minimal rtData for the insert
-			rtDoc := findRtDataForTag(tag)
-			if rtDoc.ID == 0 {
-				LogMsg(LogLevelMin, "ICCP - Cannot find realtimeData for tag %s", tag)
-				return tase2.ResultFailure
-			}
-
-			err := insertCommand(cmdCollection, conn, tag, cmdValue, cmdValueStr, rtDoc)
-			if err != nil {
-				LogMsg(LogLevelMin, "ICCP - Failed to insert command: %v", err)
-				return tase2.ResultFailure
-			}
-
-			LogMsg(LogLevelNormal, "ICCP - Command forwarded: %s = %s (%f)",
-				tag, cmdValueStr, cmdValue)
-			return tase2.ResultSuccess
+			return forward("Write", domain, item, value)
 		})
 	}
 
 	return srv
+}
+
+// forwardCommand maps a control-point operation to its JSON-SCADA command tag
+// and inserts it into the commandsQueue collection.
+func forwardCommand(cmdCollection *mongo.Collection, conn protocolConnection, domain, item string, value *tase2.DataValue) tase2.HandlerResult {
+	tag := findTagByDomainItem(domain, item)
+	if tag == "" {
+		LogMsg(LogLevelMin, "ICCP - Cannot find tag for %s/%s", domain, item)
+		return tase2.ResultFailure
+	}
+
+	cmdValue, cmdValueStr := extractCommandValue(value)
+
+	rtDoc := findRtDataForTag(tag)
+	if rtDoc.ID == 0 {
+		LogMsg(LogLevelMin, "ICCP - Cannot find realtimeData for tag %s", tag)
+		return tase2.ResultFailure
+	}
+
+	if err := insertCommand(cmdCollection, conn, tag, cmdValue, cmdValueStr, rtDoc); err != nil {
+		LogMsg(LogLevelMin, "ICCP - Failed to insert command: %v", err)
+		return tase2.ResultFailure
+	}
+
+	LogMsg(LogLevelNormal, "ICCP - Command forwarded: %s = %s (%f)", tag, cmdValueStr, cmdValue)
+	return tase2.ResultSuccess
 }
 
 // watchRealtimeDataChanges monitors MongoDB change stream and pushes updates to all servers.
@@ -876,6 +902,12 @@ func getICCPType(tag rtData) tase2.ICCPType {
 	case "digital":
 		return tase2.ICCPTypeStateQTimeTag
 	case "analog":
+		// Integer-typed analogs map to Discrete to avoid float32 precision
+		// loss on large values.
+		switch asduToString(tag.ProtocolSourceASDU) {
+		case "int16", "uint16", "int32", "uint32", "int64", "uint64", "integer":
+			return tase2.ICCPTypeDiscreteQTimeTag
+		}
 		return tase2.ICCPTypeRealQTimeTag
 	default:
 		return tase2.ICCPTypeUnknown

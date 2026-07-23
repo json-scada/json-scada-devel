@@ -248,6 +248,100 @@ When the StatusCode for the command is 0 (Good) the command was acknowledged ok.
 
 ### Request Unique Attributes Value
 
+## GraphQL API
+
+Access point: /apollo
+
+An Apollo GraphQL server providing functionality similar to the OPC-like /Invoke API, with a typed, introspectable schema. Authentication uses the same JWT token from the /Invoke/auth/signin service, sent either as the _x-access-token_ HTTP header or cookie. User rights (RBAC) are enforced exactly like in the /Invoke API: group1 (station) access restriction lists, command rights per station, and per-property write rights. When the server runs with authentication disabled (NOAUTH), the GraphQL API is mounted without token checks.
+
+The schema is self-documenting: use introspection or point any GraphQL client (Apollo Sandbox, Insomnia, Postman, etc.) to the /apollo endpoint.
+
+### Queries
+
+- _**serverInfo**_ - Server name/version and database connectivity status.
+- _**me**_ - Authenticated username and combined role rights.
+- _**tags(filter, limit, skip, sortBy, sortDesc)**_ - Flexible realtime points query. Filter by tag list, point key list, group1/group2/group3, type, origin, alarmed, invalid, frozen, substituted and more; substring search on tag name and description; pagination and sorting.
+- _**tagsCount(filter)**_ - Count of points matching a filter.
+- _**tag(tag) / tagById(id)**_ - Single point lookup by tag name or numeric point key.
+- _**groups1 / groups2(group1)**_ - Distinct station/bay names with point counts.
+- _**activeAlarms(group1, group2, limit)**_ - Currently alarmed or out-of-normal points (like the persistentAlarms filter of the /Invoke API).
+- _**soeEvents(filter, limit, ascending)**_ - Sequence of Events query with time range, station list, priority and tag filters; optional per-tag aggregation with counts; optional filtering/sorting by source timestamp.
+- _**historicalData(tags, timeBegin, timeEnd, limit)**_ - Historical values from the PostgreSQL/TimescaleDB historian, restricted to points the user can access.
+- _**commandStatus(commandHandle)**_ - Track command acknowledgment (PENDING/ACK_OK/ACK_FAIL/CANCELLED).
+- _**protocolDriverInstances / protocolConnections**_ - Protocol configuration (credentials and certificates are never exposed).
+- _**users / roles / systemSettings / userActions(filter, limit, skip)**_ - Administrative queries (require admin rights). _userActions_ is the audit trail of user commands and changes.
+
+### Mutations
+
+- _**issueCommand(tagOrId, value, valueString)**_ - Issue a command (control). Requires the _sendCommands_ right and permission for the point's group1 (station). Returns a _commandHandle_ to track acknowledgment via the _commandStatus_ query. Command tags beginning with "$$" are queued directly without a point lookup. Commands are logged to the SOE list and to the user actions audit trail.
+- _**ackEvents(action, tag, eventId)**_ - Acknowledge or remove SOE events (ACK_ONE_EVENT, ACK_POINT_EVENTS, ACK_ALL_EVENTS, REMOVE_ONE_EVENT, REMOVE_POINT_EVENTS, REMOVE_ALL_EVENTS). Requires the _ackEvents_ right.
+- _**ackAlarms(action, tagOrId)**_ - Acknowledge alarms or silence beep (ACK_ONE_ALARM, ACK_ALL_ALARMS, SILENCE_BEEP). Requires the _ackAlarms_ right.
+- _**updateTagProperties(tagOrId, properties)**_ - Update point annotation, notes, limits, alarm disabling, or substitute (manually enter) the value. Each property requires its respective user right (_enterAnnotations_, _enterNotes_, _enterLimits_, _disableAlarms_, _substituteValues_). Changes are audited and generate SOE events where applicable.
+
+### Examples
+
+Query realtime data (POST to /apollo with the x-access-token header/cookie):
+
+    {
+      tags(filter: { group1: "KAW2", type: "analog" }, limit: 100) {
+        tag
+        value
+        valueString
+        invalid
+        alarmed
+        timeTag
+        description
+        unit
+      }
+    }
+
+Query events and history:
+
+    {
+      soeEvents(filter: { priorityLte: 3, timeBegin: "2026-07-18T00:00:00Z" }) {
+        eventId
+        tag
+        eventText
+        timeTagAtSource
+        ack
+      }
+      historicalData(tags: ["KAW2KPR21------A"], timeBegin: "2026-07-18T00:00:00Z") {
+        tag
+        values { value invalid timeTag }
+      }
+    }
+
+Issue a command and check its acknowledgment:
+
+    mutation {
+      issueCommand(tagOrId: "KAW2AL-21XCBR5238----KCmd", value: 1) {
+        ok
+        commandHandle
+      }
+    }
+
+    {
+      commandStatus(commandHandle: "68f0...") {
+        status
+        ackTimeTag
+        cancelReason
+      }
+    }
+
+Acknowledge alarms and update properties:
+
+    mutation {
+      ackAlarms(action: ACK_ALL_ALARMS) { ok matchedCount }
+      updateTagProperties(
+        tagOrId: "KAW2KPR21------A"
+        properties: { annotation: "under maintenance", hiLimit: 90 }
+      ) { ok }
+    }
+
+### Environment Variables
+
+- _**JS_GRAPHQL_AP**_ [String] - Access point (path) where the GraphQL API is mounted. **Default="/apollo"**.
+
 ## File Services API
 
 Access point : /getFile

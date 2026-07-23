@@ -29,12 +29,18 @@ cp src/libiec61850.so src/libiec61850.so.* ../../../bin/
 cd ../dotnet/core/2.0/IEC61850.NET.core.2.0
 dotnet publish --self-contained --runtime $ARG1 -c Release
 cd ../../../../../iec61850_client
-dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/ 
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
+
+cd ../iec61850_server
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
 
 sleep 1
-cd ../lib60870.netcore
-dotnet restore
-dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
+# IEC 60870-5-101/104 drivers are now built in Go (src/iec60870-5), see the Go section below.
+# The legacy C# drivers remain in src/lib60870.netcore as reference; to build them instead,
+# re-enable the dotnet publish line below.
+# cd ../lib60870.netcore
+# dotnet restore
+# dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
 
 cd ../OPC-UA-Client
 dotnet restore
@@ -90,9 +96,27 @@ cp i104m ../../bin/
 
 # you may need a lot of memory to build this step, the build may be killed by the system, if necessary add swap, e.g. 8GB RAM + 4GB Swap
 cd ../plc4x-client
-go mod tidy 
+go mod tidy
 go build
 cp plc4x-client ../../bin/
+
+cd ../iec60870-5
+go mod tidy
+go build -o ../../bin/iec104client ./cmd/iec104client
+go build -o ../../bin/iec104server ./cmd/iec104server
+go build -o ../../bin/iec101client ./cmd/iec101client
+go build -o ../../bin/iec101server ./cmd/iec101server
+go build -o ../../bin/iec103client ./cmd/iec103client
+
+# PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
+if command -v mvn >/dev/null 2>&1; then
+  cd ../plc4j-client
+  mvn -B -ntp -DskipTests package
+  cp target/plc4j-client.jar ../../bin/
+  cp plc4j-client.sh ../../bin/
+  chmod +x ../../bin/plc4j-client.sh
+  cd ../plc4x-client
+fi
 
 cd ../iccp/iccp-server
 #go mod tidy 
@@ -140,6 +164,14 @@ npm install
 cd ../mqtt-sparkplug
 npm install
 cd ../OPC-UA-Server
+npm install
+cd ../modbus
+npm install
+npm run build
+cd ../node-red-driver
+npm install
+npm run build
+cd ../n8n-client
 npm install
 cd ../carbone-reports
 npm install
