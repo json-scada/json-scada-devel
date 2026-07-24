@@ -36,6 +36,7 @@
     "admin": "Админ",
     "grafana": "Графана",
     "metabase": "Метабаза",
+    "nodered": "NodeRed",
     "customDevelopments": "Индивидуальные разработки",
     "open": "Открыть",
     "svgedit": "Редактор SVG"

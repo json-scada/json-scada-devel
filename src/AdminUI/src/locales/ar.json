@@ -36,6 +36,7 @@
     "admin": "مسؤل",
     "grafana": "جرافانا",
     "metabase": "قاعدة البيانات",
+    "nodered": "Node-RED",
     "customDevelopments": "التطورات المخصصة",
     "open": "يفتح",
     "svgedit": "محرر SVG"

@@ -36,6 +36,7 @@
     "admin": "管理者",
     "grafana": "グラファナ",
     "metabase": "メタベース",
+    "nodered": "NodeRed",
     "customDevelopments": "カスタム開発",
     "open": "開ける",
     "svgedit": "SVGエディター"

@@ -36,6 +36,7 @@
     "admin": "行政",
     "grafana": "格拉法纳",
     "metabase": "元数据库",
+    "nodered": "Node-RED",
     "customDevelopments": "定制开发",
     "open": "打开",
     "svgedit": "SVG编辑器"

@@ -36,6 +36,7 @@
     "admin": "Amministratore",
     "grafana": "Grafana",
     "metabase": "Metabase",
+    "nodered": "NodeRed",
     "customDevelopments": "Sviluppi personalizzati",
     "open": "Aprire",
     "svgedit": "Editor SVG"
