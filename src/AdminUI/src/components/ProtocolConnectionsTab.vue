@@ -3648,6 +3648,8 @@
     'PI_DATA_ARCHIVE_INJECTOR',
     'PI_DATA_ARCHIVE_CLIENT',
     'ONVIF',
+    'NODE-RED',
+    'N8N',
   ]
 
   const parityItems = ['None', 'Even', 'Odd', 'Mark', 'Space']
