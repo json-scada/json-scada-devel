@@ -278,14 +278,6 @@ nssm set JSON_SCADA_telegraf_listener AppRotateOnline 1
 nssm set JSON_SCADA_telegraf_listener AppRotateBytes 10000000
 nssm set JSON_SCADA_telegraf_listener Start SERVICE_AUTO_START
 
-REM service for the NODE-RED protocol driver (bidirectional Node-RED integration)
-nssm install JSON_SCADA_nodered_driver "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\node-red-driver\dist\main.js" 1 1 "c:\json-scada\conf\json-scada.json"
-nssm set JSON_SCADA_nodered_driver AppDirectory "C:\json-scada\src\node-red-driver"
-nssm set JSON_SCADA_nodered_driver AppStdout C:\json-scada\log\nodered_driver.log
-nssm set JSON_SCADA_nodered_driver AppRotateOnline 1
-nssm set JSON_SCADA_nodered_driver AppRotateBytes 10000000
-nssm set JSON_SCADA_nodered_driver Start SERVICE_DEMAND_START
-
 REM service for the N8N protocol driver (bidirectional n8n integration)
 nssm install JSON_SCADA_n8nclient "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\n8n-client\index.js" 1 1 "c:\json-scada\conf\json-scada.json"
 nssm set JSON_SCADA_n8nclient AppDirectory "C:\json-scada\src\n8n-client"
@@ -300,7 +292,15 @@ nssm set JSON_SCADA_nodered_runtime AppDirectory "C:\json-scada\platform-windows
 nssm set JSON_SCADA_nodered_runtime AppStdout C:\json-scada\log\nodered_runtime.log
 nssm set JSON_SCADA_nodered_runtime AppRotateOnline 1
 nssm set JSON_SCADA_nodered_runtime AppRotateBytes 10000000
-nssm set JSON_SCADA_nodered_runtime Start SERVICE_DEMAND_START
+nssm set JSON_SCADA_nodered_runtime Start SERVICE_AUTO_START
+
+REM service for the NODE-RED protocol driver (bidirectional Node-RED integration)
+nssm install JSON_SCADA_nodered_driver "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\node-red-driver\dist\main.js" 1 1 "c:\json-scada\conf\json-scada.json"
+nssm set JSON_SCADA_nodered_driver AppDirectory "C:\json-scada\src\node-red-driver"
+nssm set JSON_SCADA_nodered_driver AppStdout C:\json-scada\log\nodered_driver.log
+nssm set JSON_SCADA_nodered_driver AppRotateOnline 1
+nssm set JSON_SCADA_nodered_driver AppRotateBytes 10000000
+nssm set JSON_SCADA_nodered_driver Start SERVICE_AUTO_START
 
 REM Log.io file monitor service
 nssm install JSON_SCADA_log_io_file "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\log-io\inputs\file\lib\index.js" 
