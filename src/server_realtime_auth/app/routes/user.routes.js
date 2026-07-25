@@ -6,6 +6,7 @@ const {
   legacyCreateProxyMiddleware: createProxyMiddleware,
 } = require('http-proxy-middleware')
 const { authJwt } = require('../middlewares')
+const { mountPathFilter } = require('../../proxy-utils')
 const controller = require('../controllers/user.controller')
 const authController = require('../controllers/auth.controller')
 const Log = require('../../simple-logger')
@@ -20,7 +21,8 @@ module.exports = function (
   customJsonQueryAP,
   customJsonQuery,
   logioServer,
-  metabaseServer
+  metabaseServer,
+  noderedProxy
 ) {
   app.use(function (req, res, next) {
     res.header(
@@ -65,6 +67,18 @@ module.exports = function (
     httpProxy(metabaseServer)
   )
 
+  // reverse proxy for the node-red editor
+  // websocket upgrades are proxied on the http server (see attachNoderedUpgrade)
+  app.use(
+    '/nodered',
+    [authJwt.verifyToken],
+    function (req, _, next) {
+      authController.addXWebAuthUser(req)
+      next()
+    },
+    noderedProxy
+  )
+
   // reverse proxy for log.io on Windows
   // for docker it will be used Dozzle
   app.use(
@@ -85,6 +99,7 @@ module.exports = function (
     target: logioServer,
     changeOrigin: true,
     ws: true, // enable websocket proxy
+    pathFilter: mountPathFilter('/socket.io'), // do not grab upgrades of other proxies
   })
   app.use(
     '/socket.io',

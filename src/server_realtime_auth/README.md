@@ -252,7 +252,7 @@ When the StatusCode for the command is 0 (Good) the command was acknowledged ok.
 
 Access point: /apollo
 
-An Apollo GraphQL server providing functionality similar to the OPC-like /Invoke API, with a typed, introspectable schema. Authentication uses the same JWT token from the /Invoke/auth/signin service, sent either as the _x-access-token_ HTTP header or cookie. User rights (RBAC) are enforced exactly like in the /Invoke API: group1 (station) access restriction lists, command rights per station, and per-property write rights. When the server runs with authentication disabled (NOAUTH), the GraphQL API is mounted without token checks.
+An Apollo GraphQL server providing functionality similar to the OPC-like /Invoke API, with a typed, introspectable schema. Authentication uses the same JWT token from the /Invoke/auth/signin service, sent either as the _x-access-token_ HTTP header or cookie. User rights (RBAC) are enforced exactly like in the /Invoke API: group1 (station) access restriction lists, command rights per station, and per-property write rights.
 
 The schema is self-documenting: use introspection or point any GraphQL client (Apollo Sandbox, Insomnia, Postman, etc.) to the /apollo endpoint.
 
@@ -394,7 +394,6 @@ To each user can be attributed a set of roles. Each right in each user role are 
 - _**JS_HTTP_PORT**_ [Integer] - HTTP Port for server listening. **Default=8080**.
 - _**JS_GRAFANA_SERVER**_ [Integer] - HTTP URL to the Grafana server (for reverse proxy on /grafana). **Default="http://127.0.0.1:3000"**.
 - _**JS_CONFIG_FILE**_ [String] - JSON SCADA config file name. **Default="../../conf/json-scada.json"**.
-- _**JS_AUTHENTICATION**_ [String] - Control of user Authentication/Authorization. Leave empty or do not define to enable user authentication. Define as "NOAUTH" to disable user authentication. **Default=(will use authentication)**.
 - _**JS_JWT_SECRET**_ [String] - Encryption key for the JWT token. **Default=value defined in ./app/config/auth.config.js**.
 - _**JS_READ_FROM_SECONDARY**_ [String] - Use "TRUE" to change the preferred read to a secondary MongoDB server. By default all read operations are directed to the primary server.
 
@@ -433,7 +432,7 @@ For connection to the PostgreSQL historian, it is possible to use the standard _
 
 ### Command line arguments
 
-- _**1st Argument**_ [String] - Control of user Authentication/Authorization. Define as "NOAUTH" to disable user authentication. **Default=(will use authentication)**.
+This server takes no command line arguments. User authentication/authorization is always enforced.
 
 ## Tool to create users and change password via command line
 

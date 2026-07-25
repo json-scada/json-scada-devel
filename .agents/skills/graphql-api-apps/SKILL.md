@@ -58,9 +58,8 @@ const token = (res.headers.get('set-cookie') || '').match(/x-access-token=([^;]+
 auth middleware answers `200` with `{ ok: false, message: 'Access not allowed...' }`.
 Treat a response without a `data` key as "re-authenticate".
 
-**NOAUTH mode:** when the server runs with authentication disabled (`JS_AUTHENTICATION=NOAUTH`
-or first CLI arg `NOAUTH`), `/apollo` is mounted without token checks and every right is
-granted. Useful for local development.
+**No unauthenticated mode:** `/apollo` always enforces the token check, there is no way to
+disable authentication in `server_realtime_auth`.
 
 The endpoint path can be changed with the `JS_GRAPHQL_AP` environment variable (default `/apollo`).
 
@@ -225,8 +224,6 @@ platform-windows/mongodb-runtime/bin/mongod.exe --port 27999 --dbpath <scratch>/
 # minimal config file: { "nodeName": "test", "mongoConnectionString": "mongodb://127.0.0.1:27999/json_scada_test", "mongoDatabaseName": "json_scada_test" }
 cd src/server_realtime_auth
 JS_CONFIG_FILE=<scratch>/config.json JS_HTTP_PORT=18080 JS_JWT_SECRET=test node index.js
-# or without auth:
-JS_CONFIG_FILE=<scratch>/config.json JS_HTTP_PORT=18080 JS_AUTHENTICATION=NOAUTH node index.js
 ```
 
 Seed `users` (bcryptjs-hashed `password`) and `roles` documents to test RBAC; the roles
