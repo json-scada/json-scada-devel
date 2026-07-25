@@ -33,7 +33,7 @@ var protocolDriverNames = [
   "INFLUXDB_INJECTOR",
   "INFLUXDB_CLIENT",
   "ONVIF",
-  "NODE_RED",
+  "NODE-RED",
   "N8N",
   "UNDEFINED",
 ];

@@ -32,6 +32,9 @@ Function .onInit
    Abort
 FunctionEnd
 
+;!macro CreateInternetShortcut FILEPATH URL
+;WriteINIStr "${FILEPATH}" "InternetShortcut" "URL" "${URL}"
+;!macroend
 ;--------------------------------
 
 !ifdef HAVE_UPX
@@ -357,7 +360,7 @@ SetRegView 64
   SetOutPath $INSTDIR\svg\.agents\skills\svg-scada
   File /a "..\svg\.agents\skills\svg-scada\SKILL.md"
   SetOutPath $INSTDIR\src\AdminUI
-  File /a    "..\src\AdminUI\*.*"
+  File /a /x *_plan.md  "..\src\AdminUI\*.*"
   SetOutPath $INSTDIR\src\AdminUI\src
   File /a /r "..\src\AdminUI\src\*.*"
   SetOutPath $INSTDIR\src\AdminUI\dist
@@ -446,13 +449,13 @@ SetRegView 64
   SetOutPath $INSTDIR\src\OPC-UA-Server
   File /a "..\src\OPC-UA-Server\*.js"
   File /a "..\src\OPC-UA-Server\*.json"
-  File /a "..\src\OPC-UA-Server\*.md"
+  File /a /x *_plan.md "..\src\OPC-UA-Server\*.md"
   SetOutPath $INSTDIR\src\OPC-UA-Server\node_modules
   File /a /r "..\src\OPC-UA-Server\node_modules\*.*"
 
   SetOutPath $INSTDIR\src\modbus
   File /a "..\src\modbus\*.json"
-  File /a "..\src\modbus\*.md"
+  File /a  /x *_plan.md "..\src\modbus\*.md"
   ;SetOutPath $INSTDIR\src\modbus\node_modules
   ;File /a /r "..\src\modbus\node_modules\*.*"
   SetOutPath $INSTDIR\src\modbus\src
@@ -470,8 +473,8 @@ SetRegView 64
   SetOutPath $INSTDIR\src\node-red-driver
   File /a "..\src\node-red-driver\*.json"
   File /a "..\src\node-red-driver\*.md"
-  ;SetOutPath $INSTDIR\src\node-red-driver\node_modules
-  ;File /a /r "..\src\node-red-driver\node_modules\*.*"
+  SetOutPath $INSTDIR\src\node-red-driver\node_modules
+  File /a /r "..\src\node-red-driver\node_modules\*.*"
   SetOutPath $INSTDIR\src\node-red-driver\src
   File /a /r "..\src\node-red-driver\src\*.*"
   SetOutPath $INSTDIR\src\node-red-driver\dist
@@ -562,19 +565,23 @@ SetRegView 64
   File /a "..\conf-templates\log.io-file.json"
   File /a "..\conf-templates\nginx.crt"
   File /a "..\conf-templates\nginx.key"
+  File /a "..\conf-templates\node-red-settings.js"
 
 ; Desktop shortcuts
   Delete "$DESKTOP\JSON-SCADA\*.*"
   CreateDirectory "$DESKTOP\JSON-SCADA"
 
 ; App shortcuts 
+  SetOutPath $DESKTOP\JSON-SCADA
+  File /a "..\platform-windows\_JSON SCADA WEB.url"
+  File /a "..\platform-windows\_JSON SCADA WEB HTTPS.url"
   CreateShortCut "$DESKTOP\JSON-SCADA\_Start_Services.lnk"                "$INSTDIR\platform-windows\start_services.bat"  
   CreateShortCut "$DESKTOP\JSON-SCADA\_Stop_Services.lnk"                 "$INSTDIR\platform-windows\stop_services.bat"  
   CreateShortCut "$DESKTOP\JSON-SCADA\Windows Services.lnk"               "services.msc"  
   ;CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB.lnk"                "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
   ;CreateShortCut "$DESKTOP\JSON-SCADA\_JSON SCADA WEB HTTPS.lnk"          "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSSRV$NAVINDEX $NAVPOSOPT" "$INSTDIR\src\htdocs\images\j-s-256.ico" 
-  !insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB.URL" "http://127.0.0.1"
-  !insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB HTTPS.URL" "https://127.0.0.1"
+  ;!insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB.URL" "http://127.0.0.1"
+  ;!insertmacro CreateInternetShortcut "$Desktop\_JSON SCADA WEB HTTPS.URL" "https://127.0.0.1"
   
   ;CreateShortCut "$DESKTOP\JSON-SCADA\Chromium Browser.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT $NAVPOSOPT"
   ;CreateShortCut "$DESKTOP\JSON-SCADA\Viewer - Display.lnk"               "$INSTDIR\$NAVWINCMD" " $NAVDATDIR $NAVPREOPT --app=$HTTPSRV$NAVVISTEL $NAVPOSOPT" "$INSTDIR\src\htdocs\images\tela.ico" 
