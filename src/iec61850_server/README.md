@@ -24,7 +24,7 @@ Built in C# on **.NET 8** using **libiec61850** (MZ Automation) through the vend
    - Points are exposed as **GGIO** data objects, at most **30 objects per GGIO instance**
      (counting all categories together); further points open `GGIO2`, `GGIO3`, … Each instance
      numbers its own objects from 1, as real IEDs do. The cap is deliberate — see
-     *Logical node sizing* below:
+     *Model sizing* below:
      | JSON-SCADA point | CDC | GGIO object |
      |---|---|---|
      | digital monitor | SPS | `Indn` (`stVal`) |
@@ -32,9 +32,9 @@ Built in C# on **.NET 8** using **libiec61850** (MZ Automation) through the vend
      | string monitor | VSS | `Strn` (`stVal`) |
      | digital command | SPC | `SPCSOn` |
      | analog command | APC | `AnOutn` |
-   - Per-LD **datasets** (`DS_ST_k` status, `DS_MX_k` measurand, ≤100 FCDAs each) and
+   - Per-LD **datasets** (`DS_ST_k` status, `DS_MX_k` measurand, ≤40 FCDAs each) and
      **buffered + unbuffered report control blocks** (`brcbST0101`, `urcbST0101`, …),
-     one pair per dataset per allowed client (`maxClientConnections`).
+     one pair per dataset per RCB copy (derived from `maxClientConnections`).
 3. A **MongoDB change stream** (same event source as the OPC servers) pushes value, quality
    and timestamp updates into the model; libiec61850 handles reporting, buffering, integrity
    scans and general interrogation natively.
