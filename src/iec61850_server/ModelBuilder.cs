@@ -48,6 +48,21 @@ namespace IEC61850_Server
         // node near ~2.5 kB, which fits comfortably in the PDU sizes real clients negotiate.
         // Raising it risks breaking model browsing on clients with small PDUs.
         const int MaxDataObjectsPerLN = 30;
+
+        // Descriptions are published in the 'd' attribute (FC=DC) and a single DC read returns
+        // EVERY description of the logical node at once, so their length is truncated here.
+        // Without this the model's response sizes would depend on how long the operator made
+        // the tag descriptions - user data must never decide whether browsing works.
+        // The full, untruncated mapping is always available in the JSON manifest.
+        const int MaxDescriptionLength = 32;
+
+        // Cost charged against MaxDataObjectsPerLN. String points carry a VisibleString value
+        // that may be far larger than a status/measurand value, so they consume more of the
+        // logical node's budget and fewer of them are packed together.
+        static int DoCost(PointKind kind)
+        {
+            return kind == PointKind.VSS ? 8 : 1;
+        }
         // Max FCDA entries per dataset. Reading a data set returns every member in a single
         // response (~26 B per entry measured), and an integrity/GI report of the full data set
         // must also fit one PDU, so this is kept small.
@@ -98,7 +113,9 @@ namespace IEC61850_Server
             // MaxDataObjectsPerLN, then a new GGIO instance is opened. Each GGIO numbers its
             // own objects from 1 (GGIO1.Ind1..Ind10, GGIO2.Ind1.., as real IEDs do).
             public int currentGgioIdx = 0;
-            public int currentGgioDoCount = int.MaxValue; // forces GGIO1 on the first point
+            // starts "full" so the first point opens GGIO1 (must not use int.MaxValue: the
+            // budget check adds the object cost and would overflow)
+            public int currentGgioDoCount = MaxDataObjectsPerLN;
             public Dictionary<string, int> categoryCounters = new Dictionary<string, int>();
             public List<string> statusEntries = new List<string>(); // "GGIOn$ST$Do"
             public List<string> mxEntries = new List<string>();      // "GGIOn$MX$Do"
@@ -215,8 +232,10 @@ namespace IEC61850_Server
                 else { kind = PointKind.SPS; prefix = "Ind"; }
             }
 
-            // open a new GGIO instance once the current one is full (cap counts all categories)
-            if (ctx.currentGgioDoCount >= MaxDataObjectsPerLN)
+            // open a new GGIO instance once the current one is full (cap counts all categories,
+            // weighted so string points consume more of the budget)
+            int doCost = DoCost(kind);
+            if (ctx.currentGgioDoCount + doCost > MaxDataObjectsPerLN)
             {
                 ctx.currentGgioIdx++;
                 ctx.currentGgioDoCount = 0;
@@ -225,7 +244,7 @@ namespace IEC61850_Server
             int ggioIdx = ctx.currentGgioIdx;
             if (!ctx.categoryCounters.ContainsKey(prefix)) ctx.categoryCounters[prefix] = 0;
             int localN = ++ctx.categoryCounters[prefix];
-            ctx.currentGgioDoCount++;
+            ctx.currentGgioDoCount += doCost;
             var ggio = GetOrCreateGGIO(ctx, ggioIdx);
             string doName = prefix + localN;
 
@@ -296,7 +315,9 @@ namespace IEC61850_Server
             if (daDesc != null)
             {
                 var desc = p.description?.ToString() ?? "";
-                DescAttrs.Add(Tuple.Create(daDesc, string.IsNullOrEmpty(desc) ? tag : desc));
+                if (string.IsNullOrEmpty(desc)) desc = tag;
+                if (desc.Length > MaxDescriptionLength) desc = desc.Substring(0, MaxDescriptionLength);
+                DescAttrs.Add(Tuple.Create(daDesc, desc));
             }
 
             // dataset membership (monitoring points only): DO-level FCDA carries value+q+t.

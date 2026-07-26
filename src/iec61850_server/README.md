@@ -115,6 +115,12 @@ therefore bounded on three axes, with measured costs:
 | `MaxDataObjectsPerLN` | 30 | A logical node's type description costs ~75 B per status object and ~90 B per measurand. Keeps any LN ≈2.5 kB. (100 indications + 100 measurands in one node measured **16.4 kB** and broke browsing.) |
 | `EntriesPerDataSet` | 40 | Reading a data set returns every member at once (~26 B/entry); an integrity/GI report of the full set must also fit one PDU. |
 | `MaxRcbPerLLN0` / `MaxRcbCopiesPerDataSet` | 7 / 4 | All report control blocks live in the LD's `LLN0`, and `LLN0[BR]`/`[RP]` returns **every** RCB of that family in one response (~250 B each). |
+| `MaxDescriptionLength` | 32 | The `d` attribute is published per object and one `[DC]` read returns **every** description in the logical node. Truncating keeps response size independent of how long operators made the tag descriptions. The full text stays in the JSON manifest. |
+| `DoCost` (string points) | 8 | A string point's `VisibleString` value can be far larger than a status or measurand value, so string points consume 8 units of the logical node budget instead of 1. |
+
+Two of these exist specifically so that **user data can never decide whether browsing works** —
+description text and string values are operator-controlled and would otherwise silently push a
+response over the limit.
 
 Because RCB count is `data sets × RCB copies`, the points-per-logical-device limit is
 **derived at build time** from `maxClientConnections` rather than fixed. Topics larger than
@@ -127,8 +133,10 @@ Model bounds: 2 RCB copies/data set, <= 80 points per logical device,
 Topic 'BULK' has 3000 points - split across 38 logical devices.
 ```
 
-Verified with 3009 points: every type description, value read and data-set read succeeds
-against a client negotiating only a **2000-byte PDU**.
+Verified against a client negotiating only a **2000-byte PDU**, using synthetic data shaped
+like a real substation database (2009 points, 211 command points, long descriptions and
+200-character string values): every type description, value read and data-set read succeeds,
+with zero regressions versus a 65000-byte PDU.
 
 Note that `maxClientConnections` above `MaxRcbCopiesPerDataSet` is honoured for *connections*
 but not for RCB instances — beyond that many clients cannot enable reports on the *same* data

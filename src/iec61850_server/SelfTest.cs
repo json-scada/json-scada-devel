@@ -122,16 +122,25 @@ namespace IEC61850_Server
             for (int i = 0; i < count; i++)
             {
                 var isAnalog = (i % 3) == 0;
+                var isString = (i % 17) == 0; // string points carry long VisibleString values
+                // ~11% command points and realistic description lengths, matching the shape of
+                // a real substation database (commands add large CO structures, and every
+                // description is returned by a single DC read)
+                var isCommand = (i % 9) == 0 && !isString;
+                var desc = "SUBSTATION KAW2 BAY 12 CIRCUIT BREAKER 52-" + i +
+                           (isAnalog ? " ANALOG MEASUREMENT MW" : " STATUS OPEN/CLOSED");
                 list.Add(new rtData
                 {
                     _id = BsonInt32.Create(id + i),
                     tag = BsonString.Create("BULK_" + (isAnalog ? "AI_" : "DI_") + i),
-                    type = BsonString.Create(isAnalog ? "analog" : "digital"),
+                    type = BsonString.Create(isString ? "string" : (isAnalog ? "analog" : "digital")),
                     value = BsonDouble.Create(i),
-                    valueString = BsonString.Create(""),
+                    valueString = BsonString.Create(isString
+                        ? new string('X', 200) // worst-case long string value
+                        : ""),
                     invalid = BsonBoolean.Create(false),
-                    origin = BsonString.Create("supervised"),
-                    description = BsonString.Create("bulk point " + i),
+                    origin = BsonString.Create(isCommand ? "command" : "supervised"),
+                    description = BsonString.Create(desc),
                     ungroupedDescription = BsonString.Create("bulk " + i),
                     group1 = BsonString.Create("BULK"),
                     group2 = BsonString.Create(""),
