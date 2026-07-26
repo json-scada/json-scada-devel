@@ -34,11 +34,11 @@ const ProtocolConnection = mongoose.model(
 
     // ICCP, ICCP_SERVER
     localAeQualifier: { type: Double, default: 12 },
-    localApTitle: { type: String, default: '1.1.1.998' },
+    localApTitle: { type: String, default: '1.1.998.1' },
 
     // ICCP, ICCP_SERVER
     remoteAeQualifier: { type: Double, default: 12 },
-    remoteApTitle: { type: String, default: '1.1.1.999' },
+    remoteApTitle: { type: String, default: '1.1.999.2' },
 
     // MQTT-SPARKPLUG-B, OPC-UA_SERVER
     groupId: { type: String, default: '' },

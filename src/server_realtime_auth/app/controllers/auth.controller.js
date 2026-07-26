@@ -470,7 +470,7 @@ exports.updateProtocolConnection = async (req, res) => {
       req.body.remoteAeQualifier = 12.0
     }
     if (!('remoteAppTitle' in req.body)) {
-      req.body.remoteApTitle = '1.1.999.1'
+      req.body.remoteApTitle = '1.1.999.2'
     }
   }
 
