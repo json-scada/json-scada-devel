@@ -82,6 +82,12 @@ const CATALOG = {
     exe: '{bin}/iec61850_client',
     defaultStartMode: 'manual',
   },
+  IEC61850_SERVER: {
+    key: 'iec61850server',
+    type: 'exe',
+    exe: '{bin}/iec61850_server',
+    defaultStartMode: 'manual',
+  },
   ICCP: {
     key: 'iccpclient',
     type: 'exe',
@@ -117,6 +123,13 @@ const CATALOG = {
     key: 'opcdaclient',
     type: 'exe',
     exe: '{bin}/OPC-DA-Client',
+    platforms: ['win32'],
+    defaultStartMode: 'manual',
+  },
+  'OPC-DA': {
+    key: 'opcdaserver',
+    type: 'exe',
+    exe: '{bin}/OPC-DA-Server',
     platforms: ['win32'],
     defaultStartMode: 'manual',
   },
