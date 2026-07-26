@@ -25,6 +25,12 @@ namespace IEC61850_Server
 
             Log("=== IEC61850_SERVER SELF TEST (no MongoDB) ===");
 
+            if (!TestDeserialization())
+            {
+                Log("SELF TEST: rtData deserialization FAILED.");
+                Environment.Exit(-1);
+            }
+
             srvConn = new Iec61850ServerConnection
             {
                 protocolDriver = ProtocolDriverName,
@@ -96,6 +102,109 @@ namespace IEC61850_Server
             iedServer?.Destroy();
             Log("SELF TEST: done.");
             Environment.Exit(0);
+        }
+
+        // Regression guard: realtimeData stores protocolSource{ASDU,CommonAddress,ObjectAddress}
+        // as numbers when numeric and as strings otherwise (see auth.controller.js updateTag),
+        // and this driver reads points from every source driver. Deserialization must tolerate both.
+        static bool TestDeserialization()
+        {
+            var ok = true;
+
+            Action<string, BsonDocument, Func<rtData, bool>> check =
+                (name, doc, verify) =>
+                {
+                    try
+                    {
+                        var d = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<rtData>(doc);
+                        if (verify(d))
+                            Log("  OK   " + name, LogLevelBasic);
+                        else
+                        {
+                            Log("  FAIL " + name + " (deserialized, wrong value)", LogLevelBasic);
+                            ok = false;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Log("  FAIL " + name + ": " + e.Message, LogLevelBasic);
+                        ok = false;
+                    }
+                };
+
+            Log("Checking rtData deserialization against mixed BSON types...", LogLevelBasic);
+
+            // the exact shape that crashed against the live database: numeric ASDU/addresses
+            check("numeric protocolSource* (IEC 104 style)",
+                new BsonDocument {
+                    { "_id", 1234.0 },
+                    { "tag", "NUMERIC_ASDU_TAG" },
+                    { "type", "analog" },
+                    { "value", 12.5 },
+                    { "protocolSourceASDU", 13.0 },
+                    { "protocolSourceCommonAddress", 1.0 },
+                    { "protocolSourceObjectAddress", 4001.0 },
+                    { "protocolSourceConnectionNumber", 71.0 },
+                },
+                // routing metadata must survive with its ORIGINAL BSON type, because it is
+                // copied verbatim into commandsQueue for the destination driver
+                d => d.protocolSourceASDU.IsDouble && d.protocolSourceASDU.ToDouble() == 13.0 &&
+                     d.protocolSourceCommonAddress.ToDouble() == 1.0 &&
+                     d.protocolSourceObjectAddress.ToDouble() == 4001.0 &&
+                     d._id.ToInt32() == 1234);
+
+            check("string protocolSource* (IEC 61850 style)",
+                new BsonDocument {
+                    { "_id", 5.0 },
+                    { "tag", "STRING_ASDU_TAG" },
+                    { "type", "digital" },
+                    { "protocolSourceASDU", "M_SP_NA_1" },
+                    { "protocolSourceCommonAddress", "ST" },
+                    { "protocolSourceObjectAddress", "SENSORS/GGIO1.Ind1" },
+                },
+                d => d.protocolSourceASDU.IsString &&
+                     d.protocolSourceASDU.AsString == "M_SP_NA_1" &&
+                     d.protocolSourceObjectAddress.AsString == "SENSORS/GGIO1.Ind1");
+
+            check("int32 ASDU + numeric booleans",
+                new BsonDocument {
+                    { "_id", 7 },
+                    { "tag", "INT_TAG" },
+                    { "protocolSourceASDU", 45 },
+                    { "invalid", 1 },
+                    { "substituted", 0 },
+                    { "protocolSourceCommandUseSBO", 1.0 },
+                },
+                d => d.protocolSourceASDU.IsInt32 && d.protocolSourceASDU.ToInt32() == 45 &&
+                     d.invalid.ToBoolean() == true &&
+                     d.substituted.ToBoolean() == false &&
+                     d.protocolSourceCommandUseSBO.ToBoolean() == true);
+
+            check("nulls and missing fields",
+                new BsonDocument {
+                    { "_id", 9.0 },
+                    { "tag", "NULL_TAG" },
+                    { "protocolSourceASDU", BsonNull.Value },
+                    { "valueString", BsonNull.Value },
+                    { "invalid", BsonNull.Value },
+                },
+                d => (d.protocolSourceASDU == null || d.protocolSourceASDU.IsBsonNull) &&
+                     d.invalid.ToBoolean() == false);
+
+            check("boolean/string coercions",
+                new BsonDocument {
+                    { "_id", 11.0 },
+                    { "tag", "COERCE_TAG" },
+                    { "protocolSourceASDU", true },
+                    { "invalid", "true" },
+                    { "value", "42.5" },
+                },
+                d => d.protocolSourceASDU.IsBoolean &&
+                     d.invalid.ToBoolean() == true &&
+                     Math.Abs(d.value.ToDouble() - 42.5) < 1e-9);
+
+            Log(ok ? "rtData deserialization: ALL CHECKS PASSED" : "rtData deserialization: FAILURES", LogLevelBasic);
+            return ok;
         }
 
         static void DrainOnce()

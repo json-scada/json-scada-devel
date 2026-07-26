@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using MongoDB.Bson;
 using IEC61850.Common;
 using IEC61850.Server;
 
@@ -198,9 +199,9 @@ namespace IEC61850_Server
                 pointKey = (int)p._id,
                 objRef = objRef,
                 protocolSourceConnectionNumber = p.protocolSourceConnectionNumber?.ToDouble() ?? 0,
-                protocolSourceCommonAddress = p.protocolSourceCommonAddress?.ToString() ?? "",
-                protocolSourceObjectAddress = p.protocolSourceObjectAddress?.ToString() ?? "",
-                protocolSourceASDU = p.protocolSourceASDU?.ToString() ?? "",
+                protocolSourceCommonAddress = p.protocolSourceCommonAddress ?? BsonString.Create(""),
+                protocolSourceObjectAddress = p.protocolSourceObjectAddress ?? BsonString.Create(""),
+                protocolSourceASDU = p.protocolSourceASDU ?? BsonString.Create(""),
                 protocolSourceCommandDuration = p.protocolSourceCommandDuration?.ToDouble() ?? 0,
                 protocolSourceCommandUseSBO = p.protocolSourceCommandUseSBO?.ToBoolean() ?? false,
                 dobj = dobj,

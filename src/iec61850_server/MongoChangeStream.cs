@@ -70,7 +70,7 @@ namespace IEC61850_Server
                                 point = mp,
                                 value = doc.value?.ToDouble() ?? 0.0,
                                 valueString = doc.valueString?.ToString() ?? "",
-                                invalid = doc.invalid?.ToBoolean() ?? false,
+                                invalid = doc.invalid?.ToBoolean() ?? true, // unknown quality -> invalid
                                 substituted = doc.substituted?.ToBoolean() ?? false,
                                 overflow = doc.overflow?.ToBoolean() ?? false,
                                 transient = doc.transient?.ToBoolean() ?? false,

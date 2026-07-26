@@ -98,9 +98,9 @@ namespace IEC61850_Server
             var cmdDoc = new BsonDocument
             {
                 { "protocolSourceConnectionNumber", mp.protocolSourceConnectionNumber },
-                { "protocolSourceCommonAddress", mp.protocolSourceCommonAddress ?? "" },
-                { "protocolSourceObjectAddress", mp.protocolSourceObjectAddress ?? "" },
-                { "protocolSourceASDU", mp.protocolSourceASDU ?? "" },
+                { "protocolSourceCommonAddress", mp.protocolSourceCommonAddress ?? BsonString.Create("") },
+                { "protocolSourceObjectAddress", mp.protocolSourceObjectAddress ?? BsonString.Create("") },
+                { "protocolSourceASDU", mp.protocolSourceASDU ?? BsonString.Create("") },
                 { "protocolSourceCommandDuration", mp.protocolSourceCommandDuration },
                 { "protocolSourceCommandUseSBO", mp.protocolSourceCommandUseSBO },
                 { "pointKey", mp.pointKey },
