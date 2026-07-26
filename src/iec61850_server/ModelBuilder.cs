@@ -48,8 +48,44 @@ namespace IEC61850_Server
         // node near ~2.5 kB, which fits comfortably in the PDU sizes real clients negotiate.
         // Raising it risks breaking model browsing on clients with small PDUs.
         const int MaxDataObjectsPerLN = 30;
-        // Max FCDA entries per dataset (each report of a full dataset must fit one PDU).
-        const int EntriesPerDataSet = 100;
+        // Max FCDA entries per dataset. Reading a data set returns every member in a single
+        // response (~26 B per entry measured), and an integrity/GI report of the full data set
+        // must also fit one PDU, so this is kept small.
+        const int EntriesPerDataSet = 40;
+
+        // Report control blocks all live in the LD's LLN0, and a client browsing or reading
+        // LLN0[BR]/[RP] receives EVERY control block of that family in one response. Measured
+        // cost of an RCB type description is ~250 B, so this caps a BR/RP response near 1.8 kB.
+        const int MaxRcbPerLLN0 = 7;
+
+        // Upper bound on RCB instances created per data set. One instance is needed per client
+        // that wants to report on the same data set concurrently, but each instance multiplies
+        // the LLN0[BR]/[RP] response size, so the count is capped regardless of configuration.
+        const int MaxRcbCopiesPerDataSet = 4;
+
+        // Points per logical device, derived at build time from the two bounds above:
+        // RCBs per LLN0 = (data sets in the LD) x (RCB copies), and data sets are filled to
+        // EntriesPerDataSet. Topics larger than this are split across several logical devices
+        // (KAW2, KAW2_2, ...) so every LLN0 stays small. One data set is held in reserve
+        // because status and measurand points occupy separate data set families.
+        static int rcbCopies_ = 1;
+        static int maxPointsPerLD_ = 240;
+
+        static void ComputeModelBounds()
+        {
+            rcbCopies_ = Math.Max(1, Math.Min(MaxRcbCopiesPerDataSet,
+                                              (int)srvConn.maxClientConnections));
+            if ((int)srvConn.maxClientConnections > MaxRcbCopiesPerDataSet)
+                Log($"maxClientConnections={(int)srvConn.maxClientConnections} exceeds the " +
+                    $"{MaxRcbCopiesPerDataSet} report control block instances created per data set; " +
+                    "clients beyond that cannot enable reports on the same data set concurrently.",
+                    LogLevelBasic);
+            int dataSetBudget = Math.Max(1, MaxRcbPerLLN0 / rcbCopies_);
+            maxPointsPerLD_ = EntriesPerDataSet * Math.Max(1, dataSetBudget - 1);
+            Log($"Model bounds: {rcbCopies_} RCB copies/data set, <= {maxPointsPerLD_} points per " +
+                $"logical device, <= {EntriesPerDataSet} entries per data set, " +
+                $"<= {MaxDataObjectsPerLN} objects per logical node.", LogLevelBasic);
+        }
 
         // Accumulates the state needed to lay out points inside one Logical Device.
         class LdContext
@@ -76,6 +112,8 @@ namespace IEC61850_Server
             if (iedName.Length == 0) iedName = "JSONSCADA";
             Log($"IED name: {iedName}", LogLevelBasic);
 
+            ComputeModelBounds();
+
             var model = new IedModel(iedName);
 
             // Group points by group1 (empty -> "GEN"), preserving _id-sorted order for stable refs.
@@ -97,8 +135,29 @@ namespace IEC61850_Server
             var usedLdInst = new HashSet<string>();
             var ldContexts = new List<LdContext>();
 
+            // split oversized topics across several logical devices to bound LLN0 size
+            var ldBatches = new List<Tuple<string, List<rtData>>>();
             foreach (var g1 in groups)
             {
+                var pts = byGroup[g1];
+                if (pts.Count <= maxPointsPerLD_)
+                {
+                    ldBatches.Add(Tuple.Create(g1, pts));
+                    continue;
+                }
+                int part = 0;
+                foreach (var chunk in Chunk(pts, maxPointsPerLD_))
+                {
+                    part++;
+                    ldBatches.Add(Tuple.Create(part == 1 ? g1 : g1 + "_" + part, chunk));
+                }
+                Log($"Topic '{g1}' has {pts.Count} points - split across {part} logical devices.",
+                    LogLevelBasic);
+            }
+
+            foreach (var batch in ldBatches)
+            {
+                var g1 = batch.Item1;
                 string ldInst = UniqueName(SanitizeMms(g1, ldNameBudget), usedLdInst);
                 var ctx = new LdContext { ldInst = ldInst };
                 ctx.ld = new LogicalDevice(ldInst, model);
@@ -115,7 +174,7 @@ namespace IEC61850_Server
                 var proxyAttr = ResolveAttr(proxy, "stVal", FunctionalConstraint.ST);
                 if (proxyAttr != null) ProxyAttrs.Add(proxyAttr);
 
-                foreach (var p in byGroup[g1])
+                foreach (var p in batch.Item2)
                     MapPoint(ctx, iedName, p);
 
                 BuildDataSetsAndReports(ctx, iedName);
@@ -280,7 +339,7 @@ namespace IEC61850_Server
         static void BuildDataSetsAndReports(LdContext ctx, string iedName)
         {
             uint confRev = Fnv32(string.Join("|", ctx.memberRefsForConfRev));
-            int maxClients = Math.Max(1, (int)srvConn.maxClientConnections);
+            int maxClients = rcbCopies_;
 
             int dsIdx = 0;
             foreach (var chunk in Chunk(ctx.statusEntries, EntriesPerDataSet))

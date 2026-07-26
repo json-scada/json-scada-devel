@@ -93,14 +93,11 @@ Example:
 }
 ```
 
-## Logical node sizing
+## Model sizing (why the model is split the way it is)
 
-`MaxDataObjectsPerLN` (in `ModelBuilder.cs`, default **30**) bounds how many data objects any
-one GGIO may hold. This is not cosmetic:
-
-When a client browses the model it issues `GetVariableAccessAttributes` per logical node, and
-that MMS service **cannot be segmented**. libiec61850 replies with an error PDU
-(`MMS_ERROR_RESOURCE_OTHER`) as soon as the type description exceeds the *negotiated* PDU size:
+Several MMS services return a whole object in **one response and cannot be segmented**.
+libiec61850 answers with an error PDU (`MMS_ERROR_RESOURCE_OTHER`) as soon as a response
+exceeds the *negotiated* PDU size — both for type descriptions and for reads:
 
 ```c
 if (ByteBuffer_getSize(response) > connection->maxPduSize) {
@@ -109,15 +106,35 @@ if (ByteBuffer_getSize(response) > connection->maxPduSize) {
 }
 ```
 
-Clients that negotiate a large PDU (libiec61850's own client uses 65000) tolerate big nodes;
-others (e.g. IEDExplorer) fail the browse with *"requested operation not possible"*.
+Clients negotiating a large PDU (libiec61850's own client uses 65000) tolerate big objects;
+others (e.g. IEDExplorer) fail with *"requested operation not possible"*. The model is
+therefore bounded on three axes, with measured costs:
 
-Measured full-LN type description cost is ~75 bytes per status object and ~90 bytes per
-measurand (value + `q` + `t` + description). With the default cap a logical node stays around
-**2.5 kB**. For reference, 100 indications *plus* 100 measurands in a single node measured
-**16.4 kB** and broke browsing on small-PDU clients.
+| Bound | Default | Why |
+|---|---|---|
+| `MaxDataObjectsPerLN` | 30 | A logical node's type description costs ~75 B per status object and ~90 B per measurand. Keeps any LN ≈2.5 kB. (100 indications + 100 measurands in one node measured **16.4 kB** and broke browsing.) |
+| `EntriesPerDataSet` | 40 | Reading a data set returns every member at once (~26 B/entry); an integrity/GI report of the full set must also fit one PDU. |
+| `MaxRcbPerLLN0` / `MaxRcbCopiesPerDataSet` | 7 / 4 | All report control blocks live in the LD's `LLN0`, and `LLN0[BR]`/`[RP]` returns **every** RCB of that family in one response (~250 B each). |
 
-Raise this value only if every client you serve negotiates a large PDU.
+Because RCB count is `data sets × RCB copies`, the points-per-logical-device limit is
+**derived at build time** from `maxClientConnections` rather than fixed. Topics larger than
+that limit are split across several logical devices (`KAW2`, `KAW2_2`, …), each with its own
+small `LLN0`. The driver logs the resulting bounds at startup:
+
+```
+Model bounds: 2 RCB copies/data set, <= 80 points per logical device,
+              <= 40 entries per data set, <= 30 objects per logical node
+Topic 'BULK' has 3000 points - split across 38 logical devices.
+```
+
+Verified with 3009 points: every type description, value read and data-set read succeeds
+against a client negotiating only a **2000-byte PDU**.
+
+Note that `maxClientConnections` above `MaxRcbCopiesPerDataSet` is honoured for *connections*
+but not for RCB instances — beyond that many clients cannot enable reports on the *same* data
+set concurrently. The driver logs a warning when configured that way.
+
+Raise these values only if every client you serve negotiates a large PDU.
 
 ## Notes & limitations
 
