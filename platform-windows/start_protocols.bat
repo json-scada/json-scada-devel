@@ -19,8 +19,7 @@ rem net start JSON_SCADA_plc4xclient
 rem net start JSON_SCADA_plc4jclient
 net start JSON_SCADA_telegraf_listener
 net start JSON_SCADA_telegraf_runtime
-rem net start JSON_SCADA_nodered_driver
-rem net start JSON_SCADA_nodered_runtime
+net start JSON_SCADA_nodered_driver
 rem net start JSON_SCADA_n8nclient
 REM net start JSON_SCADA_iec104server
 REM net start JSON_SCADA_iec101server

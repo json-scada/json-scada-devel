@@ -28,6 +28,8 @@ ping -n 3 127.0.0.1
 
 net start JSON_SCADA_grafana
 net start JSON_SCADA_metabase
+net start JSON_SCADA_metabase
+net start JSON_SCADA_nodered_runtime
 
 net start JSON_SCADA_php
 net start JSON_SCADA_nginx
