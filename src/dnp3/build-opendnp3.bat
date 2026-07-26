@@ -1,3 +1,9 @@
+REM These are reference notes for building the C++ DNP3 drivers by hand.
+REM On Windows prefer the runnable scripts in this folder, which need no manual
+REM OpenSSL install (they build it with vcpkg):
+REM     build-windows-deps.bat    one-time: OpenSSL, opendnp3, mongo-cxx-driver
+REM     build-windows.bat         builds Dnp3ClientCpp (+ Dnp3Server with "server")
+
 REM Requires https://slproweb.com/products/Win32OpenSSL.html (not the light package)
 REM https://slproweb.com/download/Win64OpenSSL-3_4_0.msi
 

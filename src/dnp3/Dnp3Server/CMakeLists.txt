@@ -39,13 +39,22 @@ if (WINDOWS_BUILD)
 set(CMAKE_EXE_LINKER_FLAGS
     "${CMAKE_EXE_LINKER_FLAGS} /NODEFAULTLIB:LIBCMT")
 
-target_link_libraries (Dnp3Server 
+set(MONGO_LIB_DIR ${CMAKE_CURRENT_SOURCE_DIR}/../../mongo-cxx-driver-lib/lib)
+
+# The static mongo-cxx-driver library names carry an MSVC ABI tag that
+# depends on the platform toolset, so they are resolved at configure time.
+include(${CMAKE_CURRENT_SOURCE_DIR}/../ResolveMongoCxxLibs.cmake)
+
+resolve_mongocxx_lib(BSONCXX_STATIC_LIB bsoncxx)
+resolve_mongocxx_lib(MONGOCXX_STATIC_LIB mongocxx)
+
+target_link_libraries (Dnp3Server
 PUBLIC
-  ../../../mongo-cxx-driver-lib/lib/bsoncxx-static-rts-x64-v143-md
-  ../../../mongo-cxx-driver-lib/lib/mongocxx-static-rts-x64-v143-md
-  ../../../mongo-cxx-driver-lib/lib/mongoc-static-1.0
-  ../../../mongo-cxx-driver-lib/lib/bson-static-1.0
-  ../../../dnp3/opendnp3/build/cpp/lib/release/opendnp3
+  ${BSONCXX_STATIC_LIB}
+  ${MONGOCXX_STATIC_LIB}
+  ${MONGO_LIB_DIR}/mongoc-static-1.0.lib
+  ${MONGO_LIB_DIR}/bson-static-1.0.lib
+  ${CMAKE_CURRENT_SOURCE_DIR}/../opendnp3/build/cpp/lib/release/opendnp3.lib
   OpenSSL::SSL
   OpenSSL::Crypto
   advapi32.lib

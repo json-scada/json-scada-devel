@@ -6,6 +6,23 @@ This driver implements a client for the DNP3 protocol. It can have multiple conn
 
 To configure the driver it is necessary to create one or more driver instances and at least one connection per instance. Also the tags intended to be updated should be configured appropriately.
 
+## Building on Windows with Visual Studio
+
+Requires Visual Studio 2022 or later with the _Desktop development with C++_ workload, plus `cmake` and `git` on the PATH.
+
+Build the native dependencies once - this checks out the `opendnp3` and `mongo-cxx-driver` submodules, builds OpenSSL with vcpkg (triplet `x64-windows-static-md`), builds `opendnp3` with TLS enabled and installs `mongo-cxx-driver` into `src\mongo-cxx-driver-lib`:
+
+    cd src\dnp3
+    build-windows-deps.bat
+
+Then build the driver, which copies `Dnp3ClientCpp.exe` to the `bin` folder. Add the `server` argument to build `Dnp3Server` too:
+
+    build-windows.bat
+
+Both scripts accept `VCPKG_ROOT` to relocate vcpkg (default: a `vcpkg` folder next to the repository) and `OPENSSL_ROOT_DIR` to use an OpenSSL installation of your own instead of the vcpkg one. `platform-windows\build.bat` calls `build-windows.bat` automatically once the dependencies are in place.
+
+To work on the driver inside the IDE, open `src\dnp3\Dnp3ClientCpp\build\Dnp3ClientCpp.sln`, which `build-windows.bat` generates.
+
 ## Configure a driver instance
 
 To create a new DNP3 client instance, insert a new document in the _protocolDriverInstances_ collection using a command like this:
