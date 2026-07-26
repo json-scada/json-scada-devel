@@ -2685,7 +2685,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.localAeQualifier')"
                         hide-details="auto"
-                        v-model="editedConnection.aeQualifier"
+                        v-model="editedConnection.localAeQualifier"
                       ></v-text-field>
                     </div>
                   </v-col>
@@ -2717,7 +2717,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.localApTitle')"
                         hide-details="auto"
-                        v-model="editedConnection.localAppTitle"
+                        v-model="editedConnection.localApTitle"
                       ></v-text-field>
                     </div>
                   </v-col>
@@ -2750,7 +2750,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.remoteAeQualifier')"
                         hide-details="auto"
-                        v-model="editedConnection.aeQualifier"
+                        v-model="editedConnection.remoteAeQualifier"
                       ></v-text-field>
                     </div>
                   </v-col>
