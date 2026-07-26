@@ -21,7 +21,10 @@ Built in C# on **.NET 8** using **libiec61850** (MZ Automation) through the vend
    - One **Logical Device per topic** (`group1`), plus a default `GEN` LD for points with no group1.
    - Each LD gets `LLN0` (Beh/Health/NamPlt) and an `LPHD1` with `Proxy.stVal = TRUE`
      (the IEC 61850-90-2 gateway marker).
-   - Points are exposed as **GGIO** data objects (100 per category per GGIO instance):
+   - Points are exposed as **GGIO** data objects, at most **30 objects per GGIO instance**
+     (counting all categories together); further points open `GGIO2`, `GGIO3`, … Each instance
+     numbers its own objects from 1, as real IEDs do. The cap is deliberate — see
+     *Logical node sizing* below:
      | JSON-SCADA point | CDC | GGIO object |
      |---|---|---|
      | digital monitor | SPS | `Indn` (`stVal`) |
@@ -89,6 +92,32 @@ Example:
   "useSecurity": false
 }
 ```
+
+## Logical node sizing
+
+`MaxDataObjectsPerLN` (in `ModelBuilder.cs`, default **30**) bounds how many data objects any
+one GGIO may hold. This is not cosmetic:
+
+When a client browses the model it issues `GetVariableAccessAttributes` per logical node, and
+that MMS service **cannot be segmented**. libiec61850 replies with an error PDU
+(`MMS_ERROR_RESOURCE_OTHER`) as soon as the type description exceeds the *negotiated* PDU size:
+
+```c
+if (ByteBuffer_getSize(response) > connection->maxPduSize) {
+    ByteBuffer_setSize(response, 0);
+    mmsMsg_createServiceErrorPdu(invokeId, response, MMS_ERROR_RESOURCE_OTHER);
+}
+```
+
+Clients that negotiate a large PDU (libiec61850's own client uses 65000) tolerate big nodes;
+others (e.g. IEDExplorer) fail the browse with *"requested operation not possible"*.
+
+Measured full-LN type description cost is ~75 bytes per status object and ~90 bytes per
+measurand (value + `q` + `t` + description). With the default cap a logical node stays around
+**2.5 kB**. For reference, 100 indications *plus* 100 measurands in a single node measured
+**16.4 kB** and broke browsing on small-PDU clients.
+
+Raise this value only if every client you serve negotiates a large PDU.
 
 ## Notes & limitations
 

@@ -50,6 +50,13 @@ namespace IEC61850_Server
             };
 
             PointsSnapshot = BuildSyntheticPoints();
+            // optional 3rd arg: bulk-generate N extra points in one topic, to exercise the
+            // model at realistic scale (large logical nodes stress the MMS type-description PDU)
+            if (args.Length > 2 && int.TryParse(args[2], out int bulk) && bulk > 0)
+            {
+                AddBulkPoints(PointsSnapshot, bulk);
+                Log("Bulk points added: " + bulk);
+            }
             Log("Synthetic points: " + PointsSnapshot.Count);
 
             ParseBindAddress();
@@ -95,13 +102,44 @@ namespace IEC61850_Server
                 Thread.Sleep(500);
             }
 
-            Log("SELF TEST: updates applied without error. Server stays up 20 s for manual browsing...");
-            for (int i = 0; i < 20 && !Shutdown; i++) Thread.Sleep(1000);
+            // optional 4th arg: seconds to keep serving, for manual browsing with a real client
+            int holdSecs = 20;
+            if (args.Length > 3 && int.TryParse(args[3], out int hs) && hs > 0) holdSecs = hs;
+            Log($"SELF TEST: updates applied without error. Server stays up {holdSecs} s for manual browsing...");
+            for (int i = 0; i < holdSecs && !Shutdown; i++) Thread.Sleep(1000);
 
             StopServer();
             iedServer?.Destroy();
             Log("SELF TEST: done.");
             Environment.Exit(0);
+        }
+
+        // Generate a large batch of points in a single topic, mimicking a real substation
+        // database, so logical-node sizing can be validated against real MMS clients.
+        static void AddBulkPoints(List<rtData> list, int count)
+        {
+            int id = 10000;
+            for (int i = 0; i < count; i++)
+            {
+                var isAnalog = (i % 3) == 0;
+                list.Add(new rtData
+                {
+                    _id = BsonInt32.Create(id + i),
+                    tag = BsonString.Create("BULK_" + (isAnalog ? "AI_" : "DI_") + i),
+                    type = BsonString.Create(isAnalog ? "analog" : "digital"),
+                    value = BsonDouble.Create(i),
+                    valueString = BsonString.Create(""),
+                    invalid = BsonBoolean.Create(false),
+                    origin = BsonString.Create("supervised"),
+                    description = BsonString.Create("bulk point " + i),
+                    ungroupedDescription = BsonString.Create("bulk " + i),
+                    group1 = BsonString.Create("BULK"),
+                    group2 = BsonString.Create(""),
+                    group3 = BsonString.Create(""),
+                    timeTagAtSourceOk = BsonBoolean.Create(false),
+                    protocolSourceConnectionNumber = BsonDouble.Create(999),
+                });
+            }
         }
 
         // Regression guard: realtimeData stores protocolSource{ASDU,CommonAddress,ObjectAddress}

@@ -38,9 +38,16 @@ namespace IEC61850_Server
         const uint CDC_CTL_OPTION_ORIGIN = (1u << 6);
         const uint CDC_CTL_OPTION_CTL_NUM = (1u << 7);
 
-        // Max data objects of one category per GGIO instance (keeps DO names short and
-        // reports below the MMS PDU size limit).
-        const int PointsPerGGIO = 100;
+        // Max data objects per GGIO instance, counting ALL categories together.
+        //
+        // A client browsing the model issues GetVariableAccessAttributes per logical node, and
+        // that MMS service cannot be segmented: libiec61850 replies with an error PDU
+        // (MMS_ERROR_RESOURCE_OTHER) as soon as the type description exceeds the negotiated PDU
+        // size. Measured cost of a full-LN type description is roughly 75 B per status object
+        // and 90 B per measurand (value + q + t + description), so this cap keeps any logical
+        // node near ~2.5 kB, which fits comfortably in the PDU sizes real clients negotiate.
+        // Raising it risks breaking model browsing on clients with small PDUs.
+        const int MaxDataObjectsPerLN = 30;
         // Max FCDA entries per dataset (each report of a full dataset must fit one PDU).
         const int EntriesPerDataSet = 100;
 
@@ -51,6 +58,11 @@ namespace IEC61850_Server
             public LogicalDevice ld;
             public LogicalNode lln0;
             public Dictionary<int, LogicalNode> ggios = new Dictionary<int, LogicalNode>();
+            // placement state: objects are packed into the current GGIO until it reaches
+            // MaxDataObjectsPerLN, then a new GGIO instance is opened. Each GGIO numbers its
+            // own objects from 1 (GGIO1.Ind1..Ind10, GGIO2.Ind1.., as real IEDs do).
+            public int currentGgioIdx = 0;
+            public int currentGgioDoCount = int.MaxValue; // forces GGIO1 on the first point
             public Dictionary<string, int> categoryCounters = new Dictionary<string, int>();
             public List<string> statusEntries = new List<string>(); // "GGIOn$ST$Do"
             public List<string> mxEntries = new List<string>();      // "GGIOn$MX$Do"
@@ -144,10 +156,17 @@ namespace IEC61850_Server
                 else { kind = PointKind.SPS; prefix = "Ind"; }
             }
 
+            // open a new GGIO instance once the current one is full (cap counts all categories)
+            if (ctx.currentGgioDoCount >= MaxDataObjectsPerLN)
+            {
+                ctx.currentGgioIdx++;
+                ctx.currentGgioDoCount = 0;
+                ctx.categoryCounters.Clear();
+            }
+            int ggioIdx = ctx.currentGgioIdx;
             if (!ctx.categoryCounters.ContainsKey(prefix)) ctx.categoryCounters[prefix] = 0;
-            int n = ++ctx.categoryCounters[prefix];
-            int ggioIdx = ((n - 1) / PointsPerGGIO) + 1;
-            int localN = ((n - 1) % PointsPerGGIO) + 1;
+            int localN = ++ctx.categoryCounters[prefix];
+            ctx.currentGgioDoCount++;
             var ggio = GetOrCreateGGIO(ctx, ggioIdx);
             string doName = prefix + localN;
 
