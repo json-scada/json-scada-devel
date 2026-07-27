@@ -28,6 +28,8 @@ const Log = require('./simple-logger')
 
 const NODERED_MOUNT_PATH = '/nodered'
 const NODERED_DEFAULT_SERVER = 'http://127.0.0.1:1880/nodered/'
+const LOGIO_MOUNT_PATH = '/log-io'
+const LOGIO_DEFAULT_SERVER = 'http://127.0.0.1:6688'
 
 // Express strips the mount path from req.url, while http upgrade requests (websockets)
 // never go through express and keep the full url. Matching on originalUrl when available
@@ -111,31 +113,96 @@ function createNoderedProxy(noderedServer) {
   })
 }
 
-// Proxy the websocket upgrades of the Node-RED editor (<httpAdminRoot>/comms).
-// Upgrade requests bypass express, so the token is verified here.
-function attachNoderedUpgrade(httpServer, noderedProxy) {
-  const isNoderedRequest = mountPathFilter(NODERED_MOUNT_PATH)
+// Reverse proxy for the websocket transport of the log.io ui, mounted on /log-io.
+// The ui derives its socket.io path from the page mount point, so it connects to
+// /log-io/socket.io while the log.io server serves socket.io at /socket.io: the mount
+// path is stripped from the forwarded request, just like the express /log-io proxy does
+// for the http (polling) requests.
+// Only the upgrades reach this proxy, through attachLogioUpgrade.
+function createLogioProxy(logioServer) {
+  let target
+  try {
+    target = new URL(logioServer)
+  } catch (err) {
+    Log.log(
+      'Invalid log.io server url: ' +
+        logioServer +
+        ', using ' +
+        LOGIO_DEFAULT_SERVER
+    )
+    target = new URL(LOGIO_DEFAULT_SERVER)
+  }
+
+  Log.log(
+    'Log.io websocket reverse proxy on ' +
+      LOGIO_MOUNT_PATH +
+      ' -> ' +
+      target.origin +
+      '/'
+  )
+
+  return createProxyMiddleware({
+    target: target.origin,
+    changeOrigin: true,
+    ws: false, // upgrades are handled by attachLogioUpgrade, to keep them authenticated
+    pathFilter: mountPathFilter(LOGIO_MOUNT_PATH), // do not grab upgrades of other proxies
+    pathRewrite: { ['^' + LOGIO_MOUNT_PATH]: '' },
+    on: {
+      // the json/urlencoded body parsers run before this proxy, restore the consumed body
+      proxyReq: fixRequestBody,
+      error: (err, req, resOrSocket) => {
+        Log.log('Log.io proxy error: ' + err.message)
+        if (typeof resOrSocket?.writeHead === 'function') {
+          if (!resOrSocket.headersSent) {
+            resOrSocket.writeHead(502, { 'Content-Type': 'text/plain' })
+            resOrSocket.end('Log.io server not available')
+          }
+        } else resOrSocket?.destroy?.()
+      },
+    },
+  })
+}
+
+// Proxy the websocket upgrades of a mounted reverse proxy.
+// Upgrade requests never reach the express middlewares (so verifyToken cannot run on
+// them), they are handled on the raw http server and the token is verified here instead.
+function attachProxyUpgrade(httpServer, proxy, mountPath, label) {
+  const isProxiedRequest = mountPathFilter(mountPath)
 
   httpServer.on('upgrade', (req, socket, head) => {
-    if (!isNoderedRequest(null, req)) return
+    if (!isProxiedRequest(null, req)) return
 
     const decoded = checkUpgradeToken(req)
     if (decoded === false) {
-      Log.log('Node-RED websocket denied (absent or invalid access token)')
+      Log.log(label + ' websocket denied (absent or invalid access token)')
       socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
       socket.destroy()
       return
     }
     if (decoded?.username) req.headers['X-WEBAUTH-USER'] = decoded.username
 
-    noderedProxy.upgrade(req, socket, head)
+    proxy.upgrade(req, socket, head)
   })
+}
+
+// Websocket upgrades of the Node-RED editor (<httpAdminRoot>/comms).
+function attachNoderedUpgrade(httpServer, noderedProxy) {
+  attachProxyUpgrade(httpServer, noderedProxy, NODERED_MOUNT_PATH, 'Node-RED')
+}
+
+// Websocket upgrades of the log.io ui (/log-io/socket.io).
+function attachLogioUpgrade(httpServer, logioProxy) {
+  attachProxyUpgrade(httpServer, logioProxy, LOGIO_MOUNT_PATH, 'Log.io')
 }
 
 module.exports = {
   NODERED_MOUNT_PATH,
   NODERED_DEFAULT_SERVER,
+  LOGIO_MOUNT_PATH,
+  LOGIO_DEFAULT_SERVER,
   mountPathFilter,
   createNoderedProxy,
   attachNoderedUpgrade,
+  createLogioProxy,
+  attachLogioUpgrade,
 }

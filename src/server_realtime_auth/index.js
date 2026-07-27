@@ -45,7 +45,12 @@ const { MongoClient, ObjectId, Double, GridFSBucket } = require('mongodb')
 const opc = require('./opc_codes.js')
 const { Pool } = require('pg')
 const UserActionsQueue = require('./userActionsQueue')
-const { createNoderedProxy, attachNoderedUpgrade } = require('./proxy-utils')
+const {
+  createNoderedProxy,
+  attachNoderedUpgrade,
+  createLogioProxy,
+  attachLogioUpgrade,
+} = require('./proxy-utils')
 const GetQueryPostgresql = require('./customJsonQueries')
 const initGQLServer = require('./graphql-server.js')
 
@@ -143,6 +148,9 @@ let pool = null
   // reverse proxy for the node-red editor (mounted on /nodered, ws upgrade below)
   const noderedProxy = createNoderedProxy(NODERED_SERVER)
 
+  // reverse proxy for the log.io ui socket.io (mounted on /socket.io, ws upgrade below)
+  const logioProxy = createLogioProxy(LOGIO_SERVER)
+
   // JWT Auth Mongo Express https://bezkoder.com/node-js-mongodb-auth-jwt/
   dbAuth.mongoose
     .connect(jsConfig.mongoConnectionString, jsConfig.MongoConnectionOptions)
@@ -184,6 +192,7 @@ let pool = null
 
   // websocket upgrades do not pass through the express middlewares, proxy them here
   attachNoderedUpgrade(httpServer, noderedProxy)
+  attachLogioUpgrade(httpServer, logioProxy)
 
   // if env variables defined use them, if not set local defaults
   let pgopt = {}

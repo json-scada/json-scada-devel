@@ -6,7 +6,6 @@ const {
   legacyCreateProxyMiddleware: createProxyMiddleware,
 } = require('http-proxy-middleware')
 const { authJwt } = require('../middlewares')
-const { mountPathFilter } = require('../../proxy-utils')
 const controller = require('../controllers/user.controller')
 const authController = require('../controllers/auth.controller')
 const Log = require('../../simple-logger')
@@ -81,6 +80,9 @@ module.exports = function (
 
   // reverse proxy for log.io on Windows
   // for docker it will be used Dozzle
+  // this handles the http requests (including the socket.io polling transport), the
+  // websocket upgrades of /log-io/socket.io never reach these middlewares and are proxied
+  // on the http server instead (see attachLogioUpgrade)
   app.use(
     '/log-io',
     [authJwt.verifyToken],
@@ -95,22 +97,6 @@ module.exports = function (
           changeOrigin: true,
         })
   )
-  const wsProxy = createProxyMiddleware({
-    target: logioServer,
-    changeOrigin: true,
-    ws: true, // enable websocket proxy
-    pathFilter: mountPathFilter('/socket.io'), // do not grab upgrades of other proxies
-  })
-  app.use(
-    '/socket.io',
-    [authJwt.verifyToken],
-    function (req, _, next) {
-      authController.addXWebAuthUser(req)
-      next()
-    },
-    wsProxy
-  )
-  app.on('upgrade', wsProxy.upgrade)
   app.use('/static', express.static('../log-io/ui/build/static'))
 
   app.post(accessPoint, opcApi) // realtime data API
