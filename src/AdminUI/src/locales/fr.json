@@ -34,6 +34,7 @@
     "logViewer": "Visionneuse de journaux",
     "about": "À propos",
     "admin": "Administrateur",
+    "apollo": "Apollon",
     "grafana": "Grafana",
     "metabase": "Métabase",
     "nodered": "NodeRed",

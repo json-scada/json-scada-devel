@@ -34,6 +34,7 @@
     "logViewer": "Log Viewer",
     "about": "About",
     "admin": "Admin",
+    "apollo": "Apollo",
     "grafana": "Grafana",
     "metabase": "Metabase",
     "nodered": "NodeRed",

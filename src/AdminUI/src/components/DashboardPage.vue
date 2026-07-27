@@ -128,8 +128,16 @@
       titleKey: 'dashboard.nodered',
       icon: Workflow,
       color: 'warning',
-      route: '',
-      page: '/nodered',
+      route: '/nodered',
+      page: '/#/nodered',
+      target: '_blank',
+    },
+    {
+      titleKey: 'dashboard.apollo',
+      icon: Workflow,
+      color: 'warning',
+      route: '/apollo',
+      page: '/#/apollo',
       target: '_blank',
     },
     {
