@@ -518,8 +518,8 @@ SetRegView 64
   File /a /r "..\platform-windows\nodered-runtime\*.*"
 
   ; ua-edge-translator
-  SetOutPath $INSTDIR\platform-windows\ua-edge-translator-runtime
-  File /a /r "..\platform-windows\ua-edge-translator-runtime\*.*"
+  ;SetOutPath $INSTDIR\platform-windows\ua-edge-translator-runtime
+  ;File /a /r "..\platform-windows\ua-edge-translator-runtime\*.*"
 
   ; Inkscape + SCADA extension
   SetOutPath $INSTDIR\platform-windows\inkscape-runtime

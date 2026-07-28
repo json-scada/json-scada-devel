@@ -20,10 +20,11 @@ copy %SRCPATH%\dnp3\Dnp3Client\Dependencies\OpenSSL\*.dll %BINPATH% /y
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 cd %SRCPATH%\libiec61850
-rem mkdir build
+rmdir build /S /Q
+mkdir build
 cd build	
 rem Run the line below to create solution file for Visual Studio 2022
-rem cmake -G "Visual Studio 17 2022" .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON
+rem cmake .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON
 msbuild libiec61850.sln /p:Configuration=Release
 
 rem cd %SRCPATH%\libiec61850\build
@@ -70,8 +71,8 @@ rem dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
 cd %SRCPATH%\libplctag\PLCTagsClient
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% PLCTagsClient.csproj
 
-cd %SRCPATH%\logrotate\  
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% logrotate.csproj
+rem cd %SRCPATH%\logrotate\  
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% logrotate.csproj
 
 cd %SRCPATH%\opcdaaehda-client-solution-net\
 dotnet restore

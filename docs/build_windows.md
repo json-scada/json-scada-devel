@@ -6,18 +6,25 @@ For better results and avoid problems, consider a clean Windows 11 install or VM
 
 ## Install all the necessary tools
 
-Install Git
+### Install Git
 
     winget install Git.Git
 
-Install Visual Studio 2026 and Dotnet SDKs
+### Install Visual Studio 2026 and Dotnet SDKs
 
-    winget install Microsoft.VisualStudio.Community --silent --accept-package-agreements --accept-source-agreements --override "--wait --quiet --add ProductLang En-us --add Microsoft.VisualStudio.Workload.ManagedDesktop --add Microsoft.VisualStudio.Workload.NetCrossPlat --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.CoreEditor –-installPath ""c:\Program Files\Microsoft Visual Studio\18\Community"""
+    winget install Microsoft.VisualStudio.Community --silent --accept-package-agreements --accept-source-agreements --override "--wait --quiet --add ProductLang En-us --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.ManagedDesktop --add Microsoft.VisualStudio.Workload.NetCrossPlat --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended"
 
     winget install Microsoft.DotNet.Framework.DeveloperPack_4
     winget install Microsoft.DotNet.SDK.8
 
-Install CMake 
+If msbuild.exe is not on the PATH, find it and add it:
+
+    "%ProgramFiles(x86)%\Microsoft Visual Studio\Installer\vswhere.exe" -latest -products * -requires Microsoft.Component.MSBuild -find MSBuild\**\Bin\MSBuild.exe
+    Should print: C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe
+    setx PATH "%PATH%;C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin"
+
+
+### Install CMake 
 
     winget install Kitware.CMake
 
@@ -30,25 +37,36 @@ https://nsis.sourceforge.io/mediawiki/images/4/4a/AccessControl.zip
 Copy AccessControl.dll from Plugins\i386-ansi to NSIS\Plugins\x86-ansi
 Copy AccessControl.dll from Plugins\i386-unicode to NSIS\Plugins\x86-unicode
 
-Install GO 
+### Install GO 
 
     winget install GoLang.Go
 
-Install JDK
+### Install JDK
 
     winget install EclipseAdoptium.Temurin.26.JDK
 
-Apache Maven
+### Apache Maven
     winget install chocolatey
     choco install maven (As Admin)
 
-Install Nodejs
+### Install Nodejs
 
     winget install OpenJS.NodeJS
 
-Clone get repo
+## Clone get repo
 
     git clone --recurse-submodules https://github.com/riclolsen/json-scada --config core.autocrlf=input
+
+## Compiling and building the source code
+
+Open "x64 Native Tools Command Prompt for VS".
+
+    cd \json-scada\platform-windows
+    build.bat
+
+## Build the NSIS installer
+
+
 
 C++ DNP3 drivers (Dnp3ClientCpp / Dnp3Server)
 
