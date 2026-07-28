@@ -23,8 +23,8 @@ cd %SRCPATH%\libiec61850
 rmdir build /S /Q
 mkdir build
 cd build
-rem Run the line below to create solution file for Visual Studio 2022
-rem cmake .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON
+rem Run the line below to create solution file for Visual Studio 2022/2026
+cmake .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON -DBUILD_EXAMPLES=OFF
 msbuild libiec61850.sln /p:Configuration=Release
 msbuild libiec61850.slnx /p:Configuration=Release
 
