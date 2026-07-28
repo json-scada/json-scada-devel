@@ -1,10 +1,21 @@
+# Build Intructions for Windows Platform
+
+## Introduction
+
+For better results and avoid problems, consider a clean Windows 11 install or VM to begin with.
+
+## Install all the necessary tools
+
 Install Git
 
-    llwinget install Git.Git
+    winget install Git.Git
 
-Install Visual Studio 2026
+Install Visual Studio 2026 and Dotnet SDKs
 
     winget install Microsoft.VisualStudio.Community --silent --accept-package-agreements --accept-source-agreements --override "--wait --quiet --add ProductLang En-us --add Microsoft.VisualStudio.Workload.ManagedDesktop --add Microsoft.VisualStudio.Workload.NetCrossPlat --add Microsoft.VisualStudio.Workload.NativeDesktop --add Microsoft.VisualStudio.Workload.CoreEditor –-installPath ""c:\Program Files\Microsoft Visual Studio\18\Community"""
+
+    winget install Microsoft.DotNet.Framework.DeveloperPack_4
+    winget install Microsoft.DotNet.SDK.8
 
 Install CMake 
 
@@ -23,10 +34,21 @@ Install GO
 
     winget install GoLang.Go
 
-Install JDK and Apache Maven
+Install JDK
 
     winget install EclipseAdoptium.Temurin.26.JDK
+
+Apache Maven
+    winget install chocolatey
     choco install maven (As Admin)
+
+Install Nodejs
+
+    winget install OpenJS.NodeJS
+
+Clone get repo
+
+    git clone --recurse-submodules https://github.com/riclolsen/json-scada --config core.autocrlf=input
 
 C++ DNP3 drivers (Dnp3ClientCpp / Dnp3Server)
 

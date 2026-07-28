@@ -3,7 +3,7 @@
   <PropertyGroup>
     <SuppressTfmSupportBuildWarnings>true</SuppressTfmSupportBuildWarnings>
     <AssemblyName>Technosoftware.OpcRcw</AssemblyName>
-    <TargetFrameworks>$(ComTargetFrameworks)</TargetFrameworks>
+    <TargetFrameworks>net6.0-windows;net8.0-windows</TargetFrameworks>
     <LangVersion>9.0</LangVersion>
     <PackageId>Technosoftware.DaAeHdaSolution.OpcRcw</PackageId>
     <Description>OPC DA/AE/HDA Client Solution .NET</Description>
