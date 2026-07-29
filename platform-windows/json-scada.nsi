@@ -214,6 +214,7 @@ SetRegView 64
   Delete "$INSTDIR\platform-windows\inkscape-runtime\*.*"  
   
   CreateDirectory "$INSTDIR\bin"
+  CreateDirectory "$INSTDIR\bin_alt"
   CreateDirectory "$INSTDIR\conf"
   CreateDirectory "$INSTDIR\docs"
   CreateDirectory "$INSTDIR\log"
@@ -253,6 +254,9 @@ SetRegView 64
   SetOutPath $INSTDIR\bin
   File /a /r "..\bin\*.*"
   File /a "..\platform-windows\nssm.exe"
+
+  SetOutPath $INSTDIR\bin_alt
+  File /a /r "..\bin_alt\*.*"
 
   ; preserve previous start_services.bat
   Rename $INSTDIR\platform-windows\start_services.bat $INSTDIR\platform-windows\start_services.bat.bak
