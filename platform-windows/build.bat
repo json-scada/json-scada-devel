@@ -8,9 +8,10 @@ set JSPATH=\json-scada
 set SRCPATH=%JSPATH%\src
 set BINPATH=%JSPATH%\bin
 set BINWINPATH=%JSPATH%\demo-docker\bin_win
-set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm
-set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx
-rem _set NPM="%programfiles%\nodejs\npm"
+set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm.cmd
+set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx.cmd
+if not exist %NPM% set NPM=npm
+if not exist %NPX% set NPX=npx
 
 cd %JSPATH%
 mkdir bin
