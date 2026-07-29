@@ -12,10 +12,15 @@ For better results and avoid problems, consider a clean Windows 11 install or VM
 
 ### Install Visual Studio 2026 and Dotnet SDKs
 
-    winget install Microsoft.VisualStudio.Community --silent --accept-package-agreements --accept-source-agreements --override "--wait --quiet --add ProductLang En-us --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.VisualStudio.Workload.ManagedDesktop --add Microsoft.VisualStudio.Workload.NetCrossPlat --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended"
+    winget install Microsoft.VisualStudio.Community --silent --accept-package-agreements --accept-source-agreements --override "--wait --quiet --add ProductLang En-us --add Microsoft.VisualStudio.Workload.VCTools --add Microsoft.Net.Component.4.8.TargetingPack --add Microsoft.VisualStudio.Workload.ManagedDesktop --add Microsoft.VisualStudio.Workload.NetCrossPlat --add Microsoft.VisualStudio.Workload.CoreEditor --add Microsoft.VisualStudio.Workload.NativeDesktop --includeRecommended"
 
-    winget install Microsoft.DotNet.Framework.DeveloperPack_4
     winget install Microsoft.DotNet.SDK.8
+    winget install Microsoft.NuGet
+
+    rem git clone https://github.com/microsoft/vcpkg C:\vcpkg
+    rem C:\vcpkg\bootstrap-vcpkg.bat
+    rem setx VCPKG_ROOT C:\vcpkg
+    rem setx PATH "C:\vcpkg;%PATH%"
 
 If msbuild.exe is not on the PATH, find it and add it:
 

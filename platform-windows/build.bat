@@ -76,7 +76,6 @@ rem cd %SRCPATH%\logrotate\
 rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% logrotate.csproj
 
 cd %SRCPATH%\opcdaaehda-client-solution-net\
-dotnet restore
 dotnet build -f net8.0-windows DaAeHdaNetStandard.sln -p:Platform="Any CPU"
 
 cd %SRCPATH%\OPC-DA-Client\  
@@ -87,6 +86,7 @@ dotnet publish --no-self-contained -p:PublishReadyToRun=true -f net8.0-windows -
 
 cd %SRCPATH%\OPC-DA-Server\
 rmdir bin /S /Q
+nuget restore OPC-DA-Server.sln
 msbuild OPC-DA-Server.sln /p:Configuration=Release /p:Platform=x64
 mkdir %BINPATH%\OPC-DA_Server
 copy /Y bin\x64\Release\*.* %BINPATH%\OPC-DA_Server\
