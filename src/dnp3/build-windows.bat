@@ -23,6 +23,15 @@ set "BINPATH=%~dp0..\..\bin"
 where cmake >nul 2>nul || (echo ERROR: cmake not found on the PATH. & exit /b 1)
 
 if not defined VCPKG_ROOT set "VCPKG_ROOT=%~dp0..\..\..\vcpkg"
+
+REM A VCPKG_ROOT pointing at a classic-mode-less instance (e.g. the one Visual
+REM Studio sets machine-wide, at ...\VC\vcpkg) has no installed\ tree. Fall
+REM back to the default repo-local location build-windows-deps.bat uses.
+if exist "%VCPKG_ROOT%\.vcpkg-root" if not exist "%VCPKG_ROOT%\ports" (
+    echo === Ignoring classic-mode-less vcpkg at %VCPKG_ROOT% ===
+    set "VCPKG_ROOT=%~dp0..\..\..\vcpkg"
+)
+
 if not defined OPENSSL_ROOT_DIR set "OPENSSL_ROOT_DIR=%VCPKG_ROOT%\installed\x64-windows-static-md"
 
 if not exist "%OPENSSL_ROOT_DIR%\lib\libssl.lib" (
