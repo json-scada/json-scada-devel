@@ -28,6 +28,9 @@ If msbuild.exe is not on the PATH, find it and add it:
     Should print: C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin\MSBuild.exe
     setx PATH "%PATH%;C:\Program Files\Microsoft Visual Studio\18\Community\MSBuild\Current\Bin"
 
+### Install Python
+
+    winget install Python.Python.3.14
 
 ### Install CMake 
 

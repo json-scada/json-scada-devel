@@ -102,7 +102,9 @@ cd %SRCPATH%\dnp3
 if exist opendnp3\build\cpp\lib\Release\opendnp3.lib (
   call build-windows.bat
 ) else (
-  echo Skipping the C++ DNP3 drivers - run src\dnp3\build-windows-deps.bat first.
+  echo run src\dnp3\build-windows-deps.bat first.
+   call build-windows-deps.bat
+   call build-windows.bat
 )
 
 go env -w GO111MODULE=auto
