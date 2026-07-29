@@ -7,6 +7,7 @@ echo - Node.js 20+
 set JSPATH=\json-scada
 set SRCPATH=%JSPATH%\src
 set BINPATH=%JSPATH%\bin
+set BINALTPATH=%JSPATH%\bin_alt
 set BINWINPATH=%JSPATH%\demo-docker\bin_win
 set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm.cmd
 set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx.cmd
@@ -15,6 +16,7 @@ if not exist %NPX% set NPX=npx
 
 cd %JSPATH%
 mkdir bin
+mkdir bin_alt
 
 copy %SRCPATH%\dnp3\Dnp3Client\Dependencies\OpenSSL\*.dll %BINPATH% /y
 
@@ -29,15 +31,6 @@ cmake .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON -DBUILD_EXAMPLES=OFF
 msbuild libiec61850.sln /p:Configuration=Release
 msbuild libiec61850.slnx /p:Configuration=Release
 
-rem cd %SRCPATH%\libiec61850\build
-rem set VCTargetsPath=C:\ProgramFiles\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\
-rem set VCTargetsPath=D:\ProgramFiles\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\
-rem set VCTargetsPath=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VC\v170\
-rem set VCToolsInstallDir=D:\ProgramFiles\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.40.33807\
-rem set VCToolsInstallDir=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.41.34120\
-rem dotnet clean -c Release libiec61850.sln
-rem dotnet publish --no-self-contained --runtime win-x64 -c Release libiec61850.sln
-
 copy %SRCPATH%\libiec61850\build\src\Release\iec61850.dll %BINPATH%
 
 cd %SRCPATH%\libiec61850\dotnet\core\2.0\
@@ -50,19 +43,17 @@ cd %SRCPATH%\iec61850_server
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINPATH%
 
 rem IEC 60870-5-101/104 drivers are now built in Go (src\iec60870-5), see the Go section below.
-rem The legacy C# drivers remain in src\lib60870.netcore as reference; to build them instead,
-rem re-enable the dotnet publish lines for iec101client/iec101server/iec104client/iec104server.
-rem cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
-rem dotnet build --no-self-contained --runtime win-x64 -c Release
-rem dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
-rem cd %SRCPATH%\lib60870.netcore\iec101client\
-rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-rem cd %SRCPATH%\lib60870.netcore\iec101server\
-rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-rem cd %SRCPATH%\lib60870.netcore\iec104client\ 
-rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-rem cd %SRCPATH%\lib60870.netcore\iec104server\ 
-rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
+dotnet build --no-self-contained --runtime win-x64 -c Release
+dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINALTPATH%
+cd %SRCPATH%\lib60870.netcore\iec101client\
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
+cd %SRCPATH%\lib60870.netcore\iec101server\
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
+cd %SRCPATH%\lib60870.netcore\iec104client\ 
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
+cd %SRCPATH%\lib60870.netcore\iec104server\ 
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
 
 cd %SRCPATH%\dnp3\Dnp3Client\
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% Dnp3Client.csproj

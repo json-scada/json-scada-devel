@@ -75,25 +75,3 @@ Open "x64 Native Tools Command Prompt for VS".
 ## Build the NSIS installer
 
 
-
-C++ DNP3 drivers (Dnp3ClientCpp / Dnp3Server)
-
-These need OpenSSL, opendnp3 and mongo-cxx-driver, which are built once by the
-script below. It checks out the two git submodules, builds OpenSSL through the
-vcpkg that ships with Visual Studio (triplet x64-windows-static-md), builds
-opendnp3 with TLS enabled and installs mongo-cxx-driver into
-src\mongo-cxx-driver-lib. It takes roughly half an hour and is skipped step by
-step when re-run.
-
-    cd src\dnp3
-    build-windows-deps.bat
-
-Afterwards platform-windows\build.bat builds the drivers along with everything
-else. To build only them:
-
-    src\dnp3\build-windows.bat          Dnp3ClientCpp
-    src\dnp3\build-windows.bat server   both drivers
-
-Set VCPKG_ROOT to relocate vcpkg (default: a vcpkg folder next to the
-repository), or OPENSSL_ROOT_DIR to use an OpenSSL installation of your own.
-
