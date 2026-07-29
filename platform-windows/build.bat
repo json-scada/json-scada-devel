@@ -140,6 +140,10 @@ copy /Y target\plc4j-client.jar %BINPATH%
 copy /Y plc4j-client.bat %BINPATH%
 :skip_plc4j
 
+rem ICCP client/server
+copy /Y  %SRCPATH%\iccp\iccp-server\iccp-server.exe %BINPATH%
+copy /Y  %SRCPATH%\iccp\iccp-client\iccp-client.exe %BINPATH%
+
 rem cd %SRCPATH%\iccp\iccp-server
 rem go mod tidy 
 rem go build -ldflags="-s -w"
