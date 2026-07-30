@@ -74,4 +74,38 @@ Open "x64 Native Tools Command Prompt for VS".
 
 ## Build the NSIS installer
 
+Create and fill up the "platform-windows" folders
+
+    cd \json-scada\platform-windows
+    mkdir grafana-runtime
+    mkdir inkscape-runtime
+    mkdir jdk-runtime
+    mkdir-metabase-runtime
+    mkdir mongodb-compass-runtime
+    mkdir mongodb-runtime
+    mkdir nginx_php-runtime
+    mkdir nodejs-runtime
+    mkdir nodered-runtime
+    mkdir postgresql-runtime
+    mkdir telegraf-runtime
+
+Fill up the folders with the respective runtimes (grab from another JSON-SCADA installation or download from the internet).
+
+Add the following files to \json-scada\platform-windows:
+
+    nssm.exe
+    ffmpeg.exe
+    sounder.exe
+    OpcWatch.exe
+    vc_redist.x64.exe
+    aspnetcore-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsis file)
+    dotnet-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsis file)
+    dotnet-runtime-10.0.2-win-x64.exe (or newer as in the json-scada.nsis file)
+    OPC Core Components Redistributable (x64) 3.00.108.msi (or newer as in the json-scada.nsis file)
+
+Build the installer
+
+    cd \json-scada\platform-windows
+    mkdir installer-release
+    C:\Program Files\NSIS\makensis.exe" json-scada.nsis
 
