@@ -8,7 +8,6 @@ set JSPATH=\json-scada
 set SRCPATH=%JSPATH%\src
 set BINPATH=%JSPATH%\bin
 set BINALTPATH=%JSPATH%\bin_alt
-set BINWINPATH=%JSPATH%\demo-docker\bin_win
 set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm.cmd
 set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx.cmd
 if not exist %NPM% set NPM=npm
@@ -53,8 +52,7 @@ cd %SRCPATH%\lib60870.netcore\iec104server\
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
 
 cd %SRCPATH%\dnp3\Dnp3Client\
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% Dnp3Client.csproj
-dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINWINPATH% Dnp3Client.csproj
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH% Dnp3Client.csproj
 
 rem cd %SRCPATH%\libplctag\libplctag.NET\src\libplctag
 rem dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
@@ -71,7 +69,6 @@ cd %SRCPATH%\OPC-DA-Client\
 rmdir obj /S /Q
 rmdir bin /S /Q
 dotnet publish --no-self-contained -p:PublishReadyToRun=true -f net8.0-windows -c Release -o %BINPATH% OPC-DA-Client.csproj
-dotnet publish --no-self-contained -p:PublishReadyToRun=true -f net8.0-windows -c Release -o %BINWINPATH% OPC-DA-Client.csproj
 
 cd %SRCPATH%\OPC-DA-Server\
 rmdir bin /S /Q
