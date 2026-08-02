@@ -41,7 +41,10 @@
   <properties>
     <project.build.sourceEncoding>UTF-8</project.build.sourceEncoding>
     <maven.compiler.release>17</maven.compiler.release>
-    <plc4x.version>0.12.0</plc4x.version>
+    <!-- Latest published PLC4J code. Apache PLC4X does not currently publish
+         -SNAPSHOT artifacts to a reachable repository (repository.apache.org is
+         being decommissioned), so the newest release is the latest available. -->
+    <plc4x.version>0.13.1</plc4x.version>
     <mongodb.version>5.2.1</mongodb.version>
     <logback.version>1.5.6</logback.version>
   </properties>
