@@ -107,5 +107,5 @@ Build the installer
 
     cd \json-scada\platform-windows
     mkdir installer-release
-    C:\Program Files\NSIS\makensis.exe" json-scada.nsis
+    "C:\Program Files (x86)\NSIS\makensis.exe" json-scada.nsis
 
