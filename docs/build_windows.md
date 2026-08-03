@@ -4,6 +4,8 @@
 
 For better results and avoid problems, consider a clean Windows 11 install or VM to begin with.
 
+Recommended minimum hardware: 16GB RAM, 200GB SSD, 4 cores x64 CPU.
+
 ## Install all the necessary tools
 
 ### Install Git
@@ -36,7 +38,7 @@ If msbuild.exe is not on the PATH, find it and add it:
 
     winget install Kitware.CMake
 
-Install NSIS 3.12 
+## Install NSIS 3.12 
 
     winget install NSIS.NSIS
 
@@ -61,9 +63,12 @@ Copy AccessControl.dll from Plugins\i386-unicode to NSIS\Plugins\x86-unicode
 
     winget install OpenJS.NodeJS
 
-## Clone get repo
+## Clone the repo
 
     git clone --recurse-submodules https://github.com/riclolsen/json-scada --config core.autocrlf=input
+	
+	or the development repo
+	git clone --recurse-submodules https://github.com/json-scada/json-scada-devel --config core.autocrlf=input
 
 ## Compiling and building the source code
 
@@ -80,7 +85,7 @@ Create and fill up the "platform-windows" folders
     mkdir grafana-runtime
     mkdir inkscape-runtime
     mkdir jdk-runtime
-    mkdir-metabase-runtime
+    mkdir metabase-runtime
     mkdir mongodb-compass-runtime
     mkdir mongodb-runtime
     mkdir nginx_php-runtime
@@ -98,14 +103,17 @@ Add the following files to \json-scada\platform-windows:
     sounder.exe
     OpcWatch.exe
     vc_redist.x64.exe
-    aspnetcore-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsis file)
-    dotnet-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsis file)
-    dotnet-runtime-10.0.2-win-x64.exe (or newer as in the json-scada.nsis file)
-    OPC Core Components Redistributable (x64) 3.00.108.msi (or newer as in the json-scada.nsis file)
+    aspnetcore-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsi file)
+    dotnet-runtime-8.0.23-win-x64.exe (or newer as in the json-scada.nsi file)
+    dotnet-runtime-10.0.2-win-x64.exe (or newer as in the json-scada.nsi file)
+    OPC Core Components Redistributable (x64) 3.00.108.msi (or newer as in the json-scada.nsi file)
 
 Build the installer
 
     cd \json-scada\platform-windows
     mkdir installer-release
     "C:\Program Files (x86)\NSIS\makensis.exe" json-scada.nsi
+	Or use the NSIS GUI app for better progress feedback.	
+	This build can take hours to finish!
+	
 
