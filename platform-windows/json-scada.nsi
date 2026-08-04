@@ -373,8 +373,8 @@ SetRegView 64
   File /a /r   "..\src\AdminUI\dist\*.*"
   File /a    ".\release_notes.txt"
 
-  SetOutPath $INSTDIR\src\svgedit
-  File /a /r "..\src\svgedit\*.*"
+  SetOutPath $INSTDIR\src\svgedit\dist\editor
+  File /a /r "..\src\svgedit\dist\editor\*.*"
   
   SetOutPath $INSTDIR\src\camera-onvif
   File /a /r "..\src\camera-onvif\*.*"
