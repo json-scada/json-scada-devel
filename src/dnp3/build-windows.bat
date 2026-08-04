@@ -58,8 +58,6 @@ cmake --build . --config Release --parallel || (popd & exit /b 1)
 popd
 copy /Y "%DNP3PATH%Dnp3ClientCpp\build\Release\Dnp3ClientCpp.exe" "%BINPATH%" || exit /b 1
 
-if /i not "%1"=="server" goto :done
-
 echo === Building Dnp3Server ===
 if not exist "%DNP3PATH%Dnp3Server\build" mkdir "%DNP3PATH%Dnp3Server\build"
 pushd "%DNP3PATH%Dnp3Server\build"
