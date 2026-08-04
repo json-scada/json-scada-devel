@@ -237,6 +237,8 @@ SetRegView 64
   CreateDirectory "$INSTDIR\platform-windows\postgresql-data"
   CreateDirectory "$INSTDIR\platform-windows\postgresql-runtime"
   CreateDirectory "$INSTDIR\platform-windows\nginx_php-runtime"
+  CreateDirectory "$INSTDIR\platform-windows\nginx_php-runtime\temp"
+  CreateDirectory "$INSTDIR\platform-windows\nginx_php-runtime\logs"
   CreateDirectory "$INSTDIR\platform-windows\telegraf-runtime"
   
   ; This is to try to avoid this Postgresql error:
