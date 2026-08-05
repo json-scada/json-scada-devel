@@ -213,6 +213,7 @@ SetRegView 64
   RMDir /r "$INSTDIR\platform-windows\inkscape-runtime\lib"  
   Delete "$INSTDIR\platform-windows\inkscape-runtime\*.*"  
   
+  CreateDirectory "$INSTDIR\.agents\skills"
   CreateDirectory "$INSTDIR\bin"
   CreateDirectory "$INSTDIR\bin_alt"
   CreateDirectory "$INSTDIR\conf"
@@ -253,6 +254,9 @@ SetRegView 64
   File /a ".\release_notes.txt"
   File /a "..\LICENSE"
 
+  SetOutPath $INSTDIR\.agents\skills
+  File /a /r "..\.agents\skills\*.*"
+  
   SetOutPath $INSTDIR\bin
   File /a /r "..\bin\*.*"
   File /a "..\platform-windows\nssm.exe"
