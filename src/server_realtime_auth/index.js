@@ -135,7 +135,7 @@ const CommandSentAsSOESymbol = '⚙️➡️'
 const opcIdTypeNumber = 0
 const opcIdTypeString = 1
 const beepPointKey = -1
-const EventsRemoveGuardSeconds = 20
+const EventsRemoveGuardSeconds = 20 // guard not to remove events recently added
 
 const jsConfig = LoadConfig()
 let HintMongoIsConnected = true
@@ -502,10 +502,16 @@ let pool = null
                   let fromDate = new Date(
                     Date.now() - EventsRemoveGuardSeconds * 1000
                   )
+                  let afterDate = new Date(
+                    Date.now() + EventsRemoveGuardSeconds * 1000
+                  )
                   let result = await db.collection(COLL_SOE).updateMany(
                     {
                       ack: { $lte: 1 },
-                      timeTag: { $lte: fromDate },
+                      $or: [
+                        { timeTag: { $gte: afterDate } },
+                        { timeTag: { $lte: fromDate } },
+                      ],
                       ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
@@ -548,11 +554,17 @@ let pool = null
                   let fromDate = new Date(
                     Date.now() - EventsRemoveGuardSeconds * 1000
                   )
+                  let afterDate = new Date(
+                    Date.now() + EventsRemoveGuardSeconds * 1000
+                  )
                   let result = await db.collection(COLL_SOE).updateMany(
                     {
                       tag: node.NodeId.Id,
                       ack: { $lte: 1 },
-                      timeTag: { $lte: fromDate },
+                      $or: [
+                        { timeTag: { $gte: afterDate } },
+                        { timeTag: { $lte: fromDate } },
+                      ],
                       ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
