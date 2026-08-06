@@ -647,13 +647,32 @@ namespace IEC61850_Client
                             parameters.UsePasswordAuthentication(srv.password);
                         }
 
-                        Log(srv.name + " Connecting to " + srv.ipAddresses[0]);
+                        var ipAddrPort = srv.ipAddresses[0].Trim();
                         var tcpPort = 102;
-                        string[] ipAddrPort = srv.ipAddresses[0].Split(':');
-                        if (ipAddrPort.Length > 1)
-                            if (int.TryParse(ipAddrPort[1], out _))
-                                tcpPort = System.Convert.ToInt32(ipAddrPort[1]);
-                        con.Connect(ipAddrPort[0], tcpPort);
+                        var ipAddr = ipAddrPort;
+                        if (ipAddrPort.StartsWith("["))
+                        { // [IPv6]:port
+                            var closeBracket = ipAddrPort.IndexOf(']');
+                            if (closeBracket > 0)
+                            {
+                                ipAddr = ipAddrPort.Substring(1, closeBracket - 1).Trim();
+                                if (closeBracket + 2 < ipAddrPort.Length && ipAddrPort[closeBracket + 1] == ':')
+                                    if (int.TryParse(ipAddrPort.Substring(closeBracket + 2).Trim(), out int portV6))
+                                        tcpPort = portV6;
+                            }
+                        }
+                        else
+                        { // host:port (a bare IPv6 address has more than one colon, so leave it alone)
+                            var colonPos = ipAddrPort.IndexOf(':');
+                            if (colonPos > 0 && colonPos == ipAddrPort.LastIndexOf(':'))
+                                if (int.TryParse(ipAddrPort.Substring(colonPos + 1).Trim(), out int port))
+                                {
+                                    ipAddr = ipAddrPort.Substring(0, colonPos).Trim();
+                                    tcpPort = port;
+                                }
+                        }
+                        Log(srv.name + " Connecting to " + ipAddr + ":" + tcpPort);
+                        con.Connect(ipAddr, tcpPort);
                         MmsConnection mmsCon = con.GetMmsConnection();
                         MmsServerIdentity identity = mmsCon.GetServerIdentity();
                         Log("Vendor:   " + identity.vendorName);
@@ -1084,11 +1103,11 @@ namespace IEC61850_Client
                     }
                     catch (Exception e)
                     {
-                        Log(srv.name + "Exception");
+                        Log(srv.name + " Exception");
                         if (LogLevel >= LogLevelDetailed)
                             Log(e);
                         else
-                            Log(e.Message);
+                            Log(e.Message + (e is IedConnectionException iece ? " (error code " + iece.GetErrorCode() + ")" : ""));
                         if (con != null)
                         {
                             if (con.GetState() == IedConnectionState.IED_STATE_CONNECTED)
