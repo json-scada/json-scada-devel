@@ -82,6 +82,12 @@ func discoverServer(ctx context.Context, conn *Iec61850Connection) error {
 			byLN[ln][e.Class] = append(byLN[ln][e.Class], e.Ref)
 		}
 
+		// autoCreateTags: every value-bearing object the server exposes
+		// becomes a tag, not only the ones a report happens to carry.
+		if conn.AutoCreateTags {
+			registerBrowsedPoints(dirCtx, conn, ld)
+		}
+
 		for _, ln := range lns {
 			Log(LogLevelBasic, "%s  LN: %s", conn.Name, ln)
 			lnRef := ld + "/" + ln
@@ -110,6 +116,195 @@ func discoverServer(ctx context.Context, conn *Iec61850Connection) error {
 		}
 	}
 	return nil
+}
+
+// browsedFCs are the functional constraints a discovered data object is
+// registered under. They are the ones that carry process values: status
+// and measurands. Settings, configuration and description attributes are
+// not points, and control blocks are not data.
+var browsedFCs = map[model.FC]bool{model.ST: true, model.MX: true}
+
+// registerBrowsedPoints registers every data object of a logical device
+// that carries a value, so autoCreateTags covers the whole server model
+// rather than only the members of the reports that happen to be active.
+//
+// One name list per logical device is enough: an IED reports its variables
+// as flat MMS item IDs ("GGIO1$ST$Ind1$stVal"), which carry the logical
+// node, the functional constraint and the data object. The entry is
+// registered at data-object level under its constraint — the same unit a
+// report entry names, so a point discovered here and later delivered by a
+// report is one entry and one tag, and the same value extraction applies
+// to both.
+//
+// Entries registered here are polled until a report covers them.
+func registerBrowsedPoints(ctx context.Context, conn *Iec61850Connection, ld string) {
+	names, err := conn.Client().MMS().GetNameList(ctx, mms.ClassNamedVariable, ld)
+	if err != nil {
+		Log(LogLevelBasic, "%s Cannot browse %s for tag creation: %v", conn.Name, ld, err)
+		return
+	}
+
+	added := 0
+	controls := map[string]*controlObject{} // data object path -> what was seen
+
+	for _, n := range names {
+		parts := strings.Split(n, "$")
+		// "LN$FC$DO[$DA...]": anything shorter is the bare logical node or
+		// its functional constraint, neither of which is a point.
+		if len(parts) < 3 || parts[0] == "" || parts[2] == "" {
+			continue
+		}
+		fc, err := model.ParseFC(parts[1])
+		if err != nil {
+			continue
+		}
+
+		if fc == model.CO {
+			noteControlAttribute(controls, ld, parts)
+			continue
+		}
+		if !browsedFCs[fc] {
+			continue
+		}
+
+		ref := ld + "/" + parts[0] + "." + parts[2]
+		key := entryKey(ref, fc)
+		if conn.Entry(key) != nil {
+			continue // configured, or already registered under another attribute
+		}
+		entry := conn.AddEntry(key, &Iec61850Entry{
+			Path:        ref,
+			FC:          fc,
+			JsTag:       conn.Name + ":" + ref,
+			AutoPublish: true,
+		})
+		if entry.AutoPublish {
+			added++
+		}
+	}
+	if added > 0 {
+		Log(LogLevelBasic, "%s %s: %d browsed object(s) registered for tag creation", conn.Name, ld, added)
+	}
+
+	if conn.CommandsEnabled {
+		registerControlObjects(ctx, conn, ld, controls)
+	}
+}
+
+// controlObject is what the name list says about a controllable object.
+type controlObject struct {
+	ref      string // "LD/LN.DO[.SDO]"
+	item     string // "LN$CO$DO[$SDO]"
+	hasOper  bool
+	hasSBO   bool // select-before-operate, either security level
+	analogue bool // the control value is an AnalogueValue ("ctlVal$f"/"$i")
+}
+
+// noteControlAttribute records what an "LN$CO$..." item reveals about the
+// controllable object it belongs to.
+func noteControlAttribute(into map[string]*controlObject, ld string, parts []string) {
+	// The control attribute is the last component that names one:
+	// "LN$CO$DO[$SDO]$Oper[$ctlVal[$f]]".
+	phase := -1
+	for i := 3; i < len(parts); i++ {
+		switch parts[i] {
+		case "Oper", "SBO", "SBOw", "Cancel":
+			phase = i
+		}
+	}
+	if phase < 0 {
+		return
+	}
+	doPath := parts[2:phase]
+	if len(doPath) == 0 {
+		return
+	}
+	item := parts[0] + "$CO$" + strings.Join(doPath, "$")
+	co := into[item]
+	if co == nil {
+		co = &controlObject{ref: ld + "/" + parts[0] + "." + strings.Join(doPath, "."), item: item}
+		into[item] = co
+	}
+	switch parts[phase] {
+	case "Oper":
+		co.hasOper = true
+	case "SBO", "SBOw":
+		co.hasSBO = true
+	}
+	// "…$Oper$ctlVal$f" or "$i": the control value is an analogue one.
+	if phase+2 < len(parts) && parts[phase+1] == "ctlVal" {
+		co.analogue = true
+	}
+}
+
+// registerControlObjects registers the controllable objects of a logical
+// device and queues a command tag for each, linked to the supervised point
+// of the same data object.
+func registerControlObjects(ctx context.Context, conn *Iec61850Connection, ld string, controls map[string]*controlObject) {
+	queued := 0
+	for _, co := range controls {
+		if !co.hasOper {
+			continue // status-only, nothing to command
+		}
+		key := entryKey(co.ref, model.CO)
+		if conn.Entry(key) != nil {
+			continue // already configured or registered
+		}
+		// Register the entry so a command can be dispatched in this
+		// session, before the tag is reloaded at the next start.
+		conn.AddEntry(key, &Iec61850Entry{
+			Path:        co.ref,
+			FC:          model.CO,
+			JsTag:       conn.Name + ":" + co.ref,
+			AutoPublish: true,
+		})
+
+		isDigital, asdu := controlValueKind(ctx, conn, ld, co)
+		enqueueCommandTag(CommandTag{
+			ConnNumber: conn.ProtocolConnectionNumber,
+			ConnName:   conn.Name,
+			Ref:        co.ref,
+			IsDigital:  isDigital,
+			UseSBO:     co.hasSBO,
+			Asdu:       asdu,
+		})
+		queued++
+	}
+	if queued > 0 {
+		Log(LogLevelBasic, "%s %s: %d controllable object(s) registered for command tag creation",
+			conn.Name, ld, queued)
+	}
+}
+
+// controlValueKind resolves the type of a control value: the type of the
+// Oper structure's ctlVal decides whether the command tag is digital or
+// analogue. The name list alone cannot tell a boolean from an integer, so
+// the type description is read; it is one request per controllable object,
+// and there are far fewer of those than data objects.
+func controlValueKind(ctx context.Context, conn *Iec61850Connection, ld string, co *controlObject) (bool, string) {
+	if co.analogue {
+		return false, mmsTypeName(mms.TypeStructure)
+	}
+	spec, err := conn.Client().MMS().GetVariableAccessAttributes(ctx, ld, co.item+"$Oper")
+	if err == nil && spec != nil {
+		for _, comp := range spec.Components {
+			if comp.Name != "ctlVal" || comp.Spec == nil {
+				continue
+			}
+			switch comp.Spec.Kind {
+			case mms.TypeBoolean:
+				return true, mmsTypeName(mms.TypeBoolean)
+			case mms.TypeBitString:
+				// A double-point control carries a two-bit position.
+				return true, mmsTypeName(mms.TypeBitString)
+			default:
+				return false, mmsTypeName(comp.Spec.Kind)
+			}
+		}
+	}
+	// Unknown: a single-point control is by far the most common.
+	Log(LogLevelDetailed, "%s %s: cannot read the control value type, assuming digital: %v", conn.Name, co.ref, err)
+	return true, mmsTypeName(mms.TypeBoolean)
 }
 
 // browseDataObject logs the attributes of a data object, the equivalent of

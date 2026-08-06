@@ -86,9 +86,40 @@ Commands use `protocolSourceCommonAddress: "CO"` for a control object; any other
 constraint performs a plain MMS write. `protocolSourceCommandUseSBO` forces select-with-value on a
 normal-security SBO object; otherwise the control model decides the sequence.
 
+### autoCreateTags
+
+With `autoCreateTags: true` the driver creates a tag for every value-bearing object it finds:
+
+* **while browsing** — every data object the server exposes under a status (`ST`) or measurand
+  (`MX`) constraint, whether or not any report carries it. These are polled every `giInterval`
+  seconds until a report covers them, at which point they follow the report instead;
+* **from reports** — any member of an activated data set that is not configured yet;
+* **command tags** — every controllable object the device exposes (one carrying an `Oper`
+  attribute), when `commandsEnabled` is on. The tag is `origin: "command"` with
+  `protocolSourceCommonAddress: "CO"`, `protocolSourceCommandUseSBO` taken from whether the object
+  has a select attribute, and `type` from the control value the device declares (`digital` for a
+  single or double point, `analog` for a setpoint).
+
+Each command tag is **linked to the point where its effect shows**: the command carries
+`supervisedOfCommand` with the `_id` of the supervised point of the same data object, and that
+point gets `commandOfSupervised` pointing back. The driver waits for the supervised point to exist
+before creating the command, so the pair is always complete; a controllable object with no status
+at all yields an unlinked command, which still operates but gives the operator no feedback.
+
+A controllable object is registered as soon as it is discovered, so it can be commanded in the same
+session — no restart needed to use a freshly created command tag. Control objects are never polled:
+reading one returns the operate structure, not a measurement.
+
+Settings, configuration and description attributes are not points and are not created.
+
 Automatically created tags are named `IEC61850;<connection>;<object reference>[<FC>]`, exactly as
 the C# driver names them, and are allocated `_id`s from the range
-`protocolConnectionNumber * 1000000`.
+`protocolConnectionNumber * 1000000`. Points already configured in `realtimeData` keep their own
+tag and are never duplicated.
+
+> On a large IED this creates a tag per data object — hundreds or thousands. The driver logs the
+> count per logical device (`N browsed object(s) registered for tag creation`). Leave
+> `autoCreateTags` off and configure the points you want if that is too much.
 
 ## Differences from the C# driver
 
@@ -109,6 +140,8 @@ intentional differences:
 | D10 | Reports are not asked to carry data references | Entries are identified from the data set members and the reference strings are discarded, so requesting them only adds traffic — and a server that announces them without sending them would desynchronise the whole report |
 | D11 | One report control block per data set is activated, a buffered one by preference | A server offers several blocks over the same data set — indexed instances, spares for other clients, a buffered and an unbuffered one — and every one delivers the same values, so each tag would be written once per block. The C# driver enables them all. A buffered block is chosen when the data set has one, because its stream survives a disconnection, which is what the EntryID resync is for. |
 | D12 | A report that carries no reason codes at all is still forwarded | The inclusion bitstring already says which members are included; the C# equivalent would drop the whole report on a server that ignores the requested optional fields |
+| D13 | `autoCreateTags` also creates tags for objects found while browsing, not only for report members | The C# driver only ever creates a tag for a point that arrives in a report, so a device whose data sets cover part of its model is only partly discovered. Browsed points are polled until a report covers them. |
+| D14 | `autoCreateTags` creates command tags for the controllable objects a device exposes, linked to their supervised points | The C# driver creates supervised points only, so every command has to be configured by hand. Control objects are registered for dispatch immediately and are never polled. |
 
 Reproduced on purpose, because tags fed by either driver must not disagree:
 
@@ -119,7 +152,6 @@ Reproduced on purpose, because tags fed by either driver must not disagree:
   sharing an object address under different constraints update each other.
 - `valueBsonAtSource` keeps its `{ a: <value> }` wrapper.
 - Points that belong to an activated report are still polled until their first report arrives.
-- Only points seen in reports are auto-created; polled-only points are not.
 - Automatically created tags carry `group3` with the functional constraint as written, and
   `alarmState` 2 for digitals, -1 otherwise.
 

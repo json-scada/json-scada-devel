@@ -22,7 +22,8 @@ MongoDB semantics, no native library dependency.
   - `main.go` — startup, instance and connection loading (← `Main.cs`)
   - `config.go` — documents, permissive BSON decoding, MongoDB connect (← `Common_srv_cli.cs`)
   - `connection.go` — per-IED state machine and polling (← `Process()` in `AsduReceiveHandler.cs`)
-  - `discovery.go` — ACSI browse of devices, data sets and report control blocks
+  - `discovery.go` — ACSI browse of devices, data sets and report control blocks, and the
+    registration of browsed points when autoCreateTags is on
   - `reports.go` — report control block activation, RptID hygiene
   - `report_handler.go` — report reception and value extraction (← `reportHandler`)
   - `mmsconv.go` — MMS value conversions (← the `MMSGet*` helpers)
@@ -41,6 +42,8 @@ MongoDB semantics, no native library dependency.
   comments. Intentional differences are numbered D1..D11 and listed in `README.md` — add to that
   list rather than silently diverging.
 - Only `sourceDataUpdate` is written for data; never tag `value`, alarms or history.
+- `Iec61850Entry.AutoPublish` marks a point the driver discovered itself (browse or report); only those carry the self-publish flag, so a point configured in realtimeData never gets a second tag.
+- Command tags are created by the MongoDB writer, not the value path: a control object carries no value, so `createCommandTags` inserts it and links it to its supervised twin (`supervisedOfCommand` / `commandOfSupervised`). It waits for the twin to exist, up to `commandLinkAttempts` writer cycles.
 - All numbers written to MongoDB must be Go `float64` so they land as BSON doubles.
 - Report callbacks run on the association's reader goroutine: never block them, only enqueue.
 - Report entries are identified from the data set members, and reports are matched to their

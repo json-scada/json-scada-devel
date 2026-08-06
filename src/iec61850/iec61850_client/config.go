@@ -38,7 +38,7 @@ import (
 // Driver identity, matching the C# driver so the same instance and
 // connection documents drive either binary.
 const (
-	CopyrightMessage = "{json:scada} IEC61850 Client Driver (Go) - Copyright 2020-2026 Ricardo Olsen"
+	CopyrightMessage   = "{json:scada} IEC61850 Client Driver (Go) - Copyright 2020-2026 Ricardo Olsen"
 	ProtocolDriverName = "IEC61850"
 	DriverVersion      = "0.1.0"
 	LibraryVersion     = "v0.2.3"
@@ -46,10 +46,10 @@ const (
 
 // Collection names.
 const (
-	ProtocolConnectionsCollectionName      = "protocolConnections"
-	ProtocolDriverInstancesCollectionName  = "protocolDriverInstances"
-	RealtimeDataCollectionName             = "realtimeData"
-	CommandsQueueCollectionName            = "commandsQueue"
+	ProtocolConnectionsCollectionName     = "protocolConnections"
+	ProtocolDriverInstancesCollectionName = "protocolDriverInstances"
+	RealtimeDataCollectionName            = "realtimeData"
+	CommandsQueueCollectionName           = "commandsQueue"
 )
 
 // Queue and key-allocation limits, same values as the C# driver.
@@ -101,41 +101,47 @@ type Iec61850Entry struct {
 	DataSetName string   // dataset containing the object, if any
 	RcbName     string   // report control block reporting the object, if any
 	JsTag       string   // json-scada tag to update (logging only for auto tags)
+
+	// AutoPublish marks an entry the driver discovered itself, either by
+	// browsing the server or from a report. Its values carry the
+	// self-publish flag, so the writer creates the tag. Entries preloaded
+	// from realtimeData already have a tag and never publish.
+	AutoPublish bool
 }
 
 // Iec61850Connection is a document of protocolConnections plus the runtime
 // state of the association it describes.
 type Iec61850Connection struct {
-	ID                           bson.ObjectID
-	ProtocolDriver               string
-	ProtocolDriverInstanceNumber int
-	ProtocolConnectionNumber     int
-	Name                         string
-	Description                  string
-	Enabled                      bool
-	CommandsEnabled              bool
-	IPAddresses                  []string
-	Topics                       []string
-	AutoCreateTags               bool
-	TimeoutMs                    float64
-	Password                     string
-	UseSecurity                  bool
-	LocalCertFilePath            string
-	PeerCertFilesPaths           []string
-	RootCertFilePath             string
-	ChainValidation              bool
+	ID                            bson.ObjectID
+	ProtocolDriver                string
+	ProtocolDriverInstanceNumber  int
+	ProtocolConnectionNumber      int
+	Name                          string
+	Description                   string
+	Enabled                       bool
+	CommandsEnabled               bool
+	IPAddresses                   []string
+	Topics                        []string
+	AutoCreateTags                bool
+	TimeoutMs                     float64
+	Password                      string
+	UseSecurity                   bool
+	LocalCertFilePath             string
+	PeerCertFilesPaths            []string
+	RootCertFilePath              string
+	ChainValidation               bool
 	AllowOnlySpecificCertificates bool
-	PrivateKeyFilePath           string
-	CipherList                   string
-	AllowTLSv10                  bool
-	AllowTLSv11                  bool
-	AllowTLSv12                  bool
-	AllowTLSv13                  bool
-	GiInterval                   float64
-	Class0ScanInterval           float64
-	UseBrcb                      bool
-	UseUrcb                      bool
-	Browse                       bool
+	PrivateKeyFilePath            string
+	CipherList                    string
+	AllowTLSv10                   bool
+	AllowTLSv11                   bool
+	AllowTLSv12                   bool
+	AllowTLSv13                   bool
+	GiInterval                    float64
+	Class0ScanInterval            float64
+	UseBrcb                       bool
+	UseUrcb                       bool
+	Browse                        bool
 
 	// Runtime state.
 	mu                sync.Mutex

@@ -148,6 +148,10 @@ func updateCycle(ctx context.Context, db *mongo.Database, collRTD *mongo.Collect
 				res.Acknowledged, res.InsertedCount, res.ModifiedCount)
 		}
 
+		// Controllable objects found while browsing get their tag here:
+		// they carry no value, so nothing else would create them.
+		createCommandTags(ctx, collRTD, conns)
+
 		if queueLen() == 0 {
 			select {
 			case <-ctx.Done():
@@ -210,6 +214,138 @@ func parseValueJSON(iv IECValue) bson.M {
 	return bson.M{"a": parsed}
 }
 
+// commandTagQueue holds controllable objects found while browsing, waiting
+// for their tag to be created.
+var commandTagQueue struct {
+	mu    sync.Mutex
+	items []CommandTag
+}
+
+func enqueueCommandTag(ct CommandTag) {
+	commandTagQueue.mu.Lock()
+	commandTagQueue.items = append(commandTagQueue.items, ct)
+	commandTagQueue.mu.Unlock()
+}
+
+// takeCommandTags removes and returns everything queued.
+func takeCommandTags() []CommandTag {
+	commandTagQueue.mu.Lock()
+	defer commandTagQueue.mu.Unlock()
+	items := commandTagQueue.items
+	commandTagQueue.items = nil
+	return items
+}
+
+// commandLinkAttempts is how many writer cycles a command tag waits for its
+// supervised twin to appear before it is created without the link. The twin
+// is created by the value path, so it normally shows up within a cycle or
+// two of the first poll or report.
+const commandLinkAttempts = 40
+
+// createCommandTags creates the tags of the controllable objects found
+// while browsing, each linked to the point where its effect shows: the
+// command carries supervisedOfCommand, the supervised point gets
+// commandOfSupervised. A device that exposes no status for a controllable
+// object yields an unlinked command, which still works but gives the
+// operator no feedback.
+func createCommandTags(ctx context.Context, collRTD *mongo.Collection, conns []*Iec61850Connection) {
+	pending := takeCommandTags()
+	for _, ct := range pending {
+		conn := connByNumber(conns, ct.ConnNumber)
+		if conn == nil {
+			continue
+		}
+		tag := ct.Tag()
+		if conn.InsertedTags[tag] {
+			continue
+		}
+
+		// The supervised twin is the same data object seen under its
+		// status or measurand constraint, so it is found by object
+		// address whatever its tag is called.
+		supervisedID := 0.0
+		findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		var sup bson.M
+		err := collRTD.FindOne(findCtx, bson.M{
+			"protocolSourceConnectionNumber": float64(ct.ConnNumber),
+			"protocolSourceObjectAddress":    ct.Ref,
+			"origin":                         "supervised",
+		}).Decode(&sup)
+		cancel()
+		if err == nil {
+			supervisedID = mFloat(sup, "_id", 0)
+		}
+		if supervisedID == 0 && ct.Attempts < commandLinkAttempts {
+			// The supervised tag is created by the value path; wait for it
+			// rather than committing a blind command.
+			ct.Attempts++
+			enqueueCommandTag(ct)
+			continue
+		}
+
+		id := nextTagKey(ctx, collRTD, conn)
+		insCtx, cancelIns := context.WithTimeout(ctx, 10*time.Second)
+		_, err = collRTD.InsertOne(insCtx, newCommandDoc(ct, id, supervisedID))
+		cancelIns()
+		if err != nil {
+			Log(LogLevelBasic, "%s - command tag insert failed for %s: %v", ct.ConnName, tag, err)
+			continue
+		}
+		conn.InsertedTags[tag] = true
+
+		if supervisedID != 0 {
+			updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
+			_, err = collRTD.UpdateOne(updCtx,
+				bson.M{"_id": supervisedID},
+				bson.M{"$set": bson.M{"commandOfSupervised": id}})
+			cancelUpd()
+			if err != nil {
+				Log(LogLevelBasic, "%s - cannot link %s to its supervised point: %v", ct.ConnName, tag, err)
+			}
+			Log(LogLevelBasic, "%s - INSERT NEW COMMAND TAG: %s - Addr:%s - supervised _id:%v",
+				ct.ConnName, tag, ct.Ref, supervisedID)
+		} else {
+			Log(LogLevelBasic, "%s - INSERT NEW COMMAND TAG: %s - Addr:%s - no supervised point found",
+				ct.ConnName, tag, ct.Ref)
+		}
+	}
+}
+
+func connByNumber(conns []*Iec61850Connection, number int) *Iec61850Connection {
+	for _, c := range conns {
+		if c.ProtocolConnectionNumber == number {
+			return c
+		}
+	}
+	return nil
+}
+
+// nextTagKey allocates the next free _id in the range reserved for a
+// connection's automatically created tags.
+func nextTagKey(ctx context.Context, collRTD *mongo.Collection, conn *Iec61850Connection) float64 {
+	if conn.LastNewKeyCreated == 0 {
+		autoKeyID := float64(conn.ProtocolConnectionNumber) * AutoKeyMultiplier
+		conn.LastNewKeyCreated = autoKeyID
+		findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
+		defer cancel()
+		cur, err := collRTD.Find(findCtx,
+			bson.M{"_id": bson.M{
+				"$gt": autoKeyID,
+				"$lt": float64(conn.ProtocolConnectionNumber+1) * AutoKeyMultiplier,
+			}},
+			options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(1))
+		if err == nil {
+			var docs []bson.M
+			if err := cur.All(findCtx, &docs); err == nil && len(docs) > 0 {
+				conn.LastNewKeyCreated = mFloat(docs[0], "_id", autoKeyID) + 1
+			}
+		}
+	} else {
+		conn.LastNewKeyCreated++
+	}
+	return conn.LastNewKeyCreated
+}
+
 // maybeInsertTag inserts a tag discovered in a report when the connection
 // has autoCreateTags and the tag is not known yet.
 func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*Iec61850Connection, iv IECValue) mongo.WriteModel {
@@ -232,26 +368,5 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*Iec
 
 	Log(LogLevelBasic, "%s - INSERT NEW TAG: %s - Addr:%s", iv.ConnName, tag, iv.Address)
 
-	if conn.LastNewKeyCreated == 0 {
-		autoKeyID := float64(iv.ConnNumber) * AutoKeyMultiplier
-		conn.LastNewKeyCreated = autoKeyID
-		findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		cur, err := collRTD.Find(findCtx,
-			bson.M{"_id": bson.M{
-				"$gt": autoKeyID,
-				"$lt": float64(iv.ConnNumber+1) * AutoKeyMultiplier,
-			}},
-			options.Find().SetSort(bson.D{{Key: "_id", Value: -1}}).SetLimit(1))
-		if err == nil {
-			var docs []bson.M
-			if err := cur.All(findCtx, &docs); err == nil && len(docs) > 0 {
-				conn.LastNewKeyCreated = mFloat(docs[0], "_id", autoKeyID) + 1
-			}
-		}
-		cancel()
-	} else {
-		conn.LastNewKeyCreated++
-	}
-
-	return mongo.NewInsertOneModel().SetDocument(newRealtimeDoc(iv, conn.LastNewKeyCreated))
+	return mongo.NewInsertOneModel().SetDocument(newRealtimeDoc(iv, nextTagKey(ctx, collRTD, conn)))
 }

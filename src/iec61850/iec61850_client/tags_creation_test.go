@@ -190,3 +190,70 @@ func TestUpdateModelShape(t *testing.T) {
 		t.Errorf("valueAtSource is %T, must be a double", sdu["valueAtSource"])
 	}
 }
+
+// A command tag carries the routing fields the dispatcher needs, the link
+// to its supervised point, and the platform's document shape.
+func TestNewCommandDoc(t *testing.T) {
+	ct := CommandTag{
+		ConnNumber: 101,
+		ConnName:   "IED1",
+		Ref:        "DemoProtCtrl/Obj1CSWI1.Pos",
+		IsDigital:  true,
+		UseSBO:     true,
+		Asdu:       "MMS_BOOLEAN",
+	}
+	if got := ct.Tag(); got != "IEC61850;IED1;DemoProtCtrl/Obj1CSWI1.Pos[CO]" {
+		t.Errorf("tag = %q", got)
+	}
+
+	doc := newCommandDoc(ct, 101000042, 101000007)
+
+	if doc["origin"] != "command" {
+		t.Errorf("origin = %v, want command", doc["origin"])
+	}
+	if doc["protocolSourceCommonAddress"] != "CO" {
+		t.Errorf("common address = %v, want CO", doc["protocolSourceCommonAddress"])
+	}
+	if doc["protocolSourceObjectAddress"] != ct.Ref {
+		t.Errorf("object address = %v", doc["protocolSourceObjectAddress"])
+	}
+	if doc["protocolSourceCommandUseSBO"] != true {
+		t.Errorf("useSBO = %v", doc["protocolSourceCommandUseSBO"])
+	}
+	if doc["protocolSourceConnectionNumber"] != float64(101) {
+		t.Errorf("connection number = %#v", doc["protocolSourceConnectionNumber"])
+	}
+	// The pair: the command names the point where its effect shows.
+	if doc["supervisedOfCommand"] != float64(101000007) {
+		t.Errorf("supervisedOfCommand = %#v, want the supervised key", doc["supervisedOfCommand"])
+	}
+	if doc["commandOfSupervised"] != 0.0 {
+		t.Errorf("commandOfSupervised = %#v, must be zero on a command point", doc["commandOfSupervised"])
+	}
+	if doc["type"] != "digital" || doc["stateTextTrue"] != "TRUE" {
+		t.Errorf("digital command wrong: %v / %v", doc["type"], doc["stateTextTrue"])
+	}
+	// A command has no acquisition, so it must not expire as invalid.
+	if doc["invalid"] != false || doc["invalidDetectTimeout"] != 0.0 {
+		t.Errorf("invalid handling wrong: %v / %v", doc["invalid"], doc["invalidDetectTimeout"])
+	}
+	for k, v := range doc {
+		switch v.(type) {
+		case int, int32, int64:
+			t.Errorf("field %q is an integer (%T), must be a double", k, v)
+		}
+	}
+
+	// An analogue setpoint.
+	ct.IsDigital = false
+	ct.UseSBO = false
+	ct.Asdu = "MMS_STRUCTURE"
+	a := newCommandDoc(ct, 2, 0)
+	if a["type"] != "analog" || a["stateTextTrue"] != "" {
+		t.Errorf("analog command wrong: %v / %v", a["type"], a["stateTextTrue"])
+	}
+	// No supervised twin found: still commandable, just without feedback.
+	if a["supervisedOfCommand"] != 0.0 {
+		t.Errorf("unlinked command = %#v", a["supervisedOfCommand"])
+	}
+}

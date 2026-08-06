@@ -34,6 +34,111 @@ func TagFromParameters(iv IECValue) string {
 	return "IEC61850;" + iv.ConnName + ";" + iv.Address + "[" + iv.CommonAddress + "]"
 }
 
+// CommandTag describes a controllable object found while browsing, waiting
+// for its tag to be created.
+type CommandTag struct {
+	ConnNumber int
+	ConnName   string
+	Ref        string // IEC 61850 object reference of the control object
+	IsDigital  bool
+	UseSBO     bool
+	Asdu       string // MMS type of the control value
+	Attempts   int    // times the supervised twin was looked for
+}
+
+// Tag is the name of the command tag.
+func (c CommandTag) Tag() string {
+	return "IEC61850;" + c.ConnName + ";" + c.Ref + "[CO]"
+}
+
+// newCommandDoc builds the realtimeData document of a command point.
+// supervisedID is the key of the point where the command's effect shows,
+// zero when the device exposes no status for the controllable object.
+func newCommandDoc(ct CommandTag, id, supervisedID float64) bson.M {
+	const group1 = "IEC61850"
+
+	doc := bson.M{
+		"_id":                            id,
+		"protocolSourceASDU":             ct.Asdu,
+		"protocolSourceCommonAddress":    "CO",
+		"protocolSourceConnectionNumber": float64(ct.ConnNumber),
+		"protocolSourceObjectAddress":    ct.Ref,
+		"protocolSourceCommandUseSBO":    ct.UseSBO,
+		"protocolSourceCommandDuration":  0.0,
+		"description":                    group1 + "~" + ct.ConnName + "~" + ct.Ref + " command",
+		"ungroupedDescription":           ct.Ref + " command",
+		"group1":                         group1,
+		"group2":                         ct.ConnName,
+		"group3":                         "CO",
+		"origin":                         "command",
+		"tag":                            ct.Tag(),
+		// The two ends of the pair: this command acts on that supervised
+		// point, which is where its feedback appears.
+		"supervisedOfCommand":  supervisedID,
+		"commandOfSupervised":  0.0,
+		"alarmDisabled":        false,
+		"alerted":              false,
+		"alarmed":              false,
+		"alertState":           "",
+		"annotation":           "",
+		"commandBlocked":       false,
+		"commissioningRemarks": "",
+		"formula":              0.0,
+		"frozen":               false,
+		"frozenDetectTimeout":  0.0,
+		"hiLimit":              math.MaxFloat64,
+		"hihiLimit":            math.MaxFloat64,
+		"hihihiLimit":          math.MaxFloat64,
+		"historianDeadBand":    0.0,
+		"historianPeriod":      0.0,
+		"hysteresis":           0.0,
+		"invalid":              false,
+		"invalidDetectTimeout": 0.0,
+		"isEvent":              false,
+		"kconv1":               1.0,
+		"kconv2":               0.0,
+		"location":             nil,
+		"loLimit":              -math.MaxFloat64,
+		"loloLimit":            -math.MaxFloat64,
+		"lololoLimit":          -math.MaxFloat64,
+		"notes":                "",
+		"overflow":             false,
+		"parcels":              nil,
+		"priority":             0.0,
+		"protocolDestinations": nil,
+		"sourceDataUpdate":     nil,
+		"substituted":          false,
+		"timeTag":              nil,
+		"timeTagAlarm":         nil,
+		"timeTagAtSource":      nil,
+		"timeTagAtSourceOk":    false,
+		"transient":            false,
+		"unit":                 "",
+		"updatesCnt":           0.0,
+		"value":                0.0,
+		"valueDefault":         0.0,
+		"valueString":          "",
+		"zeroDeadband":         0.0,
+	}
+
+	if ct.IsDigital {
+		doc["type"] = "digital"
+		doc["alarmState"] = -1.0
+		doc["stateTextFalse"] = "FALSE"
+		doc["stateTextTrue"] = "TRUE"
+		doc["eventTextFalse"] = "FALSE"
+		doc["eventTextTrue"] = "TRUE"
+	} else {
+		doc["type"] = "analog"
+		doc["alarmState"] = -1.0
+		doc["stateTextFalse"] = ""
+		doc["stateTextTrue"] = ""
+		doc["eventTextFalse"] = ""
+		doc["eventTextTrue"] = ""
+	}
+	return doc
+}
+
 // newRealtimeDoc builds the realtimeData document for a discovered point.
 func newRealtimeDoc(iv IECValue, id float64) bson.M {
 	const group1 = "IEC61850"

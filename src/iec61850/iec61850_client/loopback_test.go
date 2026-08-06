@@ -3,6 +3,7 @@ package main
 import (
 	"context"
 	"net"
+	"os"
 	"strings"
 	"testing"
 	"time"
@@ -14,11 +15,27 @@ import (
 	"github.com/dscsystems/go-iec61850/server"
 )
 
+// sampleModelPath finds the sample SCL model, which may sit beside the
+// driver or one level up, shared with the server driver.
+func sampleModelPath(t *testing.T) string {
+	t.Helper()
+	for _, p := range []string{
+		"testdata/simpleIO_direct_control.cid",
+		"../testdata/simpleIO_direct_control.cid",
+	} {
+		if _, err := os.Stat(p); err == nil {
+			return p
+		}
+	}
+	t.Skip("sample SCL model not found (testdata/simpleIO_direct_control.cid)")
+	return ""
+}
+
 // startTestIED serves the sample SCL model on a loopback port.
 func startTestIED(t *testing.T) (addr string, srv *server.Server) {
 	t.Helper()
 
-	m, err := scl.LoadModel("testdata/simpleIO_direct_control.cid")
+	m, err := scl.LoadModel(sampleModelPath(t))
 	if err != nil {
 		t.Fatalf("load SCL model: %v", err)
 	}
@@ -382,11 +399,256 @@ func TestLoopbackOneSubscriptionPerDataSet(t *testing.T) {
 	}
 }
 
+// With autoCreateTags the driver registers every value-bearing object the
+// server exposes, not only the ones a report happens to carry, and those
+// points publish their tags when polled.
+func TestLoopbackAutoCreateFromBrowse(t *testing.T) {
+	addr, _ := startTestIED(t)
+	conn := newTestConnection(addr)
+	conn.AutoCreateTags = true
+	// No reports: whatever is found has to come from the browse.
+	conn.UseBrcb = false
+	conn.UseUrcb = false
+	active.Store(true)
+	defer active.Store(false)
+
+	connectTest(t, conn)
+	drainQueue()
+	defer drainQueue()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := discoverServer(ctx, conn); err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+
+	// Objects of every logical node are registered, under the functional
+	// constraint that carries their value.
+	for _, want := range []struct {
+		key string
+		fc  model.FC
+	}{
+		{"simpleIOGenericIO/GGIO1.SPCSO1" + "ST", model.ST},    // in a data set
+		{"simpleIOGenericIO/GGIO1.AnIn1" + "MX", model.MX},     // in a data set
+		{"simpleIOGenericIO/LLN0.Mod" + "ST", model.ST},        // in none
+		{"simpleIOGenericIO/LLN0.Health" + "ST", model.ST},     // in none
+		{"simpleIOGenericIO/LPHD1.PhyHealth" + "ST", model.ST}, // in none
+	} {
+		e := conn.Entry(want.key)
+		if e == nil {
+			t.Errorf("browsed object %q was not registered", want.key)
+			continue
+		}
+		if e.FC != want.fc {
+			t.Errorf("%s: FC = %v, want %v", want.key, e.FC, want.fc)
+		}
+		if !e.AutoPublish {
+			t.Errorf("%s: a browsed object must publish its tag", want.key)
+		}
+	}
+
+	// Settings, configuration and description attributes are not points.
+	for _, notWanted := range []string{
+		"simpleIOGenericIO/GGIO1.SPCSO1" + "CF", // ctlModel
+		"simpleIOGenericIO/GGIO1.SPCSO1" + "DC", // description
+	} {
+		if e := conn.Entry(notWanted); e != nil {
+			t.Errorf("%q should not be registered as a point", notWanted)
+		}
+	}
+	// A control object is registered for dispatch but is not a measurement:
+	// reading it would return the operate structure, so it is never polled.
+	if e := conn.Entry(entryKey("simpleIOGenericIO/GGIO1.SPCSO1", model.CO)); e == nil {
+		t.Error("no control entry registered")
+	}
+
+	// Polling them produces values that carry the self-publish flag, which
+	// is what makes the writer create the tag.
+	if err := pollSweep(ctx, conn); err != nil {
+		t.Fatalf("poll sweep: %v", err)
+	}
+	values := drainQueue()
+	if len(values) == 0 {
+		t.Fatal("no values from the polling sweep")
+	}
+	published, byAddress := 0, map[string]bool{}
+	for _, iv := range values {
+		byAddress[iv.Address] = true
+		if iv.SelfPublish {
+			published++
+		}
+	}
+	if published != len(values) {
+		t.Errorf("%d of %d polled values carry the self-publish flag", published, len(values))
+	}
+	if !byAddress["simpleIOGenericIO/LLN0.Mod"] {
+		t.Errorf("an object outside every data set was not polled: %v", len(byAddress))
+	}
+	for _, iv := range values {
+		if iv.CommonAddress == "CO" {
+			t.Errorf("a control object was polled as a measurement: %s", iv.Address)
+		}
+	}
+	// And each one names a tag the writer can create.
+	iv := values[0]
+	if tag := TagFromParameters(iv); !strings.HasPrefix(tag, "IEC61850;TESTIED;") {
+		t.Errorf("tag name = %q", tag)
+	}
+}
+
+// Controllable objects found while browsing are registered so a command
+// can be dispatched at once, and queued for tag creation with the control
+// model and the value type the device reports.
+func TestLoopbackAutoCreateCommands(t *testing.T) {
+	addr, _ := startTestIED(t)
+	conn := newTestConnection(addr)
+	conn.AutoCreateTags = true
+	conn.CommandsEnabled = true
+	conn.UseBrcb = false
+	conn.UseUrcb = false
+	active.Store(true)
+	defer active.Store(false)
+
+	connectTest(t, conn)
+	drainQueue()
+	defer drainQueue()
+	takeCommandTags() // start from a clean queue
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := discoverServer(ctx, conn); err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+
+	queued := map[string]CommandTag{}
+	for _, ct := range takeCommandTags() {
+		queued[ct.Ref] = ct
+	}
+	for _, ref := range []string{
+		"simpleIOGenericIO/GGIO1.SPCSO1",
+		"simpleIOGenericIO/GGIO1.SPCSO2",
+		"simpleIOGenericIO/GGIO1.SPCSO3",
+		"simpleIOGenericIO/GGIO1.SPCSO4",
+	} {
+		ct, ok := queued[ref]
+		if !ok {
+			t.Errorf("no command tag queued for %s", ref)
+			continue
+		}
+		if !ct.IsDigital {
+			t.Errorf("%s: a single point control is a digital command", ref)
+		}
+		if ct.Asdu != "MMS_BOOLEAN" {
+			t.Errorf("%s: control value type = %q", ref, ct.Asdu)
+		}
+		if ct.ConnName != "TESTIED" || ct.ConnNumber != 9999 {
+			t.Errorf("%s: connection identity missing", ref)
+		}
+		if want := "IEC61850;TESTIED;" + ref + "[CO]"; ct.Tag() != want {
+			t.Errorf("%s: tag = %q, want %q", ref, ct.Tag(), want)
+		}
+		// The sample model uses direct control, so no select is needed.
+		if ct.UseSBO {
+			t.Errorf("%s: useSBO set on a direct-control object", ref)
+		}
+
+		// Registered as an entry, so a command works in this session,
+		// before the tag is reloaded at the next start.
+		e := conn.Entry(entryKey(ref, model.CO))
+		if e == nil {
+			t.Errorf("%s: no CO entry registered for dispatch", ref)
+			continue
+		}
+		if e.FC != model.CO || e.Path != ref {
+			t.Errorf("%s: entry = %+v", ref, e)
+		}
+	}
+
+	// A control object is not a supervised point: it must not be polled
+	// under CO, and its status is the ST twin the command links to.
+	if e := conn.Entry(entryKey("simpleIOGenericIO/GGIO1.SPCSO1", model.ST)); e == nil {
+		t.Error("the supervised twin of a controllable object was not registered")
+	}
+}
+
+// With commands disabled, no command tags are created.
+func TestLoopbackNoCommandTagsWhenDisabled(t *testing.T) {
+	addr, _ := startTestIED(t)
+	conn := newTestConnection(addr)
+	conn.AutoCreateTags = true
+	conn.CommandsEnabled = false
+	conn.UseBrcb = false
+	conn.UseUrcb = false
+	active.Store(true)
+	defer active.Store(false)
+
+	connectTest(t, conn)
+	drainQueue()
+	defer drainQueue()
+	takeCommandTags()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := discoverServer(ctx, conn); err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+	if got := takeCommandTags(); len(got) != 0 {
+		t.Errorf("%d command tags queued with commandsEnabled false", len(got))
+	}
+	if e := conn.Entry(entryKey("simpleIOGenericIO/GGIO1.SPCSO1", model.CO)); e != nil {
+		t.Error("a control entry was registered with commandsEnabled false")
+	}
+}
+
+// A point configured in realtimeData keeps its own tag: the driver must not
+// publish a second one for it.
+func TestLoopbackConfiguredPointDoesNotSelfPublish(t *testing.T) {
+	addr, _ := startTestIED(t)
+	conn := newTestConnection(addr)
+	conn.AutoCreateTags = true
+	conn.UseBrcb = false
+	conn.UseUrcb = false
+	active.Store(true)
+	defer active.Store(false)
+
+	key := "simpleIOGenericIO/GGIO1.AnIn1" + "MX"
+	conn.Entries[key] = &Iec61850Entry{
+		Path:  "simpleIOGenericIO/GGIO1.AnIn1",
+		FC:    model.MX,
+		JsTag: "CONFIGURED_TAG",
+	}
+	conn.EntryOrder = append(conn.EntryOrder, key)
+
+	connectTest(t, conn)
+	drainQueue()
+	defer drainQueue()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := discoverServer(ctx, conn); err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+	if e := conn.Entry(key); e == nil || e.JsTag != "CONFIGURED_TAG" || e.AutoPublish {
+		t.Fatalf("the configured entry was replaced or made publishable: %+v", conn.Entry(key))
+	}
+
+	if err := pollSweep(ctx, conn); err != nil {
+		t.Fatalf("poll sweep: %v", err)
+	}
+	for _, iv := range drainQueue() {
+		if iv.Address == "simpleIOGenericIO/GGIO1.AnIn1" && iv.SelfPublish {
+			t.Error("a configured point must not publish a second tag")
+		}
+	}
+}
+
 // Entries not covered by a report are polled, and the values reach the
-// queue with the connection's identity on them.
+// queue with the connection's identity on them. With autoCreateTags off,
+// only the configured points are polled and none of them publishes a tag.
 func TestLoopbackPolling(t *testing.T) {
 	addr, _ := startTestIED(t)
 	conn := newTestConnection(addr)
+	conn.AutoCreateTags = false
 	conn.UseBrcb = false
 	conn.UseUrcb = false // no reports: everything is polled
 	active.Store(true)
@@ -424,7 +686,7 @@ func TestLoopbackPolling(t *testing.T) {
 		t.Error("connection identity missing from the polled value")
 	}
 	if iv.SelfPublish {
-		t.Error("polled values must not auto-create tags")
+		t.Error("a configured point must not publish a tag of its own")
 	}
 	if iv.Cot != 20 {
 		t.Errorf("cause of transmission = %d, want 20", iv.Cot)

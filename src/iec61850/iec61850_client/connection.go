@@ -225,6 +225,12 @@ func pollSweep(ctx context.Context, conn *Iec61850Connection) error {
 		if entry == nil || conn.EntryHasReport(entry) { // in a report: not polled
 			continue
 		}
+		if entry.FC == model.CO {
+			// A control object is an output: reading it returns the operate
+			// structure, not a measurement. Its state is the supervised
+			// twin, which is polled or reported on its own.
+			continue
+		}
 		tag := entry.JsTag
 		if tag == "" {
 			tag = entry.Path
@@ -253,7 +259,10 @@ func pollSweep(ctx context.Context, conn *Iec61850Connection) error {
 		if LogLevel > LogLevelNoLog {
 			fmt.Fprintf(&log, "%s READED  %s %s", conn.Name, p.entry.Path, tag)
 		}
-		iv, _ := buildIECValue(conn, p.entry, value, false, false, &log)
+		// A point the driver discovered itself publishes its tag; a point
+		// configured in realtimeData already has one.
+		selfPublish := conn.AutoCreateTags && p.entry.AutoPublish
+		iv, _ := buildIECValue(conn, p.entry, value, selfPublish, false, &log)
 		enqueueValue(iv)
 		Log(LogLevelBasic, "%s", log.String())
 	}

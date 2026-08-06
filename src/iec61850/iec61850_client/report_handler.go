@@ -229,9 +229,10 @@ func reportHandler(conn *Iec61850Connection, st *rcbState, rep *client.Report) {
 				continue // no autoCreateTags: do not forward undefined tags
 			}
 			entry = conn.AddEntry(key, &Iec61850Entry{
-				Path:  string(e.Ref),
-				FC:    e.FC,
-				JsTag: conn.Name + ":" + string(e.Ref),
+				Path:        string(e.Ref),
+				FC:          e.FC,
+				JsTag:       conn.Name + ":" + string(e.Ref),
+				AutoPublish: true,
 			})
 		}
 		conn.SetEntryReport(entry, st.ref, st.dataSetRef)
