@@ -794,3 +794,143 @@ func hasAddressPrefix(values []IECValue, prefix string) bool {
 	}
 	return false
 }
+
+// A double point ("Pos") is read from its stVal and lands as a digital
+// point, whatever else the object carries under the same constraint.
+func TestLoopbackDoublePointIsDigital(t *testing.T) {
+	// An XCBR-style position: a controllable double point whose ST
+	// attributes include the operation counter, which is numeric and would
+	// win a scan by type.
+	pos := model.NewDataObject("Pos", model.CDCDPC,
+		model.WithControlModel(model.CtlDirectNormal), model.WithOptional("opCnt"))
+	xcbr := &model.LogicalNode{Name: "XCBR1", Class: "XCBR", Objects: []*model.DataObject{pos}}
+	lln0 := &model.LogicalNode{Name: "LLN0", Class: "LLN0",
+		DataSets: []*model.DataSet{{Name: "Status", Entries: []model.FCDA{
+			{Ref: "DPIED/XCBR1.Pos", FC: model.ST},
+		}}},
+		ReportControls: []*model.ReportControl{{
+			Name: "urcbST01", RptID: "DPIED/LLN0$RP$urcbST0101", DataSet: "Status",
+			ConfRev: 1, TrgOps: model.TrgDataChange | model.TrgGI,
+			OptFlds: model.OptFldsDefault, RptEnabled: 1,
+		}},
+	}
+	ld := &model.LogicalDevice{Name: "DPIED", Inst: "LD0", Nodes: []*model.LogicalNode{lln0, xcbr}}
+	srv := server.New(&model.Model{Name: "DPIED", Devices: []*model.LogicalDevice{ld}})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	// A plausible state: the breaker is closed and has operated 37 times.
+	srv.Update(func(tx *server.Tx) {
+		tx.Set("DPIED/XCBR1.Pos.stVal", model.ST, model.DbposOn.Value())
+		tx.Set("DPIED/XCBR1.Pos.opCnt", model.ST, mms.NewUint32(37))
+	})
+
+	conn := newTestConnection(ln.Addr().String())
+	conn.AutoCreateTags = true
+	active.Store(true)
+	defer active.Store(false)
+	connectTest(t, conn)
+	drainQueue()
+	defer drainQueue()
+
+	ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+	defer cancel()
+	if err := discoverServer(ctx, conn); err != nil {
+		t.Fatalf("discovery: %v", err)
+	}
+
+	// The attribute names of the object were learned while browsing.
+	entry := conn.Entry(entryKey("DPIED/XCBR1.Pos", model.ST))
+	if entry == nil {
+		t.Fatal("the double point was not registered")
+	}
+	if childs := conn.EntryChilds(entry); len(childs) == 0 || childs[0] != "stVal" {
+		t.Errorf("attribute names = %v, want stVal first", childs)
+	}
+
+	check := func(what string, values []IECValue) {
+		t.Helper()
+		found := false
+		for _, iv := range values {
+			if iv.Address != "DPIED/XCBR1.Pos" {
+				continue
+			}
+			found = true
+			if !iv.IsDigital {
+				t.Errorf("%s: a double point must be a digital value, got %v", what, iv.Value)
+			}
+			if iv.Value != 1 {
+				t.Errorf("%s: value = %v, want 1 (on) - not the operation counter", what, iv.Value)
+			}
+			if iv.ValueString != "true" {
+				t.Errorf("%s: valueString = %q, want true", what, iv.ValueString)
+			}
+			// The tag it would create is a digital one.
+			if doc := newRealtimeDoc(iv, 1); doc["type"] != "digital" {
+				t.Errorf("%s: tag type = %v, want digital", what, doc["type"])
+			}
+		}
+		if !found {
+			t.Errorf("%s: the double point produced no value", what)
+		}
+	}
+
+	// Reported through a data set...
+	check("report", waitForValues(t, 10*time.Second, func(v []IECValue) bool {
+		for _, iv := range v {
+			if iv.Address == "DPIED/XCBR1.Pos" {
+				return true
+			}
+		}
+		return false
+	}))
+
+	// ...and polled directly. A point a report covers is not polled, so
+	// the polling path is exercised on its own connection.
+	polled := newTestConnection(ln.Addr().String())
+	polled.AutoCreateTags = true
+	polled.UseBrcb = false
+	polled.UseUrcb = false
+	connectTest(t, polled)
+	if err := discoverServer(ctx, polled); err != nil {
+		t.Fatalf("discovery (polling): %v", err)
+	}
+	drainQueue()
+	if err := pollSweep(ctx, polled); err != nil {
+		t.Fatalf("poll sweep: %v", err)
+	}
+	check("poll", drainQueue())
+
+	// An intermediate position is a transitioning switch: not a valid
+	// position, so it is invalid and flagged transient.
+	drainQueue()
+	srv.Update(func(tx *server.Tx) {
+		tx.Set("DPIED/XCBR1.Pos.stVal", model.ST, model.DbposIntermediate.Value())
+	})
+	if err := pollSweep(ctx, polled); err != nil {
+		t.Fatalf("poll sweep: %v", err)
+	}
+	seen := false
+	for _, iv := range drainQueue() {
+		if iv.Address != "DPIED/XCBR1.Pos" {
+			continue
+		}
+		seen = true
+		if iv.Quality {
+			t.Error("an intermediate double point must not read as good quality")
+		}
+		if !iv.IsTransient {
+			t.Error("an intermediate double point must be flagged transient")
+		}
+		if !iv.IsDigital {
+			t.Error("an intermediate double point is still a digital value")
+		}
+	}
+	if !seen {
+		t.Error("the intermediate position produced no value")
+	}
+}

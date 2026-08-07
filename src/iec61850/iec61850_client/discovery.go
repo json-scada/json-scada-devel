@@ -169,17 +169,23 @@ func registerBrowsedPoints(ctx context.Context, conn *Iec61850Connection, ld str
 
 		ref := ld + "/" + parts[0] + "." + parts[2]
 		key := entryKey(ref, fc)
-		if conn.Entry(key) != nil {
-			continue // configured, or already registered under another attribute
+		entry := conn.Entry(key)
+		if entry == nil {
+			entry = conn.AddEntry(key, &Iec61850Entry{
+				Path:        ref,
+				FC:          fc,
+				JsTag:       conn.Name + ":" + ref,
+				AutoPublish: true,
+			})
+			if entry.AutoPublish {
+				added++
+			}
 		}
-		entry := conn.AddEntry(key, &Iec61850Entry{
-			Path:        ref,
-			FC:          fc,
-			JsTag:       conn.Name + ":" + ref,
-			AutoPublish: true,
-		})
-		if entry.AutoPublish {
-			added++
+		// The direct attributes of the object, in the order the server
+		// lists them: that is what lets the value be read by name (stVal,
+		// mag, …) rather than by guessing from the types.
+		if len(parts) > 3 {
+			conn.AddEntryChildOnce(entry, parts[3])
 		}
 	}
 	if added > 0 {

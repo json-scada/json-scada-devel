@@ -86,6 +86,21 @@ Commands use `protocolSourceCommonAddress: "CO"` for a control object; any other
 constraint performs a plain MMS write. `protocolSourceCommandUseSBO` forces select-with-value on a
 normal-security SBO object; otherwise the control model decides the sequence.
 
+### Value extraction
+
+The value of a data object is the attribute its common data class names — `stVal` for a status,
+`mag` for a measurand — not whichever member happens to be numeric. The driver learns those names
+while browsing (and from the data set type descriptions), so a controllable object that also
+carries an operation counter under `ST` still reads its position.
+
+**Double points** (`Pos` and any other DPS/DPC) are read from their two-bit `stVal` and become
+**digital** points: `01` off → 0, `10` on → 1. The two remaining states are not positions, and both
+reach the tag's quality: `00` (intermediate — the switch is moving) is invalid *and* transient,
+`11` (faulty) is invalid.
+
+When the attribute names are not known, the value is found by type, preferring a status attribute
+(a boolean or a two-bit position) over a numeric one.
+
 ### autoCreateTags
 
 With `autoCreateTags: true` the driver creates a tag for every value-bearing object it finds:
@@ -142,6 +157,7 @@ intentional differences:
 | D12 | A report that carries no reason codes at all is still forwarded | The inclusion bitstring already says which members are included; the C# equivalent would drop the whole report on a server that ignores the requested optional fields |
 | D13 | `autoCreateTags` also creates tags for objects found while browsing, not only for report members | The C# driver only ever creates a tag for a point that arrives in a report, so a device whose data sets cover part of its model is only partly discovered. Browsed points are polled until a report covers them. |
 | D14 | `autoCreateTags` creates command tags for the controllable objects a device exposes, linked to their supervised points | The C# driver creates supervised points only, so every command has to be configured by hand. Control objects are registered for dispatch immediately and are never polled. |
+| D15 | The value of a structured object is taken from the attribute its data class names (`stVal`, `mag`, …), and a double point's state reaches the tag quality | The C# driver scans a structure by type and takes the first numeric member, so a `Pos` that also carries `opCnt` yields the operation counter instead of the position, as an analogue value. |
 
 Reproduced on purpose, because tags fed by either driver must not disagree:
 

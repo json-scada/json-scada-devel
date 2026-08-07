@@ -43,13 +43,13 @@ type Point struct {
 	Value       float64
 	ValueString string
 
-	Invalid           bool
-	Substituted       bool
-	Overflow          bool
-	Transient         bool
-	TimeTagAtSource   time.Time
+	Invalid            bool
+	Substituted        bool
+	Overflow           bool
+	Transient          bool
+	TimeTagAtSource    time.Time
 	HasTimeTagAtSource bool
-	TimeTagAtSourceOk bool
+	TimeTagAtSourceOk  bool
 
 	// Command routing, kept in the BSON type the source document had so the
 	// commandsQueue entries look exactly like the C# driver's.

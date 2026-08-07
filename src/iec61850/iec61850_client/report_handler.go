@@ -59,15 +59,25 @@ func buildIECValue(conn *Iec61850Connection, entry *Iec61850Entry, value *mms.Va
 	logging := LogLevel > LogLevelNoLog && log != nil
 
 	if value != nil && value.Type() == mms.TypeStructure {
+		childs := conn.EntryChilds(entry)
 		if logging {
 			log.WriteString(" Value is of complex type [")
-			for _, c := range conn.EntryChilds(entry) {
+			for _, c := range childs {
 				log.WriteString(c + " ")
 			}
 			log.WriteString("]\n")
 		}
 
-		v, isBinary = mmsGetNumericVal(value)
+		// When the attribute names of the object are known, the value is
+		// the one the common data class names — stVal for a status or a
+		// double point, mag for a measurand — rather than whichever member
+		// happens to have a numeric type.
+		named := namedValueAttribute(value, childs)
+		if named != nil {
+			v, isBinary = mmsGetDoubleVal(named)
+		} else {
+			v, isBinary = mmsGetNumericVal(value)
+		}
 		failed = mmsGetQualityFailed(value)
 		transient = mmsGetQualityTransient(value)
 		timestamp = mmsGetTimestamp(value)
@@ -81,7 +91,9 @@ func buildIECValue(conn *Iec61850Connection, entry *Iec61850Entry, value *mms.Va
 				fmt.Fprintf(log, "  %s", mmsTypeName(e.Type()))
 			}
 			if e.Type() == mms.TypeStructure {
-				v, isBinary = mmsGetNumericVal(e)
+				if named == nil {
+					v, isBinary = mmsGetNumericVal(e)
+				}
 				for j := 0; j < e.Len(); j++ {
 					g := e.Index(j)
 					if g == nil {
@@ -90,7 +102,9 @@ func buildIECValue(conn *Iec61850Connection, entry *Iec61850Entry, value *mms.Va
 					if logging {
 						fmt.Fprintf(log, "  %s     -> %s\n", mmsTypeName(g.Type()), mmsToString(g))
 					}
-					v, isBinary = mmsGetNumericVal(g)
+					if named == nil {
+						v, isBinary = mmsGetNumericVal(g)
+					}
 				}
 			}
 			failed = mmsGetQualityFailed(e)
@@ -104,6 +118,19 @@ func buildIECValue(conn *Iec61850Connection, entry *Iec61850Entry, value *mms.Va
 				default:
 					fmt.Fprintf(log, "   -> %s\n", formatDouble(v))
 				}
+			}
+		}
+
+		// A double point says more than its position: 00 is the transient
+		// intermediate state and 11 is a faulty one. Those belong in the
+		// quality of the tag, and they survive the loop above, which reads
+		// quality from the last member of the structure.
+		if pos := doublePointAttribute(value, childs); pos != nil {
+			if mmsTestDoubleStateFailed(pos) {
+				failed = true
+			}
+			if mmsTestDoubleStateTransient(pos) {
+				transient = true
 			}
 		}
 	} else {

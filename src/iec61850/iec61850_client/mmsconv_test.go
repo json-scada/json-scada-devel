@@ -266,3 +266,96 @@ func TestEntryIDString(t *testing.T) {
 		t.Errorf("entryIDString = %q", got)
 	}
 }
+
+// A double point (DPS/DPC "Pos") carries its position in stVal, a two-bit
+// string. It must read as a digital value, and the intermediate and faulty
+// states must show in the quality.
+func TestDoublePointValueExtraction(t *testing.T) {
+	// Pos as a controllable object exposes it under ST: {stVal, q, t, opCnt}.
+	// The counter is numeric and would win a scan by type.
+	pos := func(b0, b1 bool) *mms.Value {
+		return mms.NewStructure(
+			dbpos(b0, b1),             // stVal
+			model.QualityGood.Value(), // q
+			mms.NewUTCTimeNow(),       // t
+			mms.NewUint32(37),         // opCnt
+		)
+	}
+	childs := []string{"stVal", "q", "t", "opCnt"}
+
+	cases := []struct {
+		b0, b1            bool
+		want              float64
+		failed, transient bool
+		name              string
+	}{
+		{false, true, 0, false, false, "off"},
+		{true, false, 1, false, false, "on"},
+		{false, false, 0, true, true, "intermediate"}, // moving: not a valid position
+		{true, true, 1, true, false, "faulty"},
+	}
+	for _, c := range cases {
+		v := pos(c.b0, c.b1)
+
+		// By name: the position, not the operation counter.
+		named := namedValueAttribute(v, childs)
+		if named == nil {
+			t.Fatalf("%s: stVal not resolved by name", c.name)
+		}
+		got, isBinary := mmsGetDoubleVal(named)
+		if got != c.want || !isBinary {
+			t.Errorf("%s: value = (%v,%v), want (%v,true)", c.name, got, isBinary, c.want)
+		}
+
+		// Without names the type scan must still prefer the position over
+		// the counter.
+		got, isBinary = mmsGetNumericVal(v)
+		if got != c.want || !isBinary {
+			t.Errorf("%s: scan = (%v,%v), want (%v,true) - the counter must not win",
+				c.name, got, isBinary, c.want)
+		}
+
+		// The state of the position reaches the quality.
+		pt := doublePointAttribute(v, childs)
+		if pt == nil {
+			t.Fatalf("%s: double point not detected", c.name)
+		}
+		if mmsTestDoubleStateFailed(pt) != c.failed {
+			t.Errorf("%s: failed = %v, want %v", c.name, !c.failed, c.failed)
+		}
+		if mmsTestDoubleStateTransient(pt) != c.transient {
+			t.Errorf("%s: transient = %v, want %v", c.name, !c.transient, c.transient)
+		}
+	}
+}
+
+// The named lookup only trusts the names when they line up with the value,
+// and a measurand still resolves through its analogue structure.
+func TestNamedValueAttribute(t *testing.T) {
+	mv := mms.NewStructure(
+		mms.NewStructure(mms.NewFloat32(12.5)), // mag
+		model.QualityGood.Value(),
+		mms.NewUTCTimeNow(),
+	)
+	named := namedValueAttribute(mv, []string{"mag", "q", "t"})
+	if named == nil {
+		t.Fatal("mag not resolved")
+	}
+	if v, isBinary := mmsGetDoubleVal(named); v != 12.5 || isBinary {
+		t.Errorf("measurand = (%v,%v), want (12.5,false)", v, isBinary)
+	}
+
+	// Names that do not line up with the members are not trusted.
+	if namedValueAttribute(mv, []string{"mag", "q"}) != nil {
+		t.Error("a mismatched name list must not be used")
+	}
+	// No known value attribute among the names.
+	if namedValueAttribute(mv, []string{"a", "b", "c"}) != nil {
+		t.Error("an unknown name list must not resolve")
+	}
+	// An integer status still reads through the scan.
+	ins := mms.NewStructure(mms.NewInt32(7), model.QualityGood.Value(), mms.NewUTCTimeNow())
+	if v, isBinary := mmsGetNumericVal(ins); v != 7 || isBinary {
+		t.Errorf("integer status = (%v,%v), want (7,false)", v, isBinary)
+	}
+}

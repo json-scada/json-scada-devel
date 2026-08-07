@@ -237,6 +237,20 @@ func (c *Iec61850Connection) AddEntryChild(e *Iec61850Entry, name string) {
 	c.mu.Unlock()
 }
 
+// AddEntryChildOnce records a child attribute name, keeping the order the
+// server listed them in and ignoring repeats: a name list names an
+// attribute once per leaf below it.
+func (c *Iec61850Connection) AddEntryChildOnce(e *Iec61850Entry, name string) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	for _, existing := range e.Childs {
+		if existing == name {
+			return
+		}
+	}
+	e.Childs = append(e.Childs, name)
+}
+
 // EntryChilds copies the child attribute names, for logging.
 func (c *Iec61850Connection) EntryChilds(e *Iec61850Entry) []string {
 	c.mu.Lock()

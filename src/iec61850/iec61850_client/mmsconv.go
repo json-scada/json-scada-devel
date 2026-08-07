@@ -244,6 +244,56 @@ func doubleStateValue(v *mms.Value) float64 {
 	return 0
 }
 
+// valueAttributeNames are the data attributes that carry the value of a
+// common data class, most specific first. An MMS structure arrives without
+// names, so the names come from the type description of the object; see
+// namedValueAttribute.
+var valueAttributeNames = []string{"stVal", "mag", "mxVal", "instMag", "setVal", "general"}
+
+// namedValueAttribute picks the value attribute of a structured object by
+// name, given the attribute names of its type in order. It is what makes a
+// double point read its position rather than, say, the operation counter a
+// controllable object also carries under ST.
+//
+// The names are only trusted when there are exactly as many of them as the
+// value has members, so a mismatch falls back to the type scan instead of
+// reading the wrong member.
+func namedValueAttribute(v *mms.Value, childs []string) *mms.Value {
+	if v == nil || v.Type() != mms.TypeStructure || len(childs) != v.Len() {
+		return nil
+	}
+	for _, want := range valueAttributeNames {
+		for i, name := range childs {
+			if name == want {
+				return v.Index(i)
+			}
+		}
+	}
+	return nil
+}
+
+// doublePointAttribute returns the value attribute of a structured object
+// when it is a double-point position (a two-bit string), and nil otherwise.
+// It prefers the named attribute and falls back to the first two-bit
+// member, which is what a double point carries.
+func doublePointAttribute(v *mms.Value, childs []string) *mms.Value {
+	if v == nil || v.Type() != mms.TypeStructure {
+		return nil
+	}
+	if named := namedValueAttribute(v, childs); named != nil {
+		if named.Type() == mms.TypeBitString && named.BitLen() == 2 {
+			return named
+		}
+		return nil
+	}
+	for i := 0; i < v.Len(); i++ {
+		if e := v.Index(i); e != nil && e.Type() == mms.TypeBitString && e.BitLen() == 2 {
+			return e
+		}
+	}
+	return nil
+}
+
 // mmsGetNumericVal looks for a numeric value inside an MMS value.
 // isBinary reports that the value is a boolean or a double-point position,
 // which makes the tag a digital one.
@@ -253,6 +303,21 @@ func mmsGetNumericVal(v *mms.Value) (val float64, isBinary bool) {
 	}
 	switch v.Type() {
 	case mms.TypeStructure:
+		// A status attribute first: a controllable object carries counters
+		// under the same constraint as its position, and the position is
+		// the value. Only then the numeric attributes.
+		for i := 0; i < v.Len(); i++ {
+			e := v.Index(i)
+			if e == nil {
+				continue
+			}
+			switch {
+			case e.Type() == mms.TypeBoolean:
+				return mmsGetDoubleVal(e)
+			case e.Type() == mms.TypeBitString && e.BitLen() == 2:
+				return doubleStateValue(e), true
+			}
+		}
 		for i := 0; i < v.Len(); i++ {
 			e := v.Index(i)
 			if e == nil {

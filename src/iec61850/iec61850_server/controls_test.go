@@ -41,12 +41,12 @@ func waitCommand(t *testing.T, d time.Duration) map[string]any {
 // decides the value pair of the commandsQueue document.
 func TestControlValueConversion(t *testing.T) {
 	cases := []struct {
-		name        string
-		kind        PointKind
-		in          *mms.Value
-		wantValue   float64
-		wantString  string
-		wantOK      bool
+		name       string
+		kind       PointKind
+		in         *mms.Value
+		wantValue  float64
+		wantString string
+		wantOK     bool
 	}{
 		{"spc true", KindSPC, mms.NewBool(true), 1, "true", true},
 		{"spc false", KindSPC, mms.NewBool(false), 0, "false", true},
@@ -77,7 +77,7 @@ func TestControlValueConversion(t *testing.T) {
 func TestCommandDocumentShape(t *testing.T) {
 	conn := testConn()
 	p := pt(4, "CMD1", "digital", "command", "T")
-	p.SrcCommonAddress = "3"       // string, as an IEC 104 tag would have
+	p.SrcCommonAddress = "3"           // string, as an IEC 104 tag would have
 	p.SrcObjectAddress = float64(1234) // double, as an OPC tag might have
 	p.SrcCommandDuration = 2
 	built := BuildModel([]*Point{p}, conn)

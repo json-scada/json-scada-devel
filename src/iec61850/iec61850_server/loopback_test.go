@@ -142,7 +142,7 @@ func TestLoopbackReadValues(t *testing.T) {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	pushUpdate(gw, points[0], 1)   // LB_DIG_1
+	pushUpdate(gw, points[0], 1)    // LB_DIG_1
 	pushUpdate(gw, points[1], 12.5) // LB_ANA_1
 	points[2].ValueString = "running"
 	pushUpdate(gw, points[2], 0) // LB_STR_1
@@ -284,8 +284,8 @@ func TestLoopbackReportIDsIdentifyTheirInstance(t *testing.T) {
 
 	seen := map[string]string{}
 	for _, kind := range []struct {
-		fc      string
-		names   []client.ACSIClass
+		fc    string
+		names []client.ACSIClass
 	}{{"BR", []client.ACSIClass{client.ACSIBRCB}}, {"RP", []client.ACSIClass{client.ACSIURCB}}} {
 		blocks, err := c.LogicalNodeDirectory(ctx, "IEC61850SRVKAW2/LLN0", kind.names[0])
 		if err != nil {
