@@ -33,13 +33,13 @@ msbuild libiec61850.slnx /p:Configuration=Release
 copy %SRCPATH%\libiec61850\build\src\Release\iec61850.dll %BINPATH%
 
 cd %SRCPATH%\libiec61850\dotnet\core\2.0\
-dotnet publish --no-self-contained --runtime win-x64 -c Release -o %BINPATH% IEC61850.NET.core.2.0 
+dotnet publish --no-self-contained --runtime win-x64 -c Release -o %BINALTPATH% IEC61850.NET.core.2.0 
 
 cd %SRCPATH%\iec61850_client
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINALTPATH%
 
 cd %SRCPATH%\iec61850_server
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINALTPATH%
 
 rem IEC 60870-5-101/104 drivers are now built in Go (src\iec60870-5), see the Go section below.
 cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
@@ -127,6 +127,14 @@ go build -ldflags="-s -w" -o %BINPATH%\iec104server.exe .\cmd\iec104server
 go build -ldflags="-s -w" -o %BINPATH%\iec101client.exe .\cmd\iec101client
 go build -ldflags="-s -w" -o %BINPATH%\iec101server.exe .\cmd\iec101server
 go build -ldflags="-s -w" -o %BINPATH%\iec103client.exe .\cmd\iec103client
+
+cd %SRCPATH%\iec61850\iec61850_client
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec61850_client.exe 
+
+cd %SRCPATH%\iec61850\iec61850_server
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec61850_server.exe 
 
 rem PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
 where mvn >nul 2>nul
