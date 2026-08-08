@@ -168,20 +168,6 @@ async function simulationStep() {
 
     model.step(dt)
     const updates = model.collectUpdates(now)
-    if (process.env.JS_DEMO_SIMUL_DEBUG_INVARIANT) {
-      for (const bay of model.bays.values()) {
-        if (!bay.breakers.length) continue
-        if (bay.breakers.some((b) => b.value >= 0.5)) continue
-        for (const pp of bay.pPoints)
-          if (Math.abs(pp.value) > 1e-9)
-            Log.log(
-              'INVARIANT ' + bay.key + ' ' + pp.tag + ' P=' + pp.value.toFixed(2) +
-                ' energized=' + bay.energized + ' locked=' + bay.lockedOut +
-                ' ramp=' + bay.energyRamp.toFixed(3) +
-                ' brks=' + bay.breakers.map((b) => b.tag + ':' + b.value).join(',')
-            )
-      }
-    }
     const written = await publishUpdates(db, updates)
     Log.log(
       'Step - ' +
