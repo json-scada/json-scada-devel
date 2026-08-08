@@ -108,7 +108,10 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Schema Documentation](https://github.com/riclolsen/json-scada/blob/master/docs/schema.md)
 - [Config File](https://github.com/riclolsen/json-scada/blob/master/conf/README.md)
 - [SVG Synoptic Display Editor](https://github.com/riclolsen/json-scada/blob/master/src/svg-display-editor/README.md)
-- [IEC61850 Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_client/README.md)
+- [IEC61850 Client Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_client/README.md)
+- [IEC61850 Server Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_server/README.md)
+- [IEC61850 Client Driver (GO)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850/iec61850_client/README.md)
+- [IEC61850 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850/iec61850_server/README.md)
 - [IEC60870-5-104 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104server/README.md)
 - [IEC60870-5-104 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104client/README.md)
 - [IEC60870-5-101 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec101server/README.md)
@@ -149,32 +152,28 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] IEC 60870-5-104 Client TCP/TLS
 - [x] IEC 60870-5-101 Server Serial/TCP
 - [x] IEC 60870-5-101 Client Serial/TCP
-- [ ] IEC 60870-5-103 Client
+- [x] IEC 60870-5-103 Client Serial/TCP
 - [x] IEC 61850 MMS Client TCP/TLS
-- [x] IEC 61850 MMS Server
+- [x] IEC 61850 MMS Server TCP/TLS
 - [ ] IEC 61850 GOOSE/SV Client
 - [x] DNP3 Client TCP/UDP/TLS/Serial
 - [x] DNP3 Server TCP/UDP/TLS/Serial
 - [x] Modbus Client TCP/TLS/Serial
 - [x] Modbus Server TCP/TLS/Serial
-- [x] Various protocols (Modbus, etc.) via PLC4X-Java/Go
+- [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java/Go
 - [x] Modbus Client (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
 - [x] Modbus Server (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
 - [x] ICCP Client TCP/TLS
-- [x] ICCP Server - Developed with closed source TASE2 library (100% native Go)
+- [x] ICCP Server TCP/TLS
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
 - [x] MQTT/Sparkplug-B Pub/Sub TCP/TLS
 - [x] OPC UA PubSub over MQTT with JSON payloads client
 - [x] OPC UA Client TCP/Secure
 - [x] OPC UA Server TCP/Secure
-- [ ] OPC UA Historical Data Server
+- [x] OPC UA Historical Data Server
 - [x] OPC DA Client (Windows)
-- [ ] OPC AE Client (Windows)
 - [x] OPC DA Server (Windows)
 - [x] CIP Ethernet/IP (libplctag, experimental)
-- [ ] Siemens S7
-- [ ] BACNET
-- [x] I104M (legacy adapter for some OSHMI drivers)
 - [x] ONVIF Camera control and streaming
 
 ## Features Roadmap
@@ -209,22 +208,22 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [ ] InfluxDB Integration
 - [x] Telegraf Integration
 - [x] PowerBI Integration (via PostgreSQL connector)
-- [ ] PowerBI Direct Integration
 - [ ] Kafka/Redpanda/Benthos Integration
 - [ ] Eclipse 4diac
 - [ ] Supabase Integration
 - [x] Node-RED Integration (bidirectional driver + node-red-contrib-jsonscada)
 - [x] n8n Integration (bidirectional driver + n8n-nodes-jsonscada)
 - [ ] Alerta Integration (https://alerta.io/)
-- [x] PLC4X-GO Integration (https://plc4x.apache.org/)
+- [ ] Open PLC Integration
 - [x] Example templates/API for fast AI-helped custom app developments
 
 ## Enterprise Services (available on request)
 
-- [x] Customizations
+- [x] Customizations 
 - [x] Linux Image / VM
 - [x] Managed Cloud Service
 - [x] Supported LTS versions
+- [x] Commercial Redistribution License (Dual Licensing)
 
 ## Online Demo (substations simulation)
 
