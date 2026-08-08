@@ -21,5 +21,5 @@ module.exports = {
   NAME: 'demo substation simul',
   ENV_PREFIX: 'JS_DEMO_SIMUL_',
   MSG: '{json:scada} - Demo Simul',
-  VERSION: '0.2.0',
+  VERSION: '0.3.0',
 }
