@@ -230,7 +230,7 @@ namespace IEC61850_Server
         public class rtData
         {
             [BsonSerializer(typeof(BsonIntSerializer))]
-            public BsonInt32 _id { get; set; }
+            public BsonInt64 _id { get; set; }
             [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString tag { get; set; }
             [BsonSerializer(typeof(BsonStringSerializer))]
@@ -482,6 +482,70 @@ namespace IEC61850_Server
                         break;
                 }
                 return Convert.ToInt32(dval);
+            }
+        }
+        public class BsonInt64Serializer : SerializerBase<BsonInt64> // generic permissive numeric deserializer resulting int
+        { // read most types as int but write to double
+            public override void Serialize(MongoDB.Bson.Serialization.BsonSerializationContext context, MongoDB.Bson.Serialization.BsonSerializationArgs args, BsonInt64 ival)
+            {
+                context.Writer.WriteDouble(ival.ToDouble());
+            }
+            public override BsonInt64 Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            {
+                var type = context.Reader.GetCurrentBsonType();
+                var dval = 0.0;
+                String s;
+                switch (type)
+                {
+                    case BsonType.Int32:
+                        dval = context.Reader.ReadInt32();
+                        break;
+                    case BsonType.Int64:
+                        return context.Reader.ReadInt64();
+                    case BsonType.Double:
+                        dval = context.Reader.ReadDouble();
+                        break;
+                    case BsonType.Null:
+                        context.Reader.ReadNull();
+                        break;
+                    case BsonType.String:
+                        s = context.Reader.ReadString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.ObjectId:
+                        s = context.Reader.ReadObjectId().ToString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.JavaScript:
+                        s = context.Reader.ReadJavaScript();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.Decimal128:
+                        dval = System.Convert.ToDouble(context.Reader.ReadDecimal128());
+                        break;
+                    case BsonType.Boolean:
+                        dval = System.Convert.ToDouble(context.Reader.ReadBoolean());
+                        break;
+                }
+                return System.Convert.ToInt64(dval);
             }
         }
 
