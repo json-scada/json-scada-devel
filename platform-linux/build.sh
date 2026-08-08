@@ -11,36 +11,35 @@ ARG1=${1:-linux-x64}
 
 cd ..
 mkdir bin
+mkdir bin_alt
 mkdir bin-wine
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-# Dnp3Client is Windows-only (must run under Wine on Linux)
-cp src/dnp3/Dnp3Client/Dependencies/OpenSSL/*.dll bin-wine/ 
-cd src/dnp3/Dnp3Client
-dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o ../../../bin-wine/ Dnp3Client.csproj
+#cp src/dnp3/Dnp3Client/Dependencies/OpenSSL/*.dll bin-wine/ 
+#cd src/dnp3/Dnp3Client
+#dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o ../../../bin-wine/ Dnp3Client.csproj
 
-cd ../../libiec61850
+# IEC 61850 main drivers are now built in Go (src/iec61850), see the Go section below.
+cd src/libiec61850
 mkdir build
 cd build
 cmake ..
 make
-cp src/libiec61850.so src/libiec61850.so.* ../../../bin/
+cp src/libiec61850.so src/libiec61850.so.* ../../../bin_alt/
 cd ../dotnet/core/2.0/IEC61850.NET.core.2.0
 dotnet publish --self-contained --runtime $ARG1 -c Release
 cd ../../../../../iec61850_client
-dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
 
 cd ../iec61850_server
-dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
 
 sleep 1
-# IEC 60870-5-101/104 drivers are now built in Go (src/iec60870-5), see the Go section below.
-# The legacy C# drivers remain in src/lib60870.netcore as reference; to build them instead,
-# re-enable the dotnet publish line below.
-# cd ../lib60870.netcore
-# dotnet restore
-# dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
+# IEC 60870-5-101/104 main drivers are now built in Go (src/iec60870-5), see the Go section below.
+cd ../lib60870.netcore
+dotnet restore
+dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
 
 cd ../OPC-UA-Client
 dotnet restore
@@ -108,6 +107,15 @@ go build -o ../../bin/iec101client ./cmd/iec101client
 go build -o ../../bin/iec101server ./cmd/iec101server
 go build -o ../../bin/iec103client ./cmd/iec103client
 
+cd ../iec61850/iec61850_client
+go mod tidy
+go build -ldflags="-s -w" -o ../../../bin/iec61850_client 
+
+cd ../iec61850_server
+go mod tidy
+go build -ldflags="-s -w" -o ../../../bin/iec61850_server 
+cd..
+
 # PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
 if command -v mvn >/dev/null 2>&1; then
   cd ../plc4j-client
@@ -125,12 +133,12 @@ cp iccp-server-linux-amd64 ../../../bin/iccp-server
 chmod +x ../../../bin/iccp-server
 cd ..
 
-#cd ../iccp/iccp-client
+cd ../iccp/iccp-client
 #go mod tidy 
 #go build
-#cp iccp-client-linux-amd64 ../../../bin/iccp-client
-#chmod +x ../../../bin/iccp-client
-#cd ..
+cp iccp-client-linux-amd64 ../../../bin/iccp-client
+chmod +x ../../../bin/iccp-client
+cd ..
 
 # release some disk space
 rm -rf ~/.cache
