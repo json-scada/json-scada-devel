@@ -164,16 +164,16 @@ PostgreSQL version 16 - 18. TimescaleDB version 2.x.x. Previous versions can wor
 
 For not trusted or open to Internet networks it is important to secure PostgreSQL connections. Consult the PostgreSQL docs to learn how to config connections using certificates.
 
-* https://www.postgresql.org/docs/12/ssl-tcp.html
+* https://www.postgresql.org/docs/18/ssl-tcp.html
 
 Replication to a Standby server is recommended for high availability.
 
-* https://www.postgresql.org/docs/12/different-replication-solutions.html
-* https://www.postgresql.org/docs/12/warm-standby.html#STANDBY-SERVER-OPERATION
+* https://www.postgresql.org/docs/18/different-replication-solutions.html
+* https://www.postgresql.org/docs/18/warm-standby.html#STANDBY-SERVER-OPERATION
 
 ### 3. Grafana
 
-Grafana version 10.x.x, 11.x.x or 12.x.x, OSS or Enterprise editions. Previous versions may work but are not recommended.
+Grafana version 11.x.x, 12.x.x or 13.x.x, OSS or Enterprise editions. Previous versions may work but are not recommended.
 
 * https://grafana.com/grafana/download
 * https://grafana.com/docs/grafana/latest/installation/
