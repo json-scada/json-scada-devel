@@ -151,6 +151,8 @@ cd ..
 # release some disk space
 rm -rf ~/.cache
 
+cd ../config_server_for_excel
+npm install
 cd ../cs_data_processor
 npm install
 cd ../cs_custom_processor
