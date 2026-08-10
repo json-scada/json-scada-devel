@@ -5,9 +5,17 @@
 # Golang 1.21+
 # Node.js 20+
 
-# call with argument linux-arm64 for ARM architecture
-
 ARG1=${1:-linux-x64}
+case $(uname -m) in
+    x86_64) ARG1="-linux-x64" ;;
+    arm)    ARG1="-linux-arm64";;
+esac
+
+ARCHITECTURE="amd64"
+case $(uname -m) in
+    x86_64) ARCHITECTURE="amd64" ;;
+    arm)    ARCHITECTURE="arm64";;
+esac
 
 cd ..
 mkdir bin
@@ -114,7 +122,7 @@ go build -ldflags="-s -w" -o ../../../bin/iec61850_client
 cd ../iec61850_server
 go mod tidy
 go build -ldflags="-s -w" -o ../../../bin/iec61850_server 
-cd..
+cd ..
 
 # PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
 if command -v mvn >/dev/null 2>&1; then
@@ -129,14 +137,14 @@ fi
 cd ../iccp/iccp-server
 #go mod tidy 
 #go build
-cp iccp-server-linux-amd64 ../../../bin/iccp-server
+cp iccp-server-linux-$ARCHITECTURE ../../../bin/iccp-server
 chmod +x ../../../bin/iccp-server
 cd ..
 
 cd ../iccp/iccp-client
 #go mod tidy 
 #go build
-cp iccp-client-linux-amd64 ../../../bin/iccp-client
+cp iccp-client-linux-$ARCHITECTURE ../../../bin/iccp-client
 chmod +x ../../../bin/iccp-client
 cd ..
 
