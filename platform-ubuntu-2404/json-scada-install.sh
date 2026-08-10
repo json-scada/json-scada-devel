@@ -27,8 +27,11 @@ sudo -u $JS_USERNAME sh -c 'mkdir ../log'
 
 # MONGODB WONT'T START IF KERNEL IS UPDATED TO 6.19 OR LATER!
 # Hold the current kernel version to prevent automatic updates.
-sudo apt-mark hold linux-generic linux-image-generic linux-headers-generic
-sudo apt-mark hold "linux-image-6.8.0-*" "linux-modules-6.8.0-*" "linux-headers-6.8.0-*"
+sudo apt -y install linux-generic linux-image-generic linux-headers-generic
+sudo apt -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04
+#sudo apt-mark hold linux-generic-24.04 \
+#                   linux-image-generic-24.04 \
+#                   linux-headers-generic-24.04
 
 # Update and install base packages
 sudo apt update
