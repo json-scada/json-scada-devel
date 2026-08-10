@@ -25,6 +25,11 @@ esac
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../log'
 
+# MONGODB WONT'T START IF KERNEL IS UPDATED TO 6.19 OR LATER!
+# Hold the current kernel version to prevent automatic updates.
+sudo apt-mark hold linux-generic linux-image-generic linux-headers-generic
+sudo apt-mark hold "linux-image-6.8.0-*" "linux-modules-6.8.0-*" "linux-headers-6.8.0-*"
+
 # Update and install base packages
 sudo apt update
 sudo apt -y upgrade
@@ -137,11 +142,11 @@ sudo systemctl daemon-reload
 
 # Install Metabase
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.63.2.x/metabase.jar -O ../metabase/metabase.jar'
 
 # Install Mongodb Compass
-sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.8_$ARCHITECTURE.deb"
-sudo apt install ./mongodb-compass_1.49.5_$ARCHITECTURE.deb
+sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.14_$ARCHITECTURE.deb"
+sudo apt install ./mongodb-compass_1.49.14_$ARCHITECTURE.deb
 
 # Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
