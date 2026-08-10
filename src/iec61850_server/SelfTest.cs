@@ -131,7 +131,7 @@ namespace IEC61850_Server
                            (isAnalog ? " ANALOG MEASUREMENT MW" : " STATUS OPEN/CLOSED");
                 list.Add(new rtData
                 {
-                    _id = BsonInt32.Create(id + i),
+                    _id = BsonInt64.Create(id + i),
                     tag = BsonString.Create("BULK_" + (isAnalog ? "AI_" : "DI_") + i),
                     type = BsonString.Create(isString ? "string" : (isAnalog ? "analog" : "digital")),
                     value = BsonDouble.Create(i),
@@ -275,7 +275,7 @@ namespace IEC61850_Server
                 {
                     list.Add(new rtData
                     {
-                        _id = BsonInt32.Create(id++),
+                        _id = BsonInt64.Create(id++),
                         tag = BsonString.Create(tag),
                         type = BsonString.Create(type),
                         value = BsonDouble.Create(value),
