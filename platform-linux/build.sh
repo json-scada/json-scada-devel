@@ -7,8 +7,8 @@
 
 ARG1=${1:-linux-x64}
 case $(uname -m) in
-    x86_64) ARG1="-linux-x64" ;;
-    arm)    ARG1="-linux-arm64";;
+    x86_64) ARG1="linux-x64" ;;
+    arm)    ARG1="linux-arm64";;
 esac
 
 ARCHITECTURE="amd64"
