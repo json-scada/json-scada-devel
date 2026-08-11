@@ -140,6 +140,7 @@ type RtDataPoint struct {
 	Substituted                    bool                  `bson:"substituted"`
 	Overflow                       bool                  `bson:"overflow"`
 	Origin                         string                `bson:"origin"`
+	Type                           string                `bson:"type"`
 	TimeTagAtSource                *time.Time            `bson:"timeTagAtSource"`
 	TimeTagAtSourceOk              *bool                 `bson:"timeTagAtSourceOk"`
 	KConv1                         float64               `bson:"kconv1"`

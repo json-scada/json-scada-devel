@@ -307,6 +307,7 @@ func (e *Engine) forwardCommand(srv *Conn, replyTo asdu.Connect, pack *asdu.ASDU
 	srcsbo := point.ProtocolSourceCommandUseSBO
 	srcpointkey := int(point.ID)
 	srctag := point.Tag
+	srctype := point.Type
 
 	if srcasdu == 0 {
 		jscfg.Logf(jscfg.LogLevelBasic, "%s  Command rejected!", conName)
@@ -385,6 +386,19 @@ func (e *Engine) forwardCommand(srv *Conn, replyTo asdu.Connect, pack *asdu.ASDU
 			srcval = float64(^int32(val))
 		} else {
 			srcval = float64(int32(val))
+		}
+	default:
+		if srctype == "digital" {
+			if srckconv1 == -1 { // invert digital bits for kconv1 -1
+				if val == 0 {
+					srcval = 1
+				} else {
+					srcval = 0
+				}
+			}
+		}
+		if srctype == "analog" {
+			srcval = val*srckconv1 + srckconv2
 		}
 	}
 
