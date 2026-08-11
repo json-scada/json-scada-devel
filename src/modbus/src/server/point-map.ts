@@ -9,11 +9,7 @@
 // Also owns the mapping from written addresses back to the command tags.
 
 import Log from '../common/simple-logger.js'
-import {
-  encodeValue,
-  decodeValue,
-  type ValueType,
-} from '../core/datacodec.js'
+import { encodeValue, decodeValue } from '../core/datacodec.js'
 import {
   parseObjectAddress,
   parseAsdu,
@@ -24,6 +20,8 @@ import {
 } from '../core/address.js'
 import type { ModbusServerConnection } from './conn-config.js'
 
+export type TagType = 'analog' | 'digital' | 'string'
+
 export interface ServerPoint {
   id: unknown // realtimeData _id
   pointKey: number
@@ -33,10 +31,16 @@ export interface ServerPoint {
   offset: number
   bit: number | null
   asdu: ParsedAsdu
+  // protocolDestination scaling, applied when encoding the supervised value OUT.
   kconv1: number
   kconv2: number
   span: number // registers or bits
   isCommand: boolean // has a protocolSource (can relay writes)
+  // tag-level fields from realtimeData, used when routing a received write as a
+  // command (see PointMap.routeCommandValue):
+  tagType: TagType
+  tagKconv1: number
+  tagKconv2: number
   // command routing fields copied from the tag's protocolSource*:
   cmdConnectionNumber: number | null
   cmdCommonAddress: number | null
@@ -81,10 +85,13 @@ export class PointMap {
     docs: Array<{
       _id: unknown
       tag: string
+      type: unknown
       value: unknown
       valueString: unknown
       invalid: unknown
       origin: unknown
+      kconv1: unknown
+      kconv2: unknown
       protocolSourceConnectionNumber: unknown
       protocolSourceCommonAddress: unknown
       protocolSourceObjectAddress: unknown
@@ -133,6 +140,9 @@ export class PointMap {
           kconv2: toNum(d.dest.protocolDestinationKConv2, 0),
           span,
           isCommand,
+          tagType: normalizeType(d.type),
+          tagKconv1: toNum(d.kconv1, 1),
+          tagKconv2: toNum(d.kconv2, 0),
           cmdConnectionNumber: isCommand
             ? toNumOrNull(d.protocolSourceConnectionNumber)
             : null,
@@ -173,7 +183,10 @@ export class PointMap {
     }
   }
 
-  // Encode a tag's current value into the register/coil bank.
+  // Encode a tag's current value into the register/coil bank. Only the
+  // protocolDestination scaling is applied here: realtimeData.value is already
+  // the engineering value (cs_data_processor applied the tag-level kconv when
+  // deriving it from valueAtSource), so re-applying tagKconv would double-scale.
   encodeInto(
     point: ServerPoint,
     value: unknown,
@@ -281,28 +294,52 @@ export class PointMap {
     return this.writeIndex.get(`${unitId}:${area}:${offset}`)
   }
 
-  // Decode a written coil/register span back to an engineering value using the
-  // point's ASDU. Used by the write handler to build the relayed command value.
-  decodeWrittenRegisters(point: ServerPoint, registers: Buffer): {
-    value: number | bigint | boolean | string
-    valueString: string
-    type: ValueType
-  } {
+  // Decode a written coil/register span into the RAW value the master intended,
+  // using the point's ASDU byte order but WITHOUT any scaling. A bit-in-register
+  // point yields 0/1. The command scaling is applied later by routeCommandValue.
+  decodeWrittenValue(
+    point: ServerPoint,
+    registers: Buffer
+  ): number | bigint | boolean | string {
     if (point.bit !== null) {
       const word = registers.readUInt16BE(0)
-      const on = ((word >> point.bit) & 1) === 1
-      return { value: on ? 1 : 0, valueString: on ? '1' : '0', type: 'bool' }
+      return ((word >> point.bit) & 1) === 1 ? 1 : 0
     }
-    const dec = decodeValue(point.asdu.type, registers, 0, point.asdu.perm, point.asdu.str)
-    let value = dec.value
-    if (typeof value === 'number' && point.asdu.type !== 'string') {
-      value = value * point.kconv1 + point.kconv2
+    const dec = decodeValue(
+      point.asdu.type,
+      registers,
+      0,
+      point.asdu.perm,
+      point.asdu.str
+    )
+    return dec.value
+  }
+
+  // Compute the value to route as a JSON-SCADA command from a raw written value.
+  // BOTH the protocolDestination scaling (point.kconv1/kconv2) and the tag-level
+  // realtimeData scaling (point.tagKconv1/tagKconv2) are applied:
+  //   digital : forced to 1/0, inverted iff exactly one of the two kconv1 is -1
+  //   analog  : (raw*destKconv1 + destKconv2)*tagKconv1 + tagKconv2
+  //   string  : the decoded string, value 0
+  routeCommandValue(
+    point: ServerPoint,
+    raw: number | bigint | boolean | string
+  ): { value: number; valueString: string } {
+    if (point.tagType === 'digital') {
+      let bit = Number(raw) !== 0 ? 1 : 0
+      // Compose the two inversions: destination -1 and tag-level -1 cancel out.
+      const invert = (point.kconv1 === -1) !== (point.tagKconv1 === -1)
+      if (invert) bit = bit === 1 ? 0 : 1
+      return { value: bit, valueString: String(bit) }
     }
-    return {
-      value,
-      valueString: typeof value === 'string' ? value : String(value),
-      type: point.asdu.type,
+    if (point.tagType === 'string') {
+      const s = typeof raw === 'string' ? raw : String(raw)
+      return { value: 0, valueString: s }
     }
+    // analog: destination scaling first, then tag-level scaling
+    const dest = Number(raw) * point.kconv1 + point.kconv2
+    const value = dest * point.tagKconv1 + point.tagKconv2
+    return { value, valueString: String(value) }
   }
 }
 
@@ -320,4 +357,10 @@ function toNumOrNull(v: unknown): number | null {
   if (v === null || v === undefined || v === '') return null
   const n = Number(v)
   return Number.isFinite(n) ? n : null
+}
+function normalizeType(v: unknown): TagType {
+  const s = String(v ?? '').toLowerCase()
+  if (s === 'digital') return 'digital'
+  if (s === 'string') return 'string'
+  return 'analog'
 }

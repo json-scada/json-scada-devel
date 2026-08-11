@@ -86,11 +86,24 @@ addresses return exception **02 ILLEGAL DATA ADDRESS** unless `serveUnmappedAsZe
 ## Handling writes (command relay)
 
 A write to a mapped command point:
-1. is decoded with the point's ASDU/byte order and inverse `KConv1/2`;
-2. becomes a `commandsQueue` insert carrying the point's **`protocolSource*`** routing, so
+1. is decoded from the wire with the point's ASDU/byte order (no scaling yet);
+2. the routed command **value** is derived from the tag's `realtimeData` `type`, applying
+   **both** the destination scaling (`protocolDestinationKConv1/2`) and the tag-level
+   scaling (`kconv1`/`kconv2`):
+   - `type: 'digital'` → value forced to `1`/`0`, then **inverted iff exactly one** of
+     `protocolDestinationKConv1` / `kconv1` is `-1` (both `-1` cancel out);
+   - `type: 'analog'` →
+     `value = (written * protocolDestinationKConv1 + protocolDestinationKConv2) * kconv1 + kconv2`;
+   - `type: 'string'` → the decoded string is carried in `valueString` (`value` = 0);
+3. becomes a `commandsQueue` insert carrying the point's **`protocolSource*`** routing, so
    whichever client driver owns the point (Modbus, IEC 104, DNP3, …) dispatches it;
-3. is acknowledged to the master immediately — Modbus cannot wait for end-to-end
+4. is acknowledged to the master immediately — Modbus cannot wait for end-to-end
    confirmation.
+
+Direction note: on the way **out** (serving reads) only `protocolDestinationKConv1/2` is
+applied, because `realtimeData.value` is already the engineering value — the tag-level
+`kconv` was applied by `cs_data_processor` when deriving `value` from `valueAtSource`.
+Both scalings are composed only on the way **in**, for command routing.
 
 Write outcomes: unmapped/read-only → exception 02/01; `commandsEnabled: false` →
 exception 01; internal failure → exception 04. With `allowWritesToSupervised: true`, a

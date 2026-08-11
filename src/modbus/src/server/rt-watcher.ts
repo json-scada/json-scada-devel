@@ -67,10 +67,13 @@ export class RtWatcher {
     return {
       _id: d._id,
       tag: String(d.tag ?? ''),
+      type: d.type,
       value: d.value,
       valueString: d.valueString,
       invalid: d.invalid,
       origin: d.origin,
+      kconv1: d.kconv1,
+      kconv2: d.kconv2,
       protocolSourceConnectionNumber: d.protocolSourceConnectionNumber,
       protocolSourceCommonAddress: d.protocolSourceCommonAddress,
       protocolSourceObjectAddress: d.protocolSourceObjectAddress,

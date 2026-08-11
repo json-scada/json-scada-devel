@@ -26,7 +26,7 @@ export class WriteHandler {
   // Handle a single-coil write. Returns echo (accepted) or exception.
   handleCoilWrite(unitId: number, addr: number, on: boolean, remote: string): HandlerResult {
     const point = this.map.lookupWrite(unitId, 'co', addr)
-    return this.relay(point, on ? 1 : 0, on ? '1' : '0', remote)
+    return this.relay(point, on ? 1 : 0, remote)
   }
 
   // Handle a single-register write.
@@ -55,7 +55,7 @@ export class WriteHandler {
       const point = this.map.lookupWrite(unitId, 'co', start + i)
       if (point && point.offset === start + i) {
         anyMapped = true
-        const r = this.relay(point, bits[i] ? 1 : 0, bits[i] ? '1' : '0', remote)
+        const r = this.relay(point, bits[i] ? 1 : 0, remote)
         if (r.kind === 'exception') return r
       }
     }
@@ -99,7 +99,7 @@ export class WriteHandler {
     if (!point || point.bit === null) return this.unmapped()
     // Resulting bit value: (current AND andMask) OR orMask, evaluated at the bit.
     const on = ((orMask >> point.bit) & 1) === 1 || ((andMask >> point.bit) & 1) === 1
-    return this.relay(point, on ? 1 : 0, on ? '1' : '0', remote)
+    return this.relay(point, on ? 1 : 0, remote)
   }
 
   private relayDecoded(
@@ -108,9 +108,10 @@ export class WriteHandler {
     remote: string
   ): HandlerResult {
     try {
-      const { value, valueString } = this.map.decodeWrittenRegisters(point, registers)
-      const numVal = typeof value === 'bigint' ? Number(value) : Number(value)
-      return this.relay(point, numVal, valueString, remote)
+      // Decode the raw value the master wrote (ASDU byte order, no scaling); the
+      // command scaling/forcing is applied per the tag type in relay().
+      const raw = this.map.decodeWrittenValue(point, registers)
+      return this.relay(point, raw, remote)
     } catch (e) {
       Log.log(`${this.cfg.name}: decode write error: ${(e as Error).message}`)
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_DATA_VALUE }
@@ -119,8 +120,7 @@ export class WriteHandler {
 
   private relay(
     point: ServerPoint | undefined,
-    value: number,
-    valueString: string,
+    raw: number | bigint | boolean | string,
     remote: string
   ): HandlerResult {
     if (!point) return this.unmapped()
@@ -128,12 +128,21 @@ export class WriteHandler {
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_FUNCTION }
     if (!point.isCommand) {
       if (this.cfg.allowWritesToSupervised) {
-        // Direct write into the supervised value (register bank use-case).
-        this.map.encodeInto(point, value, valueString, false)
+        // Direct write into the supervised value (register bank use-case); the raw
+        // written value is stored as-is, without command scaling.
+        this.map.encodeInto(
+          point,
+          raw,
+          typeof raw === 'string' ? raw : String(raw),
+          false
+        )
         return { kind: 'echo' }
       }
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_FUNCTION }
     }
+
+    // Derive the routed value from the tag's realtimeData type and kconv1/kconv2.
+    const { value, valueString } = this.map.routeCommandValue(point, raw)
 
     // Fire-and-forget the insert; Modbus cannot wait for end-to-end confirmation.
     this.insertCommand(point, value, valueString, remote).catch((e) => {
