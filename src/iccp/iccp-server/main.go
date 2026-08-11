@@ -23,6 +23,7 @@ import (
 	"errors"
 	"fmt"
 	"log"
+	"math"
 	"net"
 	"os"
 	"sort"
@@ -223,6 +224,7 @@ func main() {
 				{Key: "timeTagAtSourceOk", Value: 1},
 				{Key: "commandBlocked", Value: 1},
 				{Key: "supervisedOfCommand", Value: 1},
+				{Key: "kconv1", Value: 1},
 			}
 
 			cursor, err := collectionRtData.Find(context.TODO(), filter, options.Find().SetProjection(projection).SetSort(bson.D{{Key: "protocolSourceConnectionNumber", Value: 1}}))
@@ -663,6 +665,15 @@ func forwardCommand(cmdCollection *mongo.Collection, conn protocolConnection, do
 		return tase2.ResultFailure
 	}
 
+	// Apply the tag's conversion factors to the value received from the client.
+	if convValue := applyCommandConversion(cmdValue, rtDoc); convValue != cmdValue {
+		LogMsg(LogLevelDetailed, "ICCP - Command %s converted %f -> %f (type=%s kconv1=%f kconv2=%f)",
+			tag, cmdValue, convValue, rtDoc.Type,
+			kconvToFloat64(rtDoc.Kconv1, 1), kconvToFloat64(rtDoc.Kconv2, 0))
+		cmdValueStr = commandValueString(convValue, cmdValueStr)
+		cmdValue = convValue
+	}
+
 	if err := insertCommand(cmdCollection, conn, tag, cmdValue, cmdValueStr, rtDoc); err != nil {
 		LogMsg(LogLevelMin, "ICCP - Failed to insert command: %v", err)
 		return tase2.ResultFailure
@@ -1052,4 +1063,49 @@ func extractCommandValue(dv *tase2.DataValue) (float64, string) {
 	default:
 		return 0, dv.String()
 	}
+}
+
+// applyCommandConversion adjusts a command value received from an ICCP client
+// using the destination tag's type and conversion factors from realtimeData,
+// mirroring what the IEC 60870-5-104 server driver does when routing commands:
+//
+//	digital, kconv1 == -1: forced to 1/0 and inverted
+//	digital, otherwise:    forced to 1/0
+//	analog:                value*kconv1 + kconv2
+//
+// Any other type is forwarded unchanged.
+func applyCommandConversion(value float64, rtDoc rtData) float64 {
+	kconv1 := kconvToFloat64(rtDoc.Kconv1, 1)
+
+	switch rtDoc.Type {
+	case "digital":
+		v := 0.0
+		if value != 0 {
+			v = 1
+		}
+		if kconv1 == -1 { // invert digital for kconv1 -1
+			v = 1 - v
+		}
+		return v
+	case "analog":
+		return value*kconv1 + kconvToFloat64(rtDoc.Kconv2, 0)
+	default:
+		return value
+	}
+}
+
+// commandValueString renders a converted command value, keeping the boolean or
+// numeric flavor of the value originally received from the client.
+func commandValueString(value float64, origStr string) string {
+	switch origStr {
+	case "true", "false":
+		if value != 0 {
+			return "true"
+		}
+		return "false"
+	}
+	if value == math.Trunc(value) && math.Abs(value) < 1e15 {
+		return strconv.FormatInt(int64(value), 10)
+	}
+	return strconv.FormatFloat(value, 'f', -1, 64)
 }

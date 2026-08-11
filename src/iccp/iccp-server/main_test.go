@@ -67,6 +67,44 @@ func TestConvertToICCPValueRoundTrip(t *testing.T) {
 	}
 }
 
+func TestApplyCommandConversion(t *testing.T) {
+	cases := []struct {
+		name   string
+		value  float64
+		doc    rtData
+		want   float64
+		wantSt string
+		origSt string
+	}{
+		{"digital direct on", 1, rtData{Type: "digital", Kconv1: 1.0}, 1, "true", "true"},
+		{"digital direct off", 0, rtData{Type: "digital", Kconv1: 1.0}, 0, "false", "false"},
+		{"digital direct rounds", 0.6, rtData{Type: "digital"}, 1, "1", "0.600000"},
+		{"digital direct rounds down", 0.4, rtData{Type: "digital"}, 0, "0", "0.400000"},
+		{"digital direct non-boolean", 3, rtData{Type: "digital"}, 1, "1", "3"},
+		{"digital inverted on", 1, rtData{Type: "digital", Kconv1: -1.0}, 0, "false", "true"},
+		{"digital inverted off", 0, rtData{Type: "digital", Kconv1: -1.0}, 1, "true", "false"},
+		{"digital inverted int kconv", 1, rtData{Type: "digital", Kconv1: int32(-1)}, 0, "0", "1"},
+		{"analog scaled", 10, rtData{Type: "analog", Kconv1: 2.0, Kconv2: 5.0}, 25, "25", "10.000000"},
+		{"analog defaults", 12.5, rtData{Type: "analog"}, 12.5, "12.500000", "12.500000"},
+		{"analog offset only", 3, rtData{Type: "analog", Kconv2: 1.5}, 4.5, "4.5", "3"},
+		{"string type untouched", 7, rtData{Type: "string", Kconv1: -1.0}, 7, "7", "7"},
+	}
+
+	for _, c := range cases {
+		got := applyCommandConversion(c.value, c.doc)
+		if got != c.want {
+			t.Errorf("%s: applyCommandConversion(%v) = %v, want %v", c.name, c.value, got, c.want)
+		}
+		st := c.origSt
+		if got != c.value {
+			st = commandValueString(got, c.origSt)
+		}
+		if st != c.wantSt {
+			t.Errorf("%s: valueString = %q, want %q", c.name, st, c.wantSt)
+		}
+	}
+}
+
 func TestSanitizePointName(t *testing.T) {
 	cases := map[string]string{
 		"KAW2AL-21XCBR5217----K": "KAW2AL_21XCBR5217____K",
