@@ -133,6 +133,10 @@ namespace Iec10XDriver
             [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble value { get; set; }
             [BsonDefaultValue("")]
+            public BsonString origin { get; set; }
+            [BsonDefaultValue("")]
+            public BsonString type { get; set; }
+            [BsonDefaultValue("")]
             public BsonString valueString { get; set; }
             [BsonDefaultValue(null)]
             public BsonDateTime timeTag { get; set; }
