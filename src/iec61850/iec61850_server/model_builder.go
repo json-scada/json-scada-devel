@@ -65,6 +65,7 @@ func doCost(kind PointKind) int {
 // MappedPoint associates a json-scada tag with its place in the model.
 type MappedPoint struct {
 	Tag       string
+	Type      string // realtimeData type, lowercased: digital, analog, string, json
 	Kind      PointKind
 	IsCommand bool
 	PointKey  float64
@@ -74,6 +75,10 @@ type MappedPoint struct {
 	ValueRef model.ObjectReference
 	QRef     model.ObjectReference
 	TRef     model.ObjectReference
+
+	// Conversion factors applied to a routed command value.
+	Kconv1 float64
+	Kconv2 float64
 
 	// Command routing, copied from the tag with its original BSON types.
 	SrcConnectionNumber float64
@@ -316,6 +321,7 @@ func mapPoint(ctx *ldContext, p *Point, descCount *int) *MappedPoint {
 
 	mp := &MappedPoint{
 		Tag:       p.Tag,
+		Type:      typ,
 		Kind:      kind,
 		IsCommand: isCommand,
 		PointKey:  p.ID,
@@ -324,6 +330,9 @@ func mapPoint(ctx *ldContext, p *Point, descCount *int) *MappedPoint {
 		ValueRef:  valueRef,
 		QRef:      objRef.Child("q"),
 		TRef:      objRef.Child("t"),
+
+		Kconv1: p.Kconv1,
+		Kconv2: p.Kconv2,
 
 		SrcConnectionNumber: p.SrcConnectionNumber,
 		SrcCommonAddress:    p.SrcCommonAddress,

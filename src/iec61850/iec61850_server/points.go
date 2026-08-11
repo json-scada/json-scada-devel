@@ -51,6 +51,11 @@ type Point struct {
 	HasTimeTagAtSource bool
 	TimeTagAtSourceOk  bool
 
+	// Conversion factors applied to a routed command value, as in the
+	// lib60870 server drivers.
+	Kconv1 float64
+	Kconv2 float64
+
 	// Command routing, kept in the BSON type the source document had so the
 	// commandsQueue entries look exactly like the C# driver's.
 	SrcConnectionNumber float64
@@ -83,6 +88,9 @@ func pointFromDoc(doc bson.M) *Point {
 		Overflow:          mBool(doc, "overflow", false),
 		Transient:         mBool(doc, "transient", false),
 		TimeTagAtSourceOk: mBool(doc, "timeTagAtSourceOk", false),
+
+		Kconv1: mFloat(doc, "kconv1", 1),
+		Kconv2: mFloat(doc, "kconv2", 0),
 
 		SrcConnectionNumber: mFloat(doc, "protocolSourceConnectionNumber", 0),
 		SrcCommonAddress:    mRaw(doc, "protocolSourceCommonAddress", ""),

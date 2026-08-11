@@ -73,7 +73,7 @@ func main() {
 	}
 	installControlHandlers(gw)
 
-	go redundancyLoop(ctx, cfg, gw)
+	go statsLoop(ctx, cfg, gw)
 	go changeStreamLoop(ctx, cfg, gw)
 	go updateLoop(ctx, gw)
 	go commandInserterLoop(ctx, cfg)
@@ -84,7 +84,6 @@ func main() {
 	ticker := time.NewTicker(1 * time.Second)
 	defer ticker.Stop()
 	lastOpen := -1
-	initialValuesApplied := false
 
 	for {
 		select {
@@ -96,26 +95,22 @@ func main() {
 			os.Exit(0)
 
 		case <-ticker.C:
-			// Follow the redundancy state: only the active node serves.
-			switch {
-			case active.Load() && !gw.Serving():
+			// An MMS server is a passive listener: there is no active/standby
+			// arbitration, this node listens for as long as it runs. Start is
+			// retried until the bind succeeds (the port may still be held by
+			// a previous instance shutting down).
+			if !gw.Serving() {
 				gw.Start()
 				if gw.Serving() {
 					applyInitialValues(gw, points)
-					initialValuesApplied = true
 					lastOpen = -1
 				}
-			case !active.Load() && gw.Serving():
-				gw.Stop()
-				initialValuesApplied = false
+				continue
 			}
-			_ = initialValuesApplied
 
-			if gw.Serving() {
-				if open := gw.OpenConnections(); open != lastOpen {
-					Log(LogLevelNoLog, "Open MMS connections: %d", open)
-					lastOpen = open
-				}
+			if open := gw.OpenConnections(); open != lastOpen {
+				Log(LogLevelNoLog, "Open MMS connections: %d", open)
+				lastOpen = open
 			}
 		}
 	}

@@ -30,7 +30,7 @@ connection document, same model layout and object references, no native library 
   - `change_stream.go` — realtimeData watch (← `MongoChangeStream.cs`)
   - `update_loop.go` — batched model updates and quality mapping
   - `controls.go` — control handler and the commandsQueue inserter (← `ControlHandlers.cs`)
-  - `redundancy.go` — active/standby arbitration (← `Redundancy.cs`)
+  - `stats.go` — instance keep-alive and connection statistics (no active/standby arbitration)
   - `tlsconf.go` — server-side TLS
   - `selftest.go` — synthetic model, no MongoDB (← `SelfTest.cs`)
 - **Build:** `go build -o ../../../bin/iec61850-server`
@@ -46,7 +46,8 @@ connection document, same model layout and object references, no native library 
   matches a member against changes below it as well as above.
 - The model is built once and `server.New` is called once: it materialises report control blocks
   into the model, so a second call would duplicate them. Start/stop cycles reuse the same server.
-- Only the active node serves; the 1 Hz loop in `main.go` starts and stops the MMS server.
+- The node is always active: an MMS server is a passive listener, so there is no active/standby
+  arbitration. The 1 Hz loop in `main.go` starts the server and retries the bind if it fails.
 - The control handler runs on the connection's goroutine: it must not block, so commands are queued
   and inserted by a separate goroutine.
 - Values are only ever written through `Update`, which is what drives reporting.

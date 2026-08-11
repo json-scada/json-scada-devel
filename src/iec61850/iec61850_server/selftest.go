@@ -83,7 +83,6 @@ func runSelfTest(args []string) {
 	}
 	installControlHandlers(gw)
 
-	active.Store(true) // control handlers only accept commands when active
 	gw.Start()
 	if !gw.Serving() {
 		Log(LogLevelNoLog, "SELF TEST: server FAILED to start.")
@@ -137,6 +136,7 @@ func syntheticPoints() []*Point {
 		return &Point{
 			ID: id, Tag: tag, Type: typ, Origin: origin, Group1: group1,
 			Description: desc, Invalid: true,
+			Kconv1: 1, Kconv2: 0,
 			SrcConnectionNumber: 91, SrcCommonAddress: "1", SrcObjectAddress: tag + "_addr",
 			SrcASDU: "", SrcCommandDuration: 0,
 		}
@@ -168,7 +168,7 @@ func bulkPoints(n int) []*Point {
 			ID: float64(1000 + i), Tag: fmt.Sprintf("SELFTEST_BULK_%05d", i),
 			Type: typ, Origin: "supervised", Group1: "BULK",
 			Description: fmt.Sprintf("bulk point %d with a deliberately long description to exercise truncation", i),
-			Invalid:     true, SrcConnectionNumber: 91,
+			Invalid:     true, Kconv1: 1, SrcConnectionNumber: 91,
 			SrcCommonAddress: "1", SrcObjectAddress: fmt.Sprintf("bulk_%d", i), SrcASDU: "",
 		})
 	}

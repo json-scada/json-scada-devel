@@ -22,7 +22,6 @@ func startGateway(t *testing.T, conn *ServerConnection, points []*Point) *Gatewa
 		t.Fatalf("NewGateway: %v", err)
 	}
 	installControlHandlers(gw)
-	active.Store(true)
 	gw.Start()
 	if !gw.Serving() {
 		t.Fatal("server did not start")
@@ -30,7 +29,6 @@ func startGateway(t *testing.T, conn *ServerConnection, points []*Point) *Gatewa
 	applyInitialValues(gw, points)
 	t.Cleanup(func() {
 		gw.Stop()
-		active.Store(false)
 		drainCommands()
 	})
 	return gw
@@ -459,17 +457,20 @@ func TestLoopbackControlSBO(t *testing.T) {
 	}
 }
 
-// While the node is inactive, controls are refused and the reason reaches
+// When commands are disabled the control is refused and the reason reaches
 // the client.
-func TestLoopbackControlRefusedWhenInactive(t *testing.T) {
-	gw := startGateway(t, testConn(), loopbackPoints())
+func TestLoopbackControlRefusedWhenCommandsDisabled(t *testing.T) {
+	conn := testConn()
+	gw := startGateway(t, conn, loopbackPoints())
 	c := dialGateway(t, gw)
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
 	drainCommands()
-	active.Store(false)
-	defer active.Store(true)
+	// The model keeps its control objects; only the handler refuses, which is
+	// what a client sees when the connection has commandsEnabled false.
+	gw.conn.CommandsEnabled = false
+	defer func() { gw.conn.CommandsEnabled = true }()
 
 	co, err := c.ControlFor(ctx, "IEC61850SRVKAW2/GGIO1.SPCSO1")
 	if err != nil {
@@ -477,7 +478,7 @@ func TestLoopbackControlRefusedWhenInactive(t *testing.T) {
 	}
 	err = co.Operate(ctx, mmsBool(true))
 	if err == nil {
-		t.Fatal("operate succeeded while the node is inactive")
+		t.Fatal("operate succeeded while commands are disabled")
 	}
 	var ce *client.ControlError
 	if !asControlError(err, &ce) {
@@ -541,8 +542,8 @@ func TestLoopbackConnectionCap(t *testing.T) {
 	}
 }
 
-// The server can be stopped and started again, which is what the
-// redundancy loop does on every activation change.
+// The server can be stopped and started again, which is what the main loop
+// does when a bind fails and is retried.
 func TestLoopbackRestart(t *testing.T) {
 	points := loopbackPoints()
 	conn := testConn()
@@ -553,8 +554,6 @@ func TestLoopbackRestart(t *testing.T) {
 		t.Fatalf("NewGateway: %v", err)
 	}
 	installControlHandlers(gw)
-	active.Store(true)
-	defer active.Store(false)
 
 	for cycle := 0; cycle < 2; cycle++ {
 		gw.Start()

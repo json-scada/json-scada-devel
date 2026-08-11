@@ -78,8 +78,8 @@ func installControlHandlers(g *Gateway) {
 
 // handleControl validates a control operation and queues the command.
 func (g *Gateway) handleControl(mp *MappedPoint, ctx *server.ControlCtx) model.AddCause {
-	if !g.conn.CommandsEnabled || !active.Load() {
-		Log(LogLevelBasic, "Control refused for %s: commands disabled or node inactive.", mp.Tag)
+	if !g.conn.CommandsEnabled {
+		Log(LogLevelBasic, "Control refused for %s: commands are disabled for this connection.", mp.Tag)
 		return model.AddCauseBlockedByMode
 	}
 	if ctx.Select {
@@ -92,6 +92,7 @@ func (g *Gateway) handleControl(mp *MappedPoint, ctx *server.ControlCtx) model.A
 		Log(LogLevelNoLog, "Control value conversion error for %s", mp.Tag)
 		return model.AddCauseInconsistentParameters
 	}
+	value, valueString = convertCommandValue(mp, value, valueString)
 
 	enqueueCommand(bson.M{
 		"protocolSourceConnectionNumber": mp.SrcConnectionNumber,
@@ -113,6 +114,31 @@ func (g *Gateway) handleControl(mp *MappedPoint, ctx *server.ControlCtx) model.A
 
 	// Fire and forget: JSON-SCADA routes and acknowledges asynchronously.
 	return model.AddCauseNone
+}
+
+// convertCommandValue applies the tag's kconv1/kconv2 to the value that goes
+// into commandsQueue, so the driver that owns the source point receives the
+// value in its own scale (same rules as the lib60870 server drivers).
+//
+//   - digital: the value is forced to 1/0, and inverted when kconv1 is -1.
+//   - analog: value * kconv1 + kconv2.
+//   - anything else (string, json): left untouched.
+func convertCommandValue(mp *MappedPoint, value float64, valueString string) (float64, string) {
+	switch mp.Type {
+	case "digital":
+		on := value != 0
+		if mp.Kconv1 == -1 {
+			on = !on
+		}
+		if on {
+			return 1, "true"
+		}
+		return 0, "false"
+	case "analog":
+		v := value*mp.Kconv1 + mp.Kconv2
+		return v, formatFloat(v)
+	}
+	return value, valueString
 }
 
 // controlValue converts a ctlVal into the value pair a commandsQueue

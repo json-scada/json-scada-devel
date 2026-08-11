@@ -26,6 +26,7 @@ func pt(id float64, tag, typ, origin, group1 string) *Point {
 	return &Point{
 		ID: id, Tag: tag, Type: typ, Origin: origin, Group1: group1,
 		Description: "desc of " + tag, Invalid: true,
+		Kconv1: 1, Kconv2: 0,
 		SrcConnectionNumber: 91, SrcCommonAddress: "1",
 		SrcObjectAddress: tag + "_addr", SrcASDU: "",
 	}

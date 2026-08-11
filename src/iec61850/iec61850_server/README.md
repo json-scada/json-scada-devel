@@ -45,7 +45,14 @@ The AdminUI needs no change: it already knows the `IEC61850_SERVER` driver.
 3. A **MongoDB change stream** pushes value, quality and timestamp updates into the model; the
    library handles reporting, buffering, integrity scans and general interrogation.
 4. IEC 61850 **control operations** (SPC/APC) become `commandsQueue` documents, which JSON-SCADA
-   routes to the driver that owns the source point.
+   routes to the driver that owns the source point. The command tag's `kconv1`/`kconv2` are applied
+   to the queued value, as in the lib60870 server drivers:
+
+   | tag `type` | queued value |
+   |---|---|
+   | `digital`, `kconv1` ≠ -1 | forced to `1`/`0` (`ctlVal` true → 1) |
+   | `digital`, `kconv1` = -1 | forced to `1`/`0` and **inverted** |
+   | `analog` | `value * kconv1 + kconv2` |
 
 A **mapping manifest** (`log/iec61850_server_map_<conn>.json`) listing every tag → object reference
 is written at startup.
@@ -133,8 +140,12 @@ bounds protect clients rather than the server.
 
 - **Static model**: the model is fixed at startup. Tags added later are not exposed until the driver
   is restarted; matching updates for unknown tags are logged at level 2.
-- **Redundancy**: only the active instance serves clients; the standby keeps the MMS server stopped
-  so clients never read stale data.
+- **No redundancy control**: an MMS server is a passive TCP listener, so this driver is always
+  active — every node of a redundant pair listens and serves, and the clients choose which one they
+  talk to. This differs from the C# driver, which stops the server on the standby node. The driver
+  still publishes `activeNodeName` / `activeNodeKeepAliveTimeTag` on its instance document and the
+  `stats` on its connection document every 5 s; with more than one node running, those fields show
+  whichever node wrote last.
 - **Port 102 on Linux** needs privileges: `setcap 'cap_net_bind_service=+ep' bin/iec61850-server`,
   or use a port above 1024 in `ipAddressLocalBind`.
 - GOOSE/SV publishing, setting groups, log services and SCL export are out of scope.
@@ -149,6 +160,8 @@ bounds protect clients rather than the server.
 | D6 | The mapping manifest is sorted by `pointKey` | The C# writes map-iteration order, which is unstable between runs |
 | D8 | Terminates on SIGINT/SIGTERM | Services have no console |
 | D9 | The banner names go-iec61850 | It is not libiec61850 |
+| D10 | **No active/standby arbitration**: the node is always active and always listens | An MMS server is a passive TCP listener; both nodes of a redundant pair can serve and the clients pick one. The C# driver stops the server on the standby node |
+| D11 | Controls are refused only when `commandsEnabled` is false | There is no inactive state to refuse them in |
 
 **Library workaround in force:** go-iec61850 composes a report control block's default `RptID` from
 the *configured* block name rather than the materialised instance name, so `brcbMX01` with two
@@ -174,7 +187,8 @@ The suite covers the model builder (layout, packing, splitting, data sets, repor
 models, truncation), the update path (quality mapping, per-class value placement, time quality) and
 the command documents, and it runs the server against the library's own IEC 61850 client
 in-process: browse, read, data set read, GI, data-change reporting, direct/analogue/SBO controls,
-refusal while inactive, the client allow-list, the connection cap and a stop/start cycle. No
+refusal when commands are disabled, the client allow-list, the connection cap and a stop/start
+cycle. No
 MongoDB or network device is needed.
 
 To eyeball the model with any client:

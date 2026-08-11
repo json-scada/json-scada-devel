@@ -37,7 +37,7 @@ import (
 const (
 	CopyrightMessage   = "{json:scada} IEC61850 Server Driver (IEC61850-90-2, Go) - Copyright 2020-2026 Ricardo Olsen"
 	ProtocolDriverName = "IEC61850_SERVER"
-	DriverVersion      = "0.1.0"
+	DriverVersion      = "0.1.2"
 	LibraryVersion     = "v0.2.3"
 )
 

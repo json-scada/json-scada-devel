@@ -17,8 +17,8 @@
  */
 
 // MMS server creation and lifecycle. The server is created once over the
-// model built at startup and is started and stopped as the redundancy state
-// changes, so a standby node never serves stale data.
+// model built at startup and listens for as long as the process runs: a TCP
+// listener is passive, so this driver has no active/standby arbitration.
 
 package main
 
@@ -28,6 +28,7 @@ import (
 	"strconv"
 	"strings"
 	"sync/atomic"
+	"time"
 
 	"github.com/dscsystems/go-iec61850/mms"
 	"github.com/dscsystems/go-iec61850/model"
@@ -47,10 +48,10 @@ type Gateway struct {
 	serving   atomic.Bool
 	openConns atomic.Int32
 	listener  net.Listener
-}
 
-// active tells whether this node is the active one of the redundant pair.
-var active atomic.Bool
+	// lastBindErrLog throttles the "failed to start" message of the retry.
+	lastBindErrLog time.Time
+}
 
 // parseBindAddress resolves ipAddressLocalBind into "host:port". The
 // default port is 102, or 3782 for a secured connection, as in the C#.
@@ -234,8 +235,12 @@ func (g *Gateway) Start() {
 		ln, err = net.Listen("tcp", g.bindAddr)
 	}
 	if err != nil {
-		Log(LogLevelNoLog, "ERROR: failed to start MMS server on %s (port in use or insufficient "+
-			"privileges for port < 1024?): %v", g.bindAddr, err)
+		// Start is retried every second; do not repeat the message that often.
+		if now := time.Now(); now.Sub(g.lastBindErrLog) >= 30*time.Second {
+			g.lastBindErrLog = now
+			Log(LogLevelNoLog, "ERROR: failed to start MMS server on %s (port in use or insufficient "+
+				"privileges for port < 1024?): %v", g.bindAddr, err)
+		}
 		return
 	}
 	g.listener = ln
@@ -254,7 +259,7 @@ func (g *Gateway) Stop() {
 	_ = g.srv.Close()
 	g.serving.Store(false)
 	g.openConns.Store(0)
-	Log(LogLevelNoLog, "IEC 61850 MMS server STOPPED (node inactive).")
+	Log(LogLevelNoLog, "IEC 61850 MMS server STOPPED.")
 }
 
 // Serving reports whether the MMS server is accepting clients.

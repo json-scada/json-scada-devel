@@ -83,8 +83,6 @@ func TestCommandDocumentShape(t *testing.T) {
 	built := BuildModel([]*Point{p}, conn)
 
 	g := &Gateway{conn: conn, built: built}
-	active.Store(true)
-	defer active.Store(false)
 	drainCommands()
 
 	mp := built.ByTag["CMD1"]
@@ -142,12 +140,86 @@ func TestCommandDocumentShape(t *testing.T) {
 		t.Error("the select phase must not queue a command")
 	}
 
-	// While inactive, controls are blocked.
-	active.Store(false)
+	// With commands disabled, controls are blocked.
+	conn.CommandsEnabled = false
 	if cause := g.handleControl(mp, &server.ControlCtx{Ref: mp.ObjRef, Value: mms.NewBool(true)}); cause != model.AddCauseBlockedByMode {
-		t.Errorf("inactive control cause = %v, want blocked-by-mode", cause)
+		t.Errorf("disabled-commands control cause = %v, want blocked-by-mode", cause)
 	}
 	if _, queued := dequeueCommand(); queued {
 		t.Error("a blocked control must not queue a command")
+	}
+}
+
+// kconv1/kconv2 of the command tag scale the value written to commandsQueue.
+func TestConvertCommandValue(t *testing.T) {
+	cases := []struct {
+		name           string
+		typ            string
+		kconv1, kconv2 float64
+		in             float64
+		inString       string
+		wantValue      float64
+		wantString     string
+	}{
+		{"digital direct on", "digital", 1, 0, 1, "true", 1, "true"},
+		{"digital direct off", "digital", 1, 0, 0, "false", 0, "false"},
+		{"digital inverted on", "digital", -1, 0, 1, "true", 0, "false"},
+		{"digital inverted off", "digital", -1, 0, 0, "false", 1, "true"},
+		{"digital forced to 1", "digital", 1, 0, 42.5, "42.5", 1, "true"},
+		{"digital inverted, forced to 0", "digital", -1, 0, 42.5, "42.5", 0, "false"},
+		// kconv2 does not apply to a digital.
+		{"digital ignores kconv2", "digital", 1, 100, 1, "true", 1, "true"},
+		{"analog identity", "analog", 1, 0, 37.5, "37.5", 37.5, "37.5"},
+		{"analog scaled", "analog", 10, 0, 37.5, "37.5", 375, "375"},
+		{"analog offset", "analog", 1, -5, 37.5, "37.5", 32.5, "32.5"},
+		{"analog scaled and offset", "analog", 0.5, 2, 10, "10", 7, "7"},
+		{"analog inverted", "analog", -1, 0, 37.5, "37.5", -37.5, "-37.5"},
+		// A string/json command passes through untouched.
+		{"string untouched", "string", -1, 3, 5, "five", 5, "five"},
+	}
+	for _, c := range cases {
+		mp := &MappedPoint{Tag: "T", Type: c.typ, Kconv1: c.kconv1, Kconv2: c.kconv2}
+		v, s := convertCommandValue(mp, c.in, c.inString)
+		if v != c.wantValue || s != c.wantString {
+			t.Errorf("%s: (%v,%q), want (%v,%q)", c.name, v, s, c.wantValue, c.wantString)
+		}
+	}
+}
+
+// The conversion has to reach the queued document, not just the helper.
+func TestCommandDocumentAppliesKconv(t *testing.T) {
+	conn := testConn()
+	dig := pt(4, "CMDD", "digital", "command", "T")
+	dig.Kconv1 = -1
+	ana := pt(5, "CMDA", "analog", "command", "T")
+	ana.Kconv1, ana.Kconv2 = 2, 1
+	built := BuildModel([]*Point{dig, ana}, conn)
+
+	g := &Gateway{conn: conn, built: built}
+	drainCommands()
+
+	send := func(tag string, v *mms.Value) map[string]any {
+		t.Helper()
+		mp := built.ByTag[tag]
+		if cause := g.handleControl(mp, &server.ControlCtx{Ref: mp.ObjRef, Value: v}); cause != model.AddCauseNone {
+			t.Fatalf("%s: control refused: %v", tag, cause)
+		}
+		doc, ok := dequeueCommand()
+		if !ok {
+			t.Fatalf("%s: no command queued", tag)
+		}
+		return doc
+	}
+
+	// An inverted digital: ctlVal true has to reach the source driver as 0.
+	doc := send("CMDD", mms.NewBool(true))
+	if doc["value"] != float64(0) || doc["valueString"] != "false" {
+		t.Errorf("inverted digital = %v / %v, want 0 / false", doc["value"], doc["valueString"])
+	}
+
+	// An analogue setpoint: 10 * 2 + 1 = 21.
+	doc = send("CMDA", mms.NewStructure(mms.NewFloat32(10)))
+	if doc["value"] != float64(21) || doc["valueString"] != "21" {
+		t.Errorf("scaled analog = %v / %v, want 21 / 21", doc["value"], doc["valueString"])
 	}
 }
