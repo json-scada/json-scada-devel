@@ -252,6 +252,17 @@ process.on('unhandledRejection', (reason) =>
                   break
               }
 
+              if (cmdRes?.type === 'digital') {
+                doubleVal = doubleVal ? 1 : 0;
+                if (cmdRes?.kconv1 === -1) 
+                  doubleVal = doubleVal ? 0 : 1;
+                strVal = doubleVal ? 'true' : 'false'
+              }
+              if (cmdRes?.type === 'analog' && 'kconv1' in cmdRes && 'kconv2' in cmdRes) {
+                doubleVal = doubleVal * cmdRes?.kconv1 + cmdRes?.kconv2
+                strVal = doubleVal.toString()
+              }
+
               // clear to send command
               Log.log(
                 'Inserting command: ' +
