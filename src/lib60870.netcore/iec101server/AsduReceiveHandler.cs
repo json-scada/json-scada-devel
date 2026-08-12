@@ -453,14 +453,6 @@ namespace Iec10XDriver
                         return true;
                     }
 
-                    if (srcasdu == 0)
-                    {
-                        Log(conNameStr + "  Command rejected!", LogLevelBasic);
-                        connection.SendACT_CON(asdu, true); // activation confirm negative
-                        LastPointKeySelectedOk = 0;
-                        return true;
-                    }
-
                     if (cmdhastime) // check command time
                         if (DateTime.Now.Subtract(cmdtime).TotalSeconds > timeToExpireCommandsWithTime)
                         { // expired 
