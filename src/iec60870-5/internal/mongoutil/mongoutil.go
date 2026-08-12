@@ -29,6 +29,7 @@ import (
 	"go.mongodb.org/mongo-driver/v2/mongo/options"
 
 	"iec60870-5/internal/jscfg"
+	"iec60870-5/internal/model"
 )
 
 // Collection names (same as C# drivers).
@@ -120,6 +121,22 @@ func ToFloat64(v interface{}) float64 {
 		}
 	}
 	return 0
+}
+
+// ToU32 converts a decoded BSON value permissively to uint32, accepting a
+// string or any numeric type (same rules as model.U32 on struct decoding).
+func ToU32(v interface{}) uint32 {
+	if s, ok := v.(string); ok {
+		return uint32(model.ParseU32(s))
+	}
+	return uint32(model.U32FromFloat(ToFloat64(v)))
+}
+
+// AddrMatch builds a query predicate for an address-like protocol field
+// (ASDU, common address, object address) that matches the value whether it is
+// stored as a number (any numeric BSON type) or as its decimal string.
+func AddrMatch(v int) bson.M {
+	return bson.M{"$in": bson.A{v, strconv.Itoa(v)}}
 }
 
 // ToBool converts a decoded BSON value permissively to bool.

@@ -163,8 +163,8 @@ func (e *Engine) PreloadInsertedAddresses(db *mongo.Database) {
 		for cur.Next(ctx) {
 			var doc bson.M
 			if cur.Decode(&doc) == nil {
-				ca := int(mongoutil.ToFloat64(doc["protocolSourceCommonAddress"]))
-				ioa := int(mongoutil.ToFloat64(doc["protocolSourceObjectAddress"]))
+				ca := int(mongoutil.ToU32(doc["protocolSourceCommonAddress"]))
+				ioa := int(mongoutil.ToU32(doc["protocolSourceObjectAddress"]))
 				c.inserted[[2]int{ca, ioa}] = true
 				count++
 			}
@@ -267,7 +267,7 @@ func (e *Engine) RunMongoWriter() {
 						_ = collectionCmd.FindOneAndUpdate(ctx,
 							bson.M{
 								"protocolSourceConnectionNumber": ia.ConnNumber,
-								"protocolSourceObjectAddress":    ia.ObjectAddress,
+								"protocolSourceObjectAddress":    mongoutil.AddrMatch(ia.ObjectAddress),
 							},
 							bson.M{"$set": bson.M{"ack": ia.Ack, "ackTimeTag": ia.AckTimeTag}},
 							options.FindOneAndUpdate().SetSort(bson.M{"$natural": -1}),
@@ -297,10 +297,12 @@ func (e *Engine) RunMongoWriter() {
 									srv.Cfg.Name, srv.Cfg.Name, iv.CommonAddress, iv.Address)
 							}
 						}
+						// addresses are matched as number or string (they may be
+						// configured with either representation)
 						filter := bson.M{
 							"protocolSourceConnectionNumber": iv.ConnNumber,
-							"protocolSourceCommonAddress":    iv.CommonAddress,
-							"protocolSourceObjectAddress":    iv.Address,
+							"protocolSourceCommonAddress":    mongoutil.AddrMatch(iv.CommonAddress),
+							"protocolSourceObjectAddress":    mongoutil.AddrMatch(iv.Address),
 						}
 						jscfg.Logf(jscfg.LogLevelDetailed, "MongoDB - ADD %d %s", iv.Address, formatValue(iv.Value))
 						writes = append(writes, mongo.NewUpdateOneModel().
@@ -394,9 +396,9 @@ func (e *Engine) RunCommandsStream() {
 
 func (e *Engine) processCommand(collection *mongo.Collection, doc bson.M) {
 	connNumber := int(mongoutil.ToFloat64(doc["protocolSourceConnectionNumber"]))
-	objAddr := int(mongoutil.ToFloat64(doc["protocolSourceObjectAddress"]))
-	commonAddr := int(mongoutil.ToFloat64(doc["protocolSourceCommonAddress"]))
-	asduNum := int(mongoutil.ToFloat64(doc["protocolSourceASDU"]))
+	objAddr := int(mongoutil.ToU32(doc["protocolSourceObjectAddress"]))
+	commonAddr := int(mongoutil.ToU32(doc["protocolSourceCommonAddress"]))
+	asduNum := int(mongoutil.ToU32(doc["protocolSourceASDU"]))
 	duration := int(mongoutil.ToFloat64(doc["protocolSourceCommandDuration"]))
 	useSbo := mongoutil.ToBool(doc["protocolSourceCommandUseSBO"])
 	value := mongoutil.ToFloat64(doc["value"])

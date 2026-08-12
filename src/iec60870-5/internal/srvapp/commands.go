@@ -230,19 +230,23 @@ func (e *Engine) HandleRead(srv *Conn, replyTo asdu.Connect, pack *asdu.ASDU, io
 // findMappedPoint finds the realtimeData point mapped to this connection,
 // common address and object address; asduType 0 matches any type (C_RD).
 func (e *Engine) findMappedPoint(srv *Conn, ca, ioa, asduType int) (*model.RtDataPoint, *model.ProtocolDestination) {
+	// address fields are matched as number or string (they may be configured
+	// with either representation)
 	filter := bson.M{"$and": bson.A{
 		bson.M{"protocolDestinations.protocolDestinationConnectionNumber": srv.Cfg.ProtocolConnectionNumber},
-		bson.M{"protocolDestinations.protocolDestinationCommonAddress": ca},
-		bson.M{"protocolDestinations.protocolDestinationObjectAddress": ioa},
+		bson.M{"protocolDestinations.protocolDestinationCommonAddress": mongoutil.AddrMatch(ca)},
+		bson.M{"protocolDestinations.protocolDestinationObjectAddress": mongoutil.AddrMatch(ioa)},
 	}}
 	if asduType != 0 {
 		filter["$and"] = append(filter["$and"].(bson.A),
-			bson.M{"protocolDestinations.protocolDestinationASDU": asduType})
+			bson.M{"protocolDestinations.protocolDestinationASDU": mongoutil.AddrMatch(asduType)})
 	}
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 	var point model.RtDataPoint
 	if err := e.DB().Collection(mongoutil.RealtimeDataCollectionName).FindOne(ctx, filter).Decode(&point); err != nil {
+		conName := srv.Cfg.Name + " - "
+		jscfg.Logf(jscfg.LogLevelBasic, "%s  Error finding command point for CA %d, IOA %d, ASDU %d: %s", conName, ca, ioa, asduType, err.Error())
 		return nil, nil
 	}
 	for i := range point.ProtocolDestinations {

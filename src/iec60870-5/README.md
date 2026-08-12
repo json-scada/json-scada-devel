@@ -89,6 +89,16 @@ go build -o ../../bin/iec103client ./cmd/iec103client
 All `protocolConnections` fields honored by the C# drivers are honored here.
 Notable mappings and current limitations:
 
+- **Address fields accept strings or numbers**: `protocolSourceASDU`,
+  `protocolSourceCommonAddress`, `protocolSourceObjectAddress` and the
+  `protocolDestinations` entries `protocolDestinationASDU`,
+  `protocolDestinationCommonAddress`, `protocolDestinationObjectAddress` may be
+  stored as a BSON string (`"1001"`) or as any numeric type (double, int32,
+  int64, decimal128); all are converted to `uint32`. Unparseable, negative or
+  missing values become `0`, values above `2^32-1` are clamped. Queries match a
+  field stored either as the number or as its decimal string, so mixed
+  representations across documents work.
+
 - **104 client dual-server failover** (`ipAddresses[0]` / `[1]`) is managed by
   the driver: on connection loss it swaps to the other address and reconnects.
 - **104 server client whitelist** (`ipAddresses`): empty or `["*"]` accepts any

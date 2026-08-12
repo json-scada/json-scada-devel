@@ -115,11 +115,12 @@ func (c *ConnCfg) MultiActiveVal() bool {
 }
 
 // ProtocolDestination mirrors one entry of realtimeData.protocolDestinations.
+// The address fields are U32: they accept a string or any numeric BSON type.
 type ProtocolDestination struct {
 	ConnectionNumber float64 `bson:"protocolDestinationConnectionNumber"`
-	CommonAddress    float64 `bson:"protocolDestinationCommonAddress"`
-	ObjectAddress    float64 `bson:"protocolDestinationObjectAddress"`
-	ASDU             float64 `bson:"protocolDestinationASDU"`
+	CommonAddress    U32     `bson:"protocolDestinationCommonAddress"`
+	ObjectAddress    U32     `bson:"protocolDestinationObjectAddress"`
+	ASDU             U32     `bson:"protocolDestinationASDU"`
 	CommandDuration  float64 `bson:"protocolDestinationCommandDuration"`
 	CommandUseSBO    bool    `bson:"protocolDestinationCommandUseSBO"`
 	Group            float64 `bson:"protocolDestinationGroup"`
@@ -130,6 +131,8 @@ type ProtocolDestination struct {
 
 // RtDataPoint is the projection of a realtimeData document needed by the
 // server drivers (interrogation, read and command handling).
+// The protocol source address fields are U32: they accept a string or any
+// numeric BSON type.
 type RtDataPoint struct {
 	ID                             float64               `bson:"_id"`
 	Tag                            string                `bson:"tag"`
@@ -146,9 +149,9 @@ type RtDataPoint struct {
 	KConv1                         float64               `bson:"kconv1"`
 	KConv2                         float64               `bson:"kconv2"`
 	ProtocolSourceConnectionNumber float64               `bson:"protocolSourceConnectionNumber"`
-	ProtocolSourceCommonAddress    float64               `bson:"protocolSourceCommonAddress"`
-	ProtocolSourceObjectAddress    float64               `bson:"protocolSourceObjectAddress"`
-	ProtocolSourceASDU             float64               `bson:"protocolSourceASDU"`
+	ProtocolSourceCommonAddress    U32                   `bson:"protocolSourceCommonAddress"`
+	ProtocolSourceObjectAddress    U32                   `bson:"protocolSourceObjectAddress"`
+	ProtocolSourceASDU             U32                   `bson:"protocolSourceASDU"`
 	ProtocolSourceCommandDuration  float64               `bson:"protocolSourceCommandDuration"`
 	ProtocolSourceCommandUseSBO    bool                  `bson:"protocolSourceCommandUseSBO"`
 	ProtocolDestinations           []ProtocolDestination `bson:"protocolDestinations"`

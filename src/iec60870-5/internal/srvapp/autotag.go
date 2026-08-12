@@ -91,7 +91,7 @@ func (e *Engine) DistributeAutoTags() {
 					int(srv.Cfg.ProtocolConnectionNumber) {
 					continue
 				}
-				ioa := int(mongoutil.ToFloat64(d["protocolDestinationObjectAddress"]))
+				ioa := int(mongoutil.ToU32(d["protocolDestinationObjectAddress"]))
 				if ioa >= ioaBaseDigital && ioa <= ioaTopDigital && ioa > lastDigital {
 					lastDigital = ioa
 				}
