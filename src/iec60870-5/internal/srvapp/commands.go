@@ -313,13 +313,6 @@ func (e *Engine) forwardCommand(srv *Conn, replyTo asdu.Connect, pack *asdu.ASDU
 	srctag := point.Tag
 	srctype := point.Type
 
-	if srcasdu == 0 {
-		jscfg.Logf(jscfg.LogLevelBasic, "%s  Command rejected!", conName)
-		negativeCon(replyTo, pack)
-		lastPointKeySelectedOk = 0
-		return
-	}
-
 	if req.cmdHasTime {
 		if time.Since(req.cmdTime) > TimeToExpireCommandsWithTime {
 			jscfg.Logf(jscfg.LogLevelBasic, "%s  Command with time expired after %v", conName, TimeToExpireCommandsWithTime)
