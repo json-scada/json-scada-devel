@@ -313,6 +313,17 @@ RUN cd src/plc4j-client \
 RUN cd src/cs_data_processor && npm install \
     && cd ../cs_custom_processor && npm install && npm run build \
     && cd ../config_server_for_excel && npm install \
+    && cd ../grafana_alert2event && npm install \
+    && cd ../demo_simul && npm install \
+    && cd ../updateUser && npm install \
+    && cd ../alarm_beep && npm install \
+    && cd ../modbus && npm install && npm run build \
+    && cd ../node-red-driver && npm install && npm run build \
+    && cd ../n8n-client && npm install \
+    && cd ../carbone-reports && npm install \
+    && cd ../backup-mongo && npm install \
+    && cd ../mongofw && npm install \
+    && cd ../mongowr && npm install \
     && cd ../server_realtime_auth && npm install \
     && cd ../camera-onvif && npm install \
     && cd ../oshmi2json && npm install \
@@ -354,19 +365,29 @@ COPY ./platform-ubuntu-2404/calculations.ini /etc/supervisor/conf.d/calculations
 COPY ./platform-ubuntu-2404/config_server_excel.ini /etc/supervisor/conf.d/config_server_excel.ini
 COPY ./platform-ubuntu-2404/cs_custom_processor.ini /etc/supervisor/conf.d/cs_custom_processor.ini
 COPY ./platform-ubuntu-2404/cs_data_processor.ini /etc/supervisor/conf.d/cs_data_processor.ini
+COPY ./platform-ubuntu-2404/iccp_client.ini /etc/supervisor/conf.d/iccp_client.ini
+COPY ./platform-ubuntu-2404/iccp_server.ini /etc/supervisor/conf.d/iccp_server.ini
+COPY ./platform-ubuntu-2404/iec103client.ini /etc/supervisor/conf.d/iec103client.ini
 COPY ./platform-ubuntu-2404/iec104client.ini /etc/supervisor/conf.d/iec104client.ini
 COPY ./platform-ubuntu-2404/iec104server.ini /etc/supervisor/conf.d/iec104server.ini
+COPY ./platform-ubuntu-2404/iec101client.ini /etc/supervisor/conf.d/iec101client.ini
+COPY ./platform-ubuntu-2404/iec101server.ini /etc/supervisor/conf.d/iec101server.ini
 COPY ./platform-ubuntu-2404/iec61850client.ini /etc/supervisor/conf.d/iec61850client.ini
 COPY ./platform-ubuntu-2404/metabase.ini /etc/supervisor/conf.d/metabase.ini
 COPY ./platform-ubuntu-2404/grafana_server.ini /etc/supervisor/conf.d/grafana_server.ini
+COPY ./platform-ubuntu-2404/dnp3_client.ini /etc/supervisor/conf.d/dnp3_client.ini
 COPY ./platform-ubuntu-2404/dnp3_server.ini /etc/supervisor/conf.d/dnp3_server.ini
 COPY ./platform-ubuntu-2404/mcp_server.ini /etc/supervisor/conf.d/mcp_server.ini
 COPY ./platform-ubuntu-2404/mongofw.ini /etc/supervisor/conf.d/mongofw.ini
 COPY ./platform-ubuntu-2404/mongowr.ini /etc/supervisor/conf.d/mongowr.ini
 COPY ./platform-ubuntu-2404/mqtt-sparkplug.ini /etc/supervisor/conf.d/mqtt-sparkplug.ini
+COPY ./platform-ubuntu-2404/n8nclient.ini /etc/supervisor/conf.d/n8nclient.ini
+COPY ./platform-ubuntu-2404/nodered_driver.ini /etc/supervisor/conf.d/nodered_driver.ini
+COPY ./platform-ubuntu-2404/nodered_runtime.ini /etc/supervisor/conf.d/nodered_runtime.ini
 COPY ./platform-ubuntu-2404/opcua_client.ini /etc/supervisor/conf.d/opcua_client.ini
 COPY ./platform-ubuntu-2404/opcua_server.ini /etc/supervisor/conf.d/opcua_server.ini
 COPY ./platform-ubuntu-2404/plc4xclient.ini /etc/supervisor/conf.d/plc4xclient.ini
+COPY ./platform-ubuntu-2404/plc4jclient.ini /etc/supervisor/conf.d/plc4jclient.ini
 COPY ./platform-ubuntu-2404/process_pg_hist.ini /etc/supervisor/conf.d/process_pg_hist.ini
 COPY ./platform-ubuntu-2404/process_pg_rtdata.ini /etc/supervisor/conf.d/process_pg_rtdata.ini
 COPY ./platform-ubuntu-2404/server_realtime_auth.ini /etc/supervisor/conf.d/server_realtime_auth.ini
