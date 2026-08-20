@@ -46,7 +46,7 @@ RUN apt update && apt -y install linux-generic linux-image-generic linux-headers
 # NODE.JS 24
 # ==============================================================================
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
+    && apt install -y nodejs \
     && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
@@ -59,8 +59,7 @@ RUN node --version && npm --version
 RUN wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
     && dpkg -i packages-microsoft-prod.deb \
     && rm packages-microsoft-prod.deb \
-    && apt-get update \
-    && apt-get install -y dotnet-sdk-8.0 \
+    && apt install -y dotnet-sdk-8.0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify .NET installation
@@ -94,8 +93,7 @@ RUN wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | gpg
     && echo "deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ noble main" > /etc/apt/sources.list.d/timescaledb.list
 
 # Install PostgreSQL and TimescaleDB
-RUN apt-get update \
-    && apt-get install -y postgresql-18 postgresql-contrib-18 timescaledb-2-postgresql-18 \
+RUN apt install -y postgresql-18 postgresql-contrib-18 timescaledb-2-postgresql-18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure TimescaleDB
@@ -109,8 +107,7 @@ RUN mkdir -p /var/run/postgresql && chown -R postgres:postgres /var/run/postgres
 # ==============================================================================
 RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.2.gpg \
     && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.2 multiverse" > /etc/apt/sources.list.d/mongodb-org-8.2.list \
-    && apt-get update \
-    && apt-get install -y mongodb-org \
+    && apt install -y mongodb-org \
     && rm -rf /var/lib/apt/lists/*
 
 # Create MongoDB data directory
@@ -122,8 +119,7 @@ RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db || mkdir -p /data/db
 RUN mkdir -p /etc/apt/keyrings/ \
     && wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor > /etc/apt/keyrings/grafana.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" > /etc/apt/sources.list.d/grafana.list \
-    && apt-get update \
-    && apt-get install -y grafana \
+    && apt install -y grafana \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
@@ -139,15 +135,13 @@ RUN mkdir -p /app/json-scada/metabase/ \
 RUN mkdir -p /etc/apt/keyrings \
     && wget -q -O - https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor -o /etc/apt/keyrings/influxdata-archive.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" > /etc/apt/sources.list.d/influxdata.list \
-    && apt-get update \
-    && apt-get install -y telegraf \
+    && apt install -y telegraf \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
 # NGINX (Latest)
 # ==============================================================================
-RUN apt-get update \
-    && apt-get install -y nginx \
+RUN apt install -y nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
@@ -261,7 +255,7 @@ RUN cd src/dnp3/Dnp3Server/ && \
 # BUILD GO PROJECTS
 # ==============================================================================
 # Install libpcap for Go builds
-RUN apt-get update && apt-get install -y libpcap-dev && rm -rf /var/lib/apt/lists/*
+RUN apt install -y libpcap-dev && rm -rf /var/lib/apt/lists/*
 
 # Build calculations
 RUN cd src/calculations/ && \
