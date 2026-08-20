@@ -28,6 +28,7 @@ Acknowledgements:
   ICCP Client by Fernando Covatti - https://github.com/fcovatti/iccp
   Opendnp3 - https://github.com/dnp3/opendnp3
   PLC4X - https://github.com/apache/plc4x
+  Go-IEC61850 - https://github.com/dscsystems/go-iec61850
   Libplctag - https://github.com/libplctag/libplctag
   Node-opcua - https://github.com/node-opcua/node-opcua
   OPC-UA - https://github.com/OPCFoundation/UA-.NETStandard

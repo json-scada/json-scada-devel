@@ -36,7 +36,7 @@ sudo apt -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-h
 # Update and install base packages
 sudo apt update
 sudo apt -y upgrade
-sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
+sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk maven php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
 sudo apt -y install dotnet-sdk-8.0 
 
 # Docker and container tools
@@ -46,8 +46,8 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Install Go
-wget --inet4-only https://go.dev/dl/go1.26.2.linux-$ARCHITECTURE.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-$ARCHITECTURE.tar.gz
+wget --inet4-only https://go.dev/dl/go1.27.0.linux-$ARCHITECTURE.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.27.0.linux-$ARCHITECTURE.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 
@@ -137,7 +137,7 @@ mkdir -p ~/json-scada/conf/supervisor.d
 sudo systemctl enable supervisor
 
 # Install Grafana
-sudo apt -y install grafana=13.1.0
+sudo apt -y install grafana=13.2.0
 sudo apt-mark hold grafana
 sudo cp grafana.ini /etc/grafana/
 sudo systemctl enable grafana-server

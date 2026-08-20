@@ -18,6 +18,7 @@ ENV TZ=UTC
 RUN apt-get update && apt-get install -y \
     build-essential \
     openjdk-21-jdk \
+    maven \
     cmake \
     sasl2-bin \
     libsasl2-dev \
@@ -66,7 +67,7 @@ RUN dotnet --version
 # ==============================================================================
 # GOLANG
 # ==============================================================================
-ENV GO_VERSION=1.26.0
+ENV GO_VERSION=1.27.0
 RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
     && rm go${GO_VERSION}.linux-amd64.tar.gz
@@ -127,7 +128,7 @@ RUN mkdir -p /etc/apt/keyrings/ \
 # METABASE
 # ==============================================================================
 RUN mkdir -p /app/json-scada/metabase/ \
-    && wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O /app/json-scada/metabase/metabase.jar \
+    && wget --inet4-only https://downloads.metabase.com/v0.63.2/metabase.jar -O /app/json-scada/metabase/metabase.jar \
     && chmod +x /app/json-scada/metabase/metabase.jar 
 
 # ==============================================================================
@@ -186,15 +187,15 @@ RUN useradd jsonscada
 # ==============================================================================
 WORKDIR /app/json-scada
 
-# Build lib60870
-RUN cd src/lib60870.netcore/ && dotnet publish --self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
-
-# Cleanup lib60870
-RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec101server/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec104client/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec104server/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/lib60870.netcore/ && rm -rf obj bin
+## Build lib60870
+#RUN cd src/lib60870.netcore/ && dotnet publish --self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
+#
+## Cleanup lib60870
+#RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec101server/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec104client/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec104server/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/lib60870.netcore/ && rm -rf obj bin
 
 # Build OPC-UA Client
 RUN cd src/OPC-UA-Client/ && \
@@ -202,27 +203,27 @@ RUN cd src/OPC-UA-Client/ && \
     dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
     rm -rf obj bin
 
-# Build libiec61850 (C library)
-RUN cd src/libiec61850 && \
-    rm -rf build && \
-    mkdir -p build && \
-    cd build && \
-    cmake .. && \
-    make && \
-    cp src/libiec61850.so src/libiec61850.so.* /app/json-scada/bin/ || true
+## Build libiec61850 (C library)
+#RUN cd src/libiec61850 && \
+#    rm -rf build && \
+#    mkdir -p build && \
+#    cd build && \
+#    cmake .. && \
+#    make && \
+#    cp src/libiec61850.so src/libiec61850.so.* /app/json-scada/bin/ || true
+#
+## Build IEC61850.NET.core
+#RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
+#    dotnet publish --self-contained -c Release || true
+#
+## Build IEC 61850 Client
+#RUN cd src/iec61850_client && \
+#    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
+#    rm -rf obj bin || true
 
-# Build IEC61850.NET.core
-RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
-    dotnet publish --self-contained -c Release || true
-
-# Build IEC 61850 Client
-RUN cd src/iec61850_client && \
-    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
-    rm -rf obj bin || true
-
-# Cleanup libiec61850
-RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0/ && rm -rf obj bin || true
-RUN cd src/libiec61850 && rm -rf .install || true
+## Cleanup libiec61850
+#RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0/ && rm -rf obj bin || true
+#RUN cd src/libiec61850 && rm -rf .install || true
 
 # Build mongo-cxx-driver
 RUN cd src/mongo-cxx-driver/mongo-cxx-driver && \
@@ -263,20 +264,39 @@ RUN apt-get update && apt-get install -y libpcap-dev && rm -rf /var/lib/apt/list
 # Build calculations
 RUN cd src/calculations/ && \
     go mod tidy && \
-    go build && \
+    go build -ldflags="-s -w" && \
     cp calculations /app/json-scada/bin/
 
 # Build i104m
 RUN cd src/i104m/ && \
     go mod tidy && \
-    go build && \
+    go build -ldflags="-s -w" && \
     cp i104m /app/json-scada/bin/
 
 # Build plc4x-client
 RUN cd src/plc4x-client/ && \
     go mod tidy && \
-    CGO_ENABLED=1 go build && \
+    CGO_ENABLED=1 go build -ldflags="-s -w" && \
     cp plc4x-client /app/json-scada/bin/ || true
+
+# Build IEC 60870-5 drivers
+RUN cd src/iec60870-5 \
+    go mod tidy \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec104client.exe .\cmd\iec104client \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec104server.exe .\cmd\iec104server \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec101client.exe .\cmd\iec101client \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec101server.exe .\cmd\iec101server \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec103client.exe .\cmd\iec103client
+
+# Build the IEC61850 client in Go
+RUN cd src/iec61850/iec61850_client/ && \
+    go mod tidy && \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec61850-client
+
+# Build the IEC61850 server in Go
+RUN cd src/iec61850/iec61850_server/ && \
+    go mod tidy && \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec61850-server
 
 # ==============================================================================
 # BUILD NODE.JS PROJECTS

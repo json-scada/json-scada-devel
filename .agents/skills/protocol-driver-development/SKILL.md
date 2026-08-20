@@ -419,6 +419,8 @@ must keep `ServicesResourceTransformer` so PLC4X driver discovery works in the f
 | OPC-UA server | `src/OPC-UA-Server` | Node.js | node-opcua, group1/topics filtering |
 | OPC-DA client/server | `src/OPC-DA-Client`, `src/OPC-DA-Server` | C# | Legacy COM interop |
 | IEC 61850 client | `src/iec61850_client` | C# | MMS reads/reports via libiec61850 |
+| IEC 61850 client (Go) | `src/iec61850/iec61850_client` | Go | Same driver name, pure-Go stack, drop-in |
+| IEC 61850 server (Go) | `src/iec61850/iec61850_server` | Go | Dynamic model from realtimeData, DO-level data sets, controls |
 | IEC 61850 server | `src/iec61850_server` | C# + native lib | Dynamic model, RCBs, controls → commandsQueue |
 | MQTT / Sparkplug-B | `src/mqtt-sparkplug` | Node.js | Pub/sub both directions, TLS, JSON payloads |
 | ICCP/TASE.2 client/server | `src/iccp/iccp-client`, `iccp-server` | Go | Datasets, TLS, BLT |
