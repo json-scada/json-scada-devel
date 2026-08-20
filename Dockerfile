@@ -301,10 +301,10 @@ RUN cd src/iec61850/iec61850_server/ && \
     go build -ldflags="-s -w" -o /app/json-scada/bin/iec61850-server
 
 # PLC4J client (Java)
-RUN cd src/plc4j-client \
-    mvn -B -ntp -DskipTests package \
-    cp target/plc4j-client.jar ../../bin/ \
-    cp plc4j-client.sh ../../bin/ \
+RUN cd src/plc4j-client && \
+    mvn -B -ntp -DskipTests package && \
+    cp target/plc4j-client.jar ../../bin/ && \
+    cp plc4j-client.sh ../../bin/ && \
     chmod +x ../../bin/plc4j-client.sh
 
 # ==============================================================================
