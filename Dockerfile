@@ -15,9 +15,9 @@ ENV TZ=UTC
 # ==============================================================================
 # BASE SYSTEM PACKAGES AND BUILD TOOLS
 # ==============================================================================
-RUN apt -y install linux-generic linux-image-generic linux-headers-generic && \
-    apt -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04 && \
-    apt update && apt install -y \
+RUN apt-get -y install linux-generic linux-image-generic linux-headers-generic && \
+    apt-get -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04 && \
+    apt-get update && apt-get install -y \
     build-essential \
     openjdk-21-jdk \
     maven \
