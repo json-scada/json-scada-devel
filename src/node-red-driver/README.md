@@ -2,7 +2,7 @@
 
 This bidirectional driver bridges [Node-RED](https://nodered.org) and JSON-SCADA. It
 hosts a **WebSocket JSON server** that Node-RED flows connect to (via the companion
-[`node-red-contrib-jsonscada`](../node-red-contrib-jsonscada) palette, or plain
+[`node-red-contrib-jsonscada`](https://github.com/json-scada/node-red-contrib-jsonscada.git) palette, or plain
 `websocket` nodes), enabling four data paths:
 
 1. **Node-RED → JSON-SCADA (monitoring)** — flows inject values that land in
