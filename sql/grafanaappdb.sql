@@ -1608,8 +1608,9 @@ CREATE TABLE public.playlist (
 
 
 ALTER TABLE public.playlist OWNER TO postgres;
-ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS created_at timestamp with time zone;
-ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone;
+-- COMMENT FOR GRAFANA 13.2.0
+-- ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS created_at timestamp with time zone;
+-- ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone;
 
 --
 -- TOC entry 238 (class 1259 OID 20491)
