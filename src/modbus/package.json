@@ -24,7 +24,9 @@
   "author": "Ricardo Lastra Olsen",
   "license": "GPL-3.0-or-later",
   "dependencies": {
-    "mongodb": "^7.0.0",
+    "mongodb": "^7.0.0"
+  },
+  "optionalDependencies": {
     "serialport": "^13.0.0"
   },
   "devDependencies": {

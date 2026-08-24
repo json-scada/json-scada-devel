@@ -17,6 +17,13 @@ import {
   TransactionIdGenerator,
 } from './framing-mbap.js'
 import { encodeRtu, RtuResponseDecoder } from './framing-rtu.js'
+import {
+  NoopLogger,
+  hex,
+  describeRequest,
+  describeResponse,
+  type StackLogger,
+} from './logging.js'
 
 export type FramingMode = 'mbap' | 'rtu'
 
@@ -59,12 +66,20 @@ export class ClientStack extends EventEmitter {
     private readonly transport: ClientTransport,
     private readonly mode: FramingMode,
     private readonly timing: ClientStackTiming,
-    private readonly idleGapMs: number
+    private readonly idleGapMs: number,
+    private readonly log: StackLogger = NoopLogger
   ) {
     super()
-    transport.on('data', (d: Buffer) => this.onData(d))
+    transport.on('data', (d: Buffer) => {
+      if (this.log.debugEnabled)
+        this.log.debug(`link RX ${d.length} bytes: ${hex(d)}`)
+      this.onData(d)
+    })
     transport.on('close', () => this.onLinkDown(new Error('link closed')))
-    transport.on('error', (e: Error) => this.emit('error', e))
+    transport.on('error', (e: Error) => {
+      this.log.debug(`link error: ${e.message}`)
+      this.emit('error', e)
+    })
   }
 
   get connected(): boolean {
@@ -100,6 +115,10 @@ export class ClientStack extends EventEmitter {
       this.mode === 'mbap'
         ? encodeMbap(this.txnGen.allocate(), 0, pdu)
         : encodeRtu(0, pdu)
+    if (this.log.debugEnabled)
+      this.log.debug(
+        `TX broadcast unit=0 ${describeRequest(pdu)} | ADU: ${hex(frame)}`
+      )
     this.transport.write(frame)
   }
 
@@ -133,13 +152,26 @@ export class ClientStack extends EventEmitter {
   }
 
   private send(req: PendingRequest): void {
+    let adu: Buffer
     if (this.mode === 'mbap') {
       req.transactionId = this.txnGen.allocate()
-      this.transport.write(encodeMbap(req.transactionId, req.unitId, req.pdu))
+      adu = encodeMbap(req.transactionId, req.unitId, req.pdu)
     } else {
       this.rtuDecoder.expectResponseTo(req.pdu)
-      this.transport.write(encodeRtu(req.unitId, req.pdu))
+      adu = encodeRtu(req.unitId, req.pdu)
     }
+    if (this.log.debugEnabled) {
+      const txn =
+        this.mode === 'mbap' ? ` txn=${req.transactionId}` : ''
+      const retry =
+        req.retriesLeft < this.timing.maxRetries
+          ? ` retry=${this.timing.maxRetries - req.retriesLeft}`
+          : ''
+      this.log.debug(
+        `TX unit=${req.unitId}${txn}${retry} ${describeRequest(req.pdu)} | ADU: ${hex(adu)}`
+      )
+    }
+    this.transport.write(adu)
     req.timer = setTimeout(
       () => this.onTimeout(req),
       this.timing.responseTimeoutMs
@@ -150,6 +182,9 @@ export class ClientStack extends EventEmitter {
     if (this.mode === 'mbap') {
       const { frames, fatal } = this.mbapDecoder.push(chunk)
       if (fatal) {
+        this.log.error(
+          `MBAP desynchronization, dropping link (chunk: ${hex(chunk, 32)})`
+        )
         this.onLinkDown(new Error('MBAP desynchronization'))
         return
       }
@@ -178,13 +213,24 @@ export class ClientStack extends EventEmitter {
   private matchMbap(transactionId: number, pdu: Buffer): void {
     if (this.current && this.current.transactionId === transactionId) {
       this.completeCurrent(pdu)
+      return
     }
-    // Unmatched responses (late/duplicate) are ignored.
+    // Unmatched responses (late/duplicate) are ignored, but they indicate a
+    // device or gateway problem, so make them visible.
+    this.log.debug(
+      `RX unmatched response txn=${transactionId} (expected ${
+        this.current ? this.current.transactionId : 'none'
+      }) ${describeResponse(pdu)}`
+    )
   }
 
   private completeCurrent(pdu: Buffer): void {
     const req = this.current
     if (!req) return
+    if (this.log.debugEnabled)
+      this.log.debug(
+        `RX unit=${req.unitId} ${describeResponse(pdu)} | PDU: ${hex(pdu)}`
+      )
     if (req.timer) clearTimeout(req.timer)
     if (this.idleTimer) {
       clearTimeout(this.idleTimer)
@@ -200,12 +246,20 @@ export class ClientStack extends EventEmitter {
     if (this.current !== req) return
     if (req.retriesLeft > 0) {
       req.retriesLeft--
+      this.log.debug(
+        `response timeout after ${this.timing.responseTimeoutMs} ms, unit=${req.unitId} ` +
+          `${describeRequest(req.pdu)} - retrying (${req.retriesLeft} left)`
+      )
       this.emit('retry', req.unitId)
       // resend same request
       if (this.mode === 'rtu') this.rtuDecoder.reset()
       this.send(req)
       return
     }
+    this.log.debug(
+      `response timeout after ${this.timing.responseTimeoutMs} ms, unit=${req.unitId} ` +
+        `${describeRequest(req.pdu)} - no retries left`
+    )
     this.current = null
     if (this.mode === 'rtu') this.rtuDecoder.reset()
     req.reject(new Error('response timeout'))

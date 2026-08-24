@@ -16,7 +16,7 @@ import {
   buildTlsSecureContextOptions,
   type TlsConfig,
 } from './transport-tls.js'
-import type { SerialOptions } from './transport-serial.js'
+import { loadSerialPort, type SerialOptions } from './transport-serial.js'
 
 class SocketLink extends EventEmitter implements ServerLink {
   constructor(private readonly socket: net.Socket) {
@@ -132,7 +132,7 @@ export class SerialServerListener extends EventEmitter implements ServerListener
   }
 
   async listen(): Promise<void> {
-    const { SerialPort } = await import('serialport')
+    const SerialPort = await loadSerialPort()
     await new Promise<void>((resolve, reject) => {
       const port = new SerialPort(
         {

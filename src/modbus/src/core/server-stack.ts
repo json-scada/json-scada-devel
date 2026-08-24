@@ -26,6 +26,14 @@ import {
 import { encodeMbap, MbapDecoder } from './framing-mbap.js'
 import { encodeRtu, RtuRequestDecoder } from './framing-rtu.js'
 import type { FramingMode } from './client-stack.js'
+import {
+  NoopLogger,
+  hex,
+  describeRequest,
+  describeResponse,
+  exceptionName,
+  type StackLogger,
+} from './logging.js'
 
 // One connected client link (a Duplex byte pipe).
 export interface ServerLink extends EventEmitter {
@@ -87,10 +95,17 @@ export class ServerStackLink extends EventEmitter {
     private readonly link: ServerLink,
     private readonly mode: FramingMode,
     private readonly handler: RequestHandler,
-    private readonly strictUnitId: boolean
+    private readonly strictUnitId: boolean,
+    private readonly log: StackLogger = NoopLogger
   ) {
     super()
-    link.on('data', (d: Buffer) => this.onData(d))
+    link.on('data', (d: Buffer) => {
+      if (this.log.debugEnabled)
+        this.log.debug(
+          `[${link.describe()}] link RX ${d.length} bytes: ${hex(d)}`
+        )
+      this.onData(d)
+    })
     link.on('close', () => this.emit('close'))
   }
 
@@ -98,24 +113,56 @@ export class ServerStackLink extends EventEmitter {
     if (this.mode === 'mbap') {
       const { frames, fatal } = this.mbapDecoder.push(chunk)
       if (fatal) {
+        this.log.error(
+          `[${this.link.describe()}] malformed MBAP header, closing client ` +
+            `(chunk: ${hex(chunk, 32)})`
+        )
         this.link.close()
         return
       }
       for (const f of frames) {
+        if (this.log.debugEnabled)
+          this.log.debug(
+            `[${this.link.describe()}] RX unit=${f.unitId} txn=${f.transactionId} ` +
+              `${describeRequest(f.pdu)} | PDU: ${hex(f.pdu)}`
+          )
         const resp = this.dispatch(f.unitId)
-        if (resp) this.link.write(encodeMbap(f.transactionId, f.unitId, resp(f.pdu)))
+        if (!resp) continue
+        const respPdu = resp(f.pdu)
+        const adu = encodeMbap(f.transactionId, f.unitId, respPdu)
+        if (this.log.debugEnabled)
+          this.log.debug(
+            `[${this.link.describe()}] TX unit=${f.unitId} txn=${f.transactionId} ` +
+              `${describeResponse(respPdu)} | ADU: ${hex(adu)}`
+          )
+        this.link.write(adu)
       }
     } else {
       const frames = this.rtuDecoder.push(chunk)
       for (const f of frames) {
+        if (this.log.debugEnabled)
+          this.log.debug(
+            `[${this.link.describe()}] RX unit=${f.unitId} ` +
+              `${describeRequest(f.pdu)} | PDU: ${hex(f.pdu)}`
+          )
         // Broadcast (unit 0): execute, do not respond.
         const resp = this.dispatch(f.unitId)
         if (!resp) continue
         if (f.unitId === 0) {
           resp(f.pdu) // execute side effects, discard response
+          this.log.debug(
+            `[${this.link.describe()}] broadcast executed, no response sent`
+          )
           continue
         }
-        this.link.write(encodeRtu(f.unitId, resp(f.pdu)))
+        const respPdu = resp(f.pdu)
+        const adu = encodeRtu(f.unitId, respPdu)
+        if (this.log.debugEnabled)
+          this.log.debug(
+            `[${this.link.describe()}] TX unit=${f.unitId} ` +
+              `${describeResponse(respPdu)} | ADU: ${hex(adu)}`
+          )
+        this.link.write(adu)
       }
     }
   }
@@ -124,10 +171,24 @@ export class ServerStackLink extends EventEmitter {
   // frame entirely (unit id not for us in strict mode).
   private dispatch(unitId: number): ((pdu: Buffer) => Buffer) | null {
     if (unitId !== 0 && this.strictUnitId && !this.handler.acceptsUnit(unitId)) {
+      this.log.info(
+        `[${this.link.describe()}] request ignored: unit id ${unitId} not served ` +
+          `(strictUnitId is enabled)`
+      )
       return null
     }
     const ctx: RequestContext = { unitId, remote: this.link.describe() }
     return (pdu: Buffer) => this.handlePdu(ctx, pdu)
+  }
+
+  // Report an exception answered to a master. These are request errors: the
+  // master asked for something this server could not serve.
+  private logException(ctx: RequestContext, fc: number, code: number, req: Buffer): void {
+    this.log.error(
+      `[${ctx.remote}] request error: unit=${ctx.unitId} ${describeRequest(req)} ` +
+        `-> exception ${exceptionName(code)}`
+    )
+    void fc
   }
 
   private handlePdu(ctx: RequestContext, pdu: Buffer): Buffer {
@@ -136,69 +197,98 @@ export class ServerStackLink extends EventEmitter {
       switch (fc) {
         case FC.READ_COILS: {
           const r = parseReadRequest(pdu)
-          if (r.quantity < 1 || r.quantity > MAX_READ_BITS)
+          if (r.quantity < 1 || r.quantity > MAX_READ_BITS) {
+            this.logException(ctx, fc, EXCEPTION.ILLEGAL_DATA_VALUE, pdu)
             return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_DATA_VALUE)
-          return this.toResponse(fc, this.handler.readCoils(ctx, r.startAddr, r.quantity))
+          }
+          return this.toResponse(fc, this.handler.readCoils(ctx, r.startAddr, r.quantity), ctx, pdu)
         }
         case FC.READ_DISCRETE_INPUTS: {
           const r = parseReadRequest(pdu)
-          if (r.quantity < 1 || r.quantity > MAX_READ_BITS)
+          if (r.quantity < 1 || r.quantity > MAX_READ_BITS) {
+            this.logException(ctx, fc, EXCEPTION.ILLEGAL_DATA_VALUE, pdu)
             return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_DATA_VALUE)
+          }
           return this.toResponse(
             fc,
-            this.handler.readDiscreteInputs(ctx, r.startAddr, r.quantity)
+            this.handler.readDiscreteInputs(ctx, r.startAddr, r.quantity),
+            ctx,
+            pdu
           )
         }
         case FC.READ_HOLDING_REGISTERS: {
           const r = parseReadRequest(pdu)
-          if (r.quantity < 1 || r.quantity > MAX_READ_REGS)
+          if (r.quantity < 1 || r.quantity > MAX_READ_REGS) {
+            this.logException(ctx, fc, EXCEPTION.ILLEGAL_DATA_VALUE, pdu)
             return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_DATA_VALUE)
-          return this.toResponse(fc, this.handler.readHolding(ctx, r.startAddr, r.quantity))
+          }
+          return this.toResponse(fc, this.handler.readHolding(ctx, r.startAddr, r.quantity), ctx, pdu)
         }
         case FC.READ_INPUT_REGISTERS: {
           const r = parseReadRequest(pdu)
-          if (r.quantity < 1 || r.quantity > MAX_READ_REGS)
+          if (r.quantity < 1 || r.quantity > MAX_READ_REGS) {
+            this.logException(ctx, fc, EXCEPTION.ILLEGAL_DATA_VALUE, pdu)
             return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_DATA_VALUE)
-          return this.toResponse(fc, this.handler.readInput(ctx, r.startAddr, r.quantity))
+          }
+          return this.toResponse(fc, this.handler.readInput(ctx, r.startAddr, r.quantity), ctx, pdu)
         }
         case FC.WRITE_SINGLE_COIL: {
           const r = parseWriteSingleRequest(pdu)
-          if (r.value !== 0x0000 && r.value !== 0xff00)
+          if (r.value !== 0x0000 && r.value !== 0xff00) {
+            this.logException(ctx, fc, EXCEPTION.ILLEGAL_DATA_VALUE, pdu)
             return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_DATA_VALUE)
-          return this.echoOrExc(pdu, this.handler.writeSingleCoil(ctx, r.addr, r.value === 0xff00))
+          }
+          return this.echoOrExc(pdu, this.handler.writeSingleCoil(ctx, r.addr, r.value === 0xff00), ctx, pdu)
         }
         case FC.WRITE_SINGLE_REGISTER: {
           const r = parseWriteSingleRequest(pdu)
-          return this.echoOrExc(pdu, this.handler.writeSingleRegister(ctx, r.addr, r.value))
+          return this.echoOrExc(pdu, this.handler.writeSingleRegister(ctx, r.addr, r.value), ctx, pdu)
         }
         case FC.WRITE_MULTIPLE_COILS: {
           const r = parseWriteMultipleCoilsRequest(pdu)
           return this.echoOrExc(
             buildWriteEchoResponse(pdu.subarray(0, 5)),
-            this.handler.writeMultipleCoils(ctx, r.startAddr, r.bits)
+            this.handler.writeMultipleCoils(ctx, r.startAddr, r.bits),
+            ctx,
+            pdu
           )
         }
         case FC.WRITE_MULTIPLE_REGISTERS: {
           const r = parseWriteMultipleRegistersRequest(pdu)
           return this.echoOrExc(
             buildWriteEchoResponse(pdu.subarray(0, 5)),
-            this.handler.writeMultipleRegisters(ctx, r.startAddr, r.registers)
+            this.handler.writeMultipleRegisters(ctx, r.startAddr, r.registers),
+            ctx,
+            pdu
           )
         }
         case FC.MASK_WRITE_REGISTER: {
           const r = parseMaskWriteRequest(pdu)
-          return this.echoOrExc(pdu, this.handler.maskWriteRegister(ctx, r.addr, r.andMask, r.orMask))
+          return this.echoOrExc(pdu, this.handler.maskWriteRegister(ctx, r.addr, r.andMask, r.orMask), ctx, pdu)
         }
         default:
+          this.logException(ctx, fc, EXCEPTION.ILLEGAL_FUNCTION, pdu)
           return buildExceptionResponse(fc, EXCEPTION.ILLEGAL_FUNCTION)
       }
-    } catch {
+    } catch (e) {
+      this.log.error(
+        `[${ctx.remote}] request error: unit=${ctx.unitId} ${describeRequest(pdu)} ` +
+          `-> internal failure: ${(e as Error).message}`
+      )
       return buildExceptionResponse(fc, EXCEPTION.SERVER_DEVICE_FAILURE)
     }
   }
 
-  private toResponse(fc: number, result: HandlerResult): Buffer {
-    if (result.kind === 'exception') return buildExceptionResponse(fc, result.code)
+  private toResponse(
+    fc: number,
+    result: HandlerResult,
+    ctx?: RequestContext,
+    req?: Buffer
+  ): Buffer {
+    if (result.kind === 'exception') {
+      if (ctx && req) this.logException(ctx, fc, result.code, req)
+      return buildExceptionResponse(fc, result.code)
+    }
     if (result.kind === 'bits')
       return buildReadBitsResponse(fc as 1 | 2, result.bits)
     if (result.kind === 'registers')
@@ -206,9 +296,15 @@ export class ServerStackLink extends EventEmitter {
     return buildExceptionResponse(fc, EXCEPTION.SERVER_DEVICE_FAILURE)
   }
 
-  private echoOrExc(echo: Buffer, result: HandlerResult): Buffer {
+  private echoOrExc(
+    echo: Buffer,
+    result: HandlerResult,
+    ctx?: RequestContext,
+    req?: Buffer
+  ): Buffer {
     if (result.kind === 'exception') {
       const fc = echo.readUInt8(0)
+      if (ctx && req) this.logException(ctx, fc, result.code, req)
       return buildExceptionResponse(fc, result.code)
     }
     return echo

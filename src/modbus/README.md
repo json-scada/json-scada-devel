@@ -89,6 +89,36 @@ Command-line args: `<instance number> <log level 0-3> <config file path>`.
 Environment overrides: `JS_MODBUS_*` (client), `JS_MODBUSSRV_*` (server) with suffixes
 `INSTANCE`, `LOGLEVEL`, `CONFIG_FILE`.
 
+## Logging
+
+The log level is the driver's 2nd command-line argument (or `JS_MODBUS_LOGLEVEL` /
+`JS_MODBUSSRV_LOGLEVEL`).
+
+| Level | What is logged |
+|---|---|
+| 0 | minimum |
+| 1 | connection state, command results, and **protocol/request errors** (server exceptions, refused writes, failed command inserts) |
+| 2 | + per-block read failures, client connect/disconnect, tag/point map summaries |
+| 3 | + full low-level protocol trace |
+
+At level 3 every frame is traced in both directions, with the decoded PDU and the raw
+ADU/PDU hex, plus poll-cycle timing, per-tag decoded values, retries, timeouts,
+unmatched responses, and framing desynchronization:
+
+```
+PLC_AREA_51: TX unit=1 txn=1 fc=3 READ_HOLDING_REGISTERS addr=0 qty=2 | ADU: 00 01 00 00 00 06 01 03 00 00 00 02
+PLC_AREA_51: RX unit=1 fc=3 READ_HOLDING_REGISTERS bytes=4 | PDU: 03 04 04 D2 00 00
+PLC_AREA_51:   PLC1_FLOW [hr:0 float32_cdab] = 12.34
+```
+
+Server request errors are reported at level 1, so they are visible without enabling
+tracing — each names the client, the decoded request, and the exception returned:
+
+```
+MODBUS_SRV_1: [192.168.0.50:49812] request error: unit=1 fc=3 READ_HOLDING_REGISTERS addr=100 qty=2 -> exception 0x02 ILLEGAL DATA ADDRESS
+MODBUS_SRV_1: write from 192.168.0.50:49812 to KAW2_CB1_CMD refused: commands are disabled for this connection
+```
+
 ## Architecture
 
 `src/core/` is a transport-agnostic Modbus engine with no MongoDB or JSON-SCADA imports

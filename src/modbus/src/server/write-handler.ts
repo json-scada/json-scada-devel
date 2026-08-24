@@ -113,7 +113,11 @@ export class WriteHandler {
       const raw = this.map.decodeWrittenValue(point, registers)
       return this.relay(point, raw, remote)
     } catch (e) {
-      Log.log(`${this.cfg.name}: decode write error: ${(e as Error).message}`)
+      Log.log(
+        `${this.cfg.name}: write from ${remote} to ${point.tag} failed to decode ` +
+          `as ${point.asdu.type}: ${(e as Error).message}`,
+        Log.levelNormal
+      )
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_DATA_VALUE }
     }
   }
@@ -124,8 +128,14 @@ export class WriteHandler {
     remote: string
   ): HandlerResult {
     if (!point) return this.unmapped()
-    if (!this.cfg.commandsEnabled)
+    if (!this.cfg.commandsEnabled) {
+      Log.log(
+        `${this.cfg.name}: write from ${remote} to ${point.tag} refused: ` +
+          `commands are disabled for this connection`,
+        Log.levelNormal
+      )
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_FUNCTION }
+    }
     if (!point.isCommand) {
       if (this.cfg.allowWritesToSupervised) {
         // Direct write into the supervised value (register bank use-case); the raw
@@ -138,6 +148,12 @@ export class WriteHandler {
         )
         return { kind: 'echo' }
       }
+      Log.log(
+        `${this.cfg.name}: write from ${remote} to ${point.tag} refused: ` +
+          `point is supervised, not a command ` +
+          `(set allowWritesToSupervised to permit direct writes)`,
+        Log.levelNormal
+      )
       return { kind: 'exception', code: EXCEPTION.ILLEGAL_FUNCTION }
     }
 
@@ -145,8 +161,17 @@ export class WriteHandler {
     const { value, valueString } = this.map.routeCommandValue(point, raw)
 
     // Fire-and-forget the insert; Modbus cannot wait for end-to-end confirmation.
+    Log.log(
+      `${this.cfg.name}: routing write from ${remote} as command ${point.tag} ` +
+        `type=${point.tagType} raw=${String(raw)} -> value=${value}`,
+      Log.levelDebug
+    )
     this.insertCommand(point, value, valueString, remote).catch((e) => {
-      Log.log(`${this.cfg.name}: command insert failed: ${(e as Error).message}`)
+      Log.log(
+        `${this.cfg.name}: command insert failed for ${point.tag}: ` +
+          `${(e as Error).message}`,
+        Log.levelNormal
+      )
     })
     return { kind: 'echo' }
   }

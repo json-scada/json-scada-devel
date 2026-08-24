@@ -65,6 +65,26 @@ export function mapHandshake(s: string | undefined): {
   }
 }
 
+// `serialport` is an optional dependency: it is a native module, and TCP/TLS-only
+// deployments neither need it nor should fail without it. Load it lazily and turn
+// a missing install into an actionable message instead of a raw resolution error.
+export async function loadSerialPort(): Promise<
+  typeof import('serialport').SerialPort
+> {
+  try {
+    const mod = await import('serialport')
+    return mod.SerialPort
+  } catch (e) {
+    throw new Error(
+      'Serial support requires the optional "serialport" package, which is not ' +
+        'installed (' +
+        (e as Error).message +
+        '). Run "npm install serialport" in the driver folder, or use a ' +
+        'TCP/TLS connection mode.'
+    )
+  }
+}
+
 // Serial RTU transport. The serialport module is imported lazily so that
 // TCP/TLS-only deployments never load the native binding.
 export class SerialTransport extends EventEmitter implements ClientTransport {
@@ -84,7 +104,7 @@ export class SerialTransport extends EventEmitter implements ClientTransport {
   }
 
   async connect(): Promise<void> {
-    const { SerialPort } = await import('serialport')
+    const SerialPort = await loadSerialPort()
     return new Promise<void>((resolve, reject) => {
       const port = new SerialPort(
         {

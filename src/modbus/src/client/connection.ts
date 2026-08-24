@@ -9,6 +9,7 @@
 
 import type { Collection } from 'mongodb'
 import Log from '../common/simple-logger.js'
+import { makeStackLogger } from '../common/stack-logger.js'
 import {
   ClientStack,
   rtuIdleGapMs,
@@ -255,7 +256,14 @@ export class ModbusConnection {
         interRequestDelayMs: this.cfg.interRequestDelayMs,
         interFrameDelayMs: this.cfg.interFrameDelayMs,
       },
-      idleGap
+      idleGap,
+      makeStackLogger(this.cfg.name)
+    )
+    Log.log(
+      `${this.cfg.name}: opening ${transport.describe()} framing=${mode} ` +
+        `timeout=${this.cfg.timeoutMs}ms retries=${this.cfg.maxRetries} ` +
+        `idleGap=${idleGap}ms`,
+      Log.levelDebug
     )
     this.stack = stack
     stack.on('retry', () => {
@@ -319,6 +327,10 @@ export class ModbusConnection {
     }
     this.polling = true
     const start = Date.now()
+    Log.log(
+      `${this.cfg.name}: poll cycle start (${this.blocks.length} blocks)`,
+      Log.levelDebug
+    )
     const isGi =
       this.lastGi === 0 ||
       Date.now() - this.lastGi >= this.cfg.giIntervalS * 1000
@@ -336,6 +348,11 @@ export class ModbusConnection {
         if (!this.stack || !this.stack.connected) break
         await this.readBlock(block, updater, isGi)
       }
+      Log.log(
+        `${this.cfg.name}: poll cycle done in ${Date.now() - start} ms, ` +
+          `${updater.pending} tag update(s)${isGi ? ' [integrity]' : ''}`,
+        Log.levelDebug
+      )
       await updater.flush()
     } catch (e) {
       Log.log(`${this.cfg.name}: poll error: ${(e as Error).message}`, Log.levelDetailed)
@@ -368,6 +385,12 @@ export class ModbusConnection {
       }
       const changed =
         cache.lastRaw === null || !raw.equals(cache.lastRaw) || isGi
+      if (Log.levelCurrent >= Log.levelDebug)
+        Log.log(
+          `${this.cfg.name}: block unit=${block.unitId} ${block.area}:${block.startAddr} ` +
+            `x${block.count} -> ${raw.length} bytes${changed ? '' : ' (unchanged, skipped)'}`,
+          Log.levelDebug
+        )
       cache.invalidPublished = false
       if (changed) {
         this.decodeAndQueue(block, raw, updater, isGi)
@@ -379,6 +402,11 @@ export class ModbusConnection {
       else if (msg.includes('timeout')) this.stats.timeouts++
       else this.stats.errors++
       this.stats.lastError = msg
+      Log.log(
+        `${this.cfg.name}: read failed unit=${block.unitId} ` +
+          `${block.area}:${block.startAddr} x${block.count} - ${msg}`,
+        Log.levelDetailed
+      )
       if (!cache.invalidPublished) {
         updater.queueInvalid(block.slices.map((s) => s.binding.id))
         cache.invalidPublished = true
@@ -429,6 +457,14 @@ export class ModbusConnection {
             value = dec.value
           }
         }
+        if (Log.levelCurrent >= Log.levelDebug)
+          Log.log(
+            `${this.cfg.name}:   ${b.tag} [${b.area}:${b.offset}` +
+              `${b.bit !== null ? '.b' + b.bit : ''} ${this.asduLabel(b)}] = ` +
+              `${typeof value === 'string' ? JSON.stringify(value) : String(value)}` +
+              `${invalid ? ' (invalid)' : ''}`,
+            Log.levelDebug
+          )
         updater.queue({
           id: b.id,
           value,

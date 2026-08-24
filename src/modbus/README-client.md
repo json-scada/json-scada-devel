@@ -36,7 +36,7 @@ db.protocolConnections.insertOne({
 
   byteOrder16: 'AB', byteOrder32: 'ABCD', byteOrder64: 'ABCDEFGH', byteOrderStr: 'AB',
   stringEncoding: 'latin1',            // latin1 | utf8 | ascii
-  useModiconAddresses: false,
+  useModiconAddresses: false,          // enables plain-numeric 1-based refs.
   useMaskWrite: true,                  // FC22 for .b<n> writes; false = read-modify-write
 
   // TLS (connectionMode TLS Active / RTU over TLS)

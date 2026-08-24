@@ -10,6 +10,7 @@
 
 import type { Collection } from 'mongodb'
 import Log from '../common/simple-logger.js'
+import { makeStackLogger } from '../common/stack-logger.js'
 import {
   ServerStackLink,
   type RequestHandler,
@@ -148,16 +149,26 @@ export class ModbusServer implements RequestHandler {
   private onClient(link: ServerLink, framing: FramingMode): void {
     this.clientCount++
     this.stats.clients = this.clientCount
-    Log.log(`${this.cfg.name}: client connected ${link.describe()}`, Log.levelDetailed)
+    Log.log(
+      `${this.cfg.name}: client connected ${link.describe()} ` +
+        `(${this.clientCount} of max ${this.cfg.maxClientConnections})`,
+      Log.levelDetailed
+    )
     const stackLink = new ServerStackLink(
       link,
       framing,
       this,
-      this.cfg.strictUnitId
+      this.cfg.strictUnitId,
+      makeStackLogger(this.cfg.name)
     )
     stackLink.on('close', () => {
       this.clientCount = Math.max(0, this.clientCount - 1)
       this.stats.clients = this.clientCount
+      Log.log(
+        `${this.cfg.name}: client disconnected ${link.describe()} ` +
+          `(${this.clientCount} remaining)`,
+        Log.levelDetailed
+      )
     })
   }
 

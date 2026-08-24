@@ -9,6 +9,7 @@
 
 import type { ChangeStream, Collection } from 'mongodb'
 import Log from '../common/simple-logger.js'
+import { describeRequest } from '../core/logging.js'
 import type { ClientStack } from '../core/client-stack.js'
 import {
   buildWriteSingleCoil,
@@ -83,7 +84,21 @@ export class CommandHandler {
   }
 
   private async handleCommand(doc: Record<string, unknown>): Promise<void> {
-    if (!this.cfg.commandsEnabled) return
+    Log.log(
+      `${this.cfg.name}: command received tag=${String(doc.tag ?? '')} ` +
+        `addr=${String(doc.protocolSourceObjectAddress ?? '')} ` +
+        `asdu=${String(doc.protocolSourceASDU ?? '')} ` +
+        `unit=${String(doc.protocolSourceCommonAddress ?? '')} ` +
+        `value=${String(doc.value ?? '')}`,
+      Log.levelDebug
+    )
+    if (!this.cfg.commandsEnabled) {
+      Log.log(
+        `${this.cfg.name}: command ignored, commands are disabled for this connection`,
+        Log.levelDetailed
+      )
+      return
+    }
     // Ignore stale commands (older than 10s) to avoid replaying on restart.
     const ts = doc.timeTag instanceof Date ? doc.timeTag.getTime() : Date.now()
     if (Date.now() - ts > 10000) {
@@ -203,6 +218,10 @@ export class CommandHandler {
     pdu: Buffer,
     doc: Record<string, unknown>
   ): Promise<void> {
+    Log.log(
+      `${this.cfg.name}: dispatching command ${describeRequest(pdu)} unit=${unitId}`,
+      Log.levelDebug
+    )
     try {
       const resp = await stack.request(unitId, pdu, true) // priority
       parseWriteResponse(resp)

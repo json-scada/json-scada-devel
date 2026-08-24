@@ -33,7 +33,7 @@ db.protocolConnections.insertOne({
 
   byteOrder16: 'AB', byteOrder32: 'ABCD', byteOrder64: 'ABCDEFGH', byteOrderStr: 'AB',
   stringEncoding: 'latin1',
-  useModiconAddresses: false,
+  useModiconAddresses: false,          // enables plain-numeric 1-based refs.
   invalidValuePolicy: 'last',          // last | zero  (Modbus has no quality bits)
   allowWritesToSupervised: false,      // true = write into supervised value directly
 

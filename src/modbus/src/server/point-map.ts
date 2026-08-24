@@ -168,6 +168,34 @@ export class PointMap {
     Log.log(
       `${this.cfg.name}: mapped ${this.points.length} points across ${this.units.size} unit(s)`
     )
+    if (Log.levelCurrent >= Log.levelDebug) {
+      for (const pt of this.points) {
+        const end = pt.offset + pt.span - 1
+        Log.log(
+          `${this.cfg.name}:   unit=${pt.unitId} ${pt.area}:${pt.offset}` +
+            (pt.span > 1 ? `-${end}` : '') +
+            (pt.bit !== null ? `.b${pt.bit}` : '') +
+            ` ${pt.asdu.type}${pt.asdu.byteOrder ? '_' + pt.asdu.byteOrder.toLowerCase() : ''}` +
+            ` ${pt.isCommand ? 'command' : 'supervised'} tag=${pt.tag}`,
+          Log.levelDebug
+        )
+      }
+      // Reads that fall outside these spans are answered with exception 02
+      // unless serveUnmappedAsZero is enabled.
+      for (const [unitId, b] of this.units) {
+        const summarize = (m: Map<number, unknown>) => {
+          if (m.size === 0) return 'none'
+          const ks = [...m.keys()].sort((x, y) => x - y)
+          return `${m.size} addr, range ${ks[0]}..${ks[ks.length - 1]}`
+        }
+        Log.log(
+          `${this.cfg.name}:   unit=${unitId} coverage hr=[${summarize(b.hr)}] ` +
+            `ir=[${summarize(b.ir)}] co=[${summarize(b.co)}] di=[${summarize(b.di)}] ` +
+            `serveUnmappedAsZero=${this.cfg.serveUnmappedAsZero}`,
+          Log.levelDebug
+        )
+      }
+    }
   }
 
   private registerPoint(point: ServerPoint): void {
