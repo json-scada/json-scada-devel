@@ -21,6 +21,7 @@ const { setInterval } = require('timers')
 const { Double } = require('mongodb')
 const Log = require('./simple-logger')
 const AppDefs = require('./app-defs')
+const { statsDocument } = require('./metrics')
 
 let ProcessActive = false // redundancy state
 let redundancyIntervalHandle = null // timer handle
@@ -146,7 +147,8 @@ async function ProcessRedundancy(clientMongo, db, configObj) {
               activeNodeName: configObj.nodeName,
               activeNodeKeepAliveTimeTag: new Date(),
               softwareVersion: AppDefs.VERSION,
-              stats: {},
+              // latency instrumentation, same shape as the Go implementation
+              stats: statsDocument(),
             },
           }
         )

@@ -23,6 +23,12 @@ const AppDefs = require('./app-defs')
 const Log = require('./simple-logger')
 const LoadConfig = require('./load-config')
 const Redundancy = require('./redundancy')
+const {
+  M: Metrics,
+  Stage,
+  Counter,
+  startMetricsReporter,
+} = require('./metrics')
 const sqlFilesPath = '../../sql/'
 const fs = require('fs')
 const { MongoClient, Double } = require('mongodb')
@@ -71,6 +77,15 @@ const beepPointKey = -1
 const cntUpdatesPointKey = -2
 const invalidDetectCycle = 43000
 
+// Latency instrumentation: symbol keys so the timestamps travel with the
+// queued update without ever reaching MongoDB (the BSON serializer only
+// walks string keys).
+const ENQUEUED_AT = Symbol('enqueuedAt')
+const SOURCE_TIME = Symbol('sourceTime')
+
+Metrics.setConfig(jsConfig)
+Metrics.setActiveProvider(Redundancy.ProcessStateIsActive)
+
 Log.log('Connecting to MongoDB server...')
 
 const pipeline = [
@@ -101,6 +116,17 @@ const pipeline = [
   let mongoRtDataQueue = new Queue() // queue of realtime values to insert on MongoDB
   let digitalUpdatesCount = 0
   let clientMongo = null
+
+  // publish the queue depths as metrics gauges, so back pressure is visible
+  // when comparing implementations
+  Metrics.setGaugeProvider(() => ({
+    queue_changes: 0, // Node.js processes each change inline, no dispatch queue
+    queue_rtdata: mongoRtDataQueue.size(),
+    queue_hist: sqlHistQueue.size(),
+    queue_sqlrt: sqlRtDataQueue.size(),
+    queue_soe: 0, // SOE entries are written one by one, not queued
+  }))
+  startMetricsReporter(jsConfig)
 
   // mark as frozen unchanged analog values greater than 1 after timeout
   setInterval(async function () {
@@ -138,6 +164,15 @@ const pipeline = [
     }
   }, 17317)
 
+  // queue a realtimeData update, tagging it with the timestamps the
+  // latency instrumentation needs (symbol keys never reach MongoDB)
+  function queueRtUpdate(upd, sourceTimeMs) {
+    upd[ENQUEUED_AT] = Date.now()
+    if (typeof sourceTimeMs === 'number') upd[SOURCE_TIME] = sourceTimeMs
+    mongoRtDataQueue.enqueue(upd)
+    Metrics.inc(Counter.UpdatesQueued)
+  }
+
   // process updates to mongo/realtimeData
   async function processRtDataMongoUpdates() {
     if (
@@ -151,9 +186,14 @@ const pipeline = [
     }
     let cnt = 0
     let updArr = []
+    const flushStart = Date.now()
+    const sourceTimes = []
     while (!mongoRtDataQueue.isEmpty()) {
       const upd = mongoRtDataQueue.peek()
       mongoRtDataQueue.dequeue()
+      if (upd[ENQUEUED_AT] !== undefined)
+        Metrics.stage(Stage.WriteLinger).observeMs(flushStart - upd[ENQUEUED_AT])
+      if (upd[SOURCE_TIME] !== undefined) sourceTimes.push(upd[SOURCE_TIME])
       const _id = upd._id
       delete upd._id // remove _id for update
       let addToSet = null
@@ -178,6 +218,7 @@ const pipeline = [
         cnt++
       }
     }
+    const writeStart = process.hrtime.bigint()
     const res = await collection
       .bulkWrite(updArr, {
         ordered: false,
@@ -186,8 +227,15 @@ const pipeline = [
         },
       })
       .catch(function (err) {
+        Metrics.inc(Counter.Errors)
         Log.log('Error on Mongodb query!', err)
       })
+    Metrics.stage(Stage.BulkWrite).observeSince(writeStart)
+    const writeDone = Date.now()
+    for (const st of sourceTimes)
+      Metrics.stage(Stage.EndToEnd).observeMs(writeDone - st)
+    Metrics.inc(Counter.MongoBulkWrites)
+    Metrics.inc(Counter.MongoDocsWritten, cnt)
     if (cnt) Log.log('Mongo Updates ' + cnt)
     setTimeout(processRtDataMongoUpdates, 150)
   }
@@ -200,6 +248,8 @@ const pipeline = [
       return
     }
 
+    const histFlushStart = process.hrtime.bigint()
+    let histFlushDidWork = false
     try {
       let doInsertData = false
       let sqlTransaction =
@@ -219,9 +269,12 @@ const pipeline = [
       if (cntH) Log.log('PGSQL/Mongo Hist updates ' + cntH)
 
       if (doInsertData) {
+        histFlushDidWork = true
+        Metrics.inc(Counter.HistDocsWritten, insertArr.length)
         histCollection
           .insertMany(insertArr, { ordered: false, writeConcern: { w: 0 } })
           .catch(function (err) {
+            Metrics.inc(Counter.Errors)
             Log.log('Error on Mongodb query!', err)
           })
         sqlTransaction = sqlTransaction.substring(0, sqlTransaction.length - 1) // remove last comma
@@ -240,7 +293,10 @@ const pipeline = [
             '.sql',
           sqlTransaction,
           (err) => {
-            if (err) Log.log('Error writing SQL file!')
+            if (err) {
+              Metrics.inc(Counter.Errors)
+              Log.log('Error writing SQL file!')
+            } else Metrics.inc(Counter.SqlFilesWritten)
           }
         )
       }
@@ -275,6 +331,7 @@ const pipeline = [
       if (cntR) Log.log('PGSQL RT updates ' + cntR)
 
       if (doInsertData) {
+        histFlushDidWork = true
         fs.writeFile(
           sqlFilesPath +
             'pg_rtdata_' +
@@ -284,13 +341,19 @@ const pipeline = [
             '.sql',
           sqlTransaction,
           (err) => {
-            if (err) Log.log('Error writing SQL file!')
+            if (err) {
+              Metrics.inc(Counter.Errors)
+              Log.log('Error writing SQL file!')
+            } else Metrics.inc(Counter.SqlFilesWritten)
           }
         )
       }
     } catch (e) {
+      Metrics.inc(Counter.Errors)
       Log.log('Error in processSqlAndMongoHistUpdates: ' + e)
     }
+    if (histFlushDidWork)
+      Metrics.stage(Stage.HistWrite).observeSince(histFlushStart)
     setTimeout(processSqlAndMongoHistUpdates, 333)
   }
   processSqlAndMongoHistUpdates()
@@ -457,6 +520,7 @@ const pipeline = [
                           }
                         )
                         .catch(function (err) {
+                          Metrics.inc(Counter.Errors)
                           Log.log('Error on Mongodb query!', err)
                         })
                     }
@@ -466,6 +530,7 @@ const pipeline = [
 
           try {
             changeStream.on('error', (change) => {
+              Metrics.inc(Counter.ChangeStreamRetries)
               if (resumeToken !== null && resumeToken === prevResumeToken) {
                 // if resumeToken is the same, it means the error is not recoverable, so cancel the resumeToken
                 prevResumeToken = null
@@ -477,6 +542,7 @@ const pipeline = [
               Log.log('Error on ChangeStream!')
             })
             changeStream.on('close', (change) => {
+              Metrics.inc(Counter.ChangeStreamRetries)
               if (resumeToken !== null && resumeToken === prevResumeToken) {
                 // if resumeToken is the same, it means the error is not recoverable, so cancel the resumeToken
                 prevResumeToken = null
@@ -494,6 +560,11 @@ const pipeline = [
 
             // start listen to changes
             changeStream.on('change', (change) => {
+              Metrics.inc(Counter.ChangesReceived)
+              // Node.js has no dispatch queue: the change stream callback runs
+              // straight on the event loop, so this stage is always zero here.
+              Metrics.stage(Stage.QueueWait).observe(0)
+              const procStart = process.hrtime.bigint()
               try {
                 resumeToken = changeStream.resumeToken
                 if (change.operationType === 'delete') return
@@ -527,6 +598,7 @@ const pipeline = [
                       fullDocument.value
                   )
 
+                  Metrics.inc(Counter.Inserts)
                   sqlRtDataQueue.enqueue(
                     "'" +
                       fullDocument.tag.replaceAll("'", "''") +
@@ -544,9 +616,11 @@ const pipeline = [
                   return
                 }
 
-                if (!Redundancy.ProcessStateIsActive())
+                if (!Redundancy.ProcessStateIsActive()) {
                   // when inactive, ignore changes
+                  Metrics.inc(Counter.IgnoredInactive)
                   return
+                }
 
                 if (
                   !(
@@ -559,8 +633,9 @@ const pipeline = [
                 const sourceDataUpdate =
                   change.updateDescription.updatedFields.sourceDataUpdate
 
-                let delay =
-                  new Date().getTime() - sourceDataUpdate.timeTag.getTime()
+                const sduTimeMs = sourceDataUpdate.timeTag.getTime()
+                let delay = new Date().getTime() - sduTimeMs
+                Metrics.stage(Stage.SourceToRecv).observeMs(delay)
                 latencyAccTotal += delay
                 latencyTotalCnt++
                 latencyAccMinute += delay
@@ -758,6 +833,7 @@ const pipeline = [
                       if (fullDocument?.alarmRange != alarmRange) {
                         if (alarmRange != 0) alarmed = true
                         const eventDate = new Date()
+                        const soeStart = process.hrtime.bigint()
                         const eventText =
                           parseFloat(value.toFixed(3)) +
                           ' ' +
@@ -791,7 +867,12 @@ const pipeline = [
                               },
                             }
                           )
+                          .then(function () {
+                            Metrics.stage(Stage.SoeWrite).observeSince(soeStart)
+                            Metrics.inc(Counter.SoeInserted)
+                          })
                           .catch(function (err) {
+                            Metrics.inc(Counter.Errors)
                             Log.log('Error on Mongodb query!', err)
                           })
                       }
@@ -805,6 +886,7 @@ const pipeline = [
                         value !== fullDocument?.value) ||
                       isSOE
                     ) {
+                      const soeStart = process.hrtime.bigint()
                       const eventText =
                         parseFloat(value.toFixed(3)) +
                         ' ' +
@@ -840,7 +922,12 @@ const pipeline = [
                             },
                           }
                         )
+                        .then(function () {
+                          Metrics.stage(Stage.SoeWrite).observeSince(soeStart)
+                          Metrics.inc(Counter.SoeInserted)
+                        })
                         .catch(function (err) {
+                          Metrics.inc(Counter.Errors)
                           Log.log('Error on Mongodb query!', err)
                         })
                     }
@@ -890,7 +977,7 @@ const pipeline = [
                       Log.log('NEW BEEP, tag: ' + fullDocument.tag)
                       if (fullDocument.priority === 0)
                         // signal an important beep (for alarm of priority 0)
-                        mongoRtDataQueue.enqueue({
+                        queueRtUpdate({
                           _id: beepPointKey,
                           beepType: new Double(2), // this is an important beep
                           value: new Double(1),
@@ -899,11 +986,11 @@ const pipeline = [
                           $addToSet: {
                             beepGroup1List: fullDocument.group1,
                           },
-                        })
+                        }, sduTimeMs)
                       else if (
                         fullDocument.priority <= LowestPriorityThatBeeps
                       )
-                        mongoRtDataQueue.enqueue({
+                        queueRtUpdate({
                           _id: beepPointKey,
                           value: new Double(1),
                           valueString: 'Beep Active',
@@ -911,16 +998,16 @@ const pipeline = [
                           $addToSet: {
                             beepGroup1List: fullDocument.group1,
                           },
-                        })
+                        }, sduTimeMs)
                     }
                     if (fullDocument.type === 'digital') {
                       digitalUpdatesCount++
-                      mongoRtDataQueue.enqueue({
+                      queueRtUpdate({
                         _id: cntUpdatesPointKey,
                         value: new Double(digitalUpdatesCount),
                         valueString: '' + digitalUpdatesCount + ' Updates',
                         timeTag: dt,
-                      })
+                      }, sduTimeMs)
                     }
                   }
 
@@ -1000,7 +1087,7 @@ const pipeline = [
                       !sourceDataUpdate?.isHistorical
                     )
                   ) {
-                    mongoRtDataQueue.enqueue(update)
+                    queueRtUpdate(update, sduTimeMs)
 
                     Log.log(
                       'UPD ' +
@@ -1052,6 +1139,7 @@ const pipeline = [
                       valueString === ''
                         ? ''
                         : valueString.replaceAll("'", "''")
+                    Metrics.inc(Counter.HistQueued)
                     sqlHistQueue.enqueue({
                       sql:
                         "'" +
@@ -1125,7 +1213,8 @@ const pipeline = [
                     JSON.stringify(fullDocument).replaceAll("'", "''") +
                     "'"
                   sqlRtDataQueue.enqueue(queueStr)
-                } else
+                } else {
+                  Metrics.inc(Counter.NotChanged)
                   Log.log(
                     'Not changed ' +
                       fullDocument.tag +
@@ -1135,6 +1224,7 @@ const pipeline = [
                       'ms',
                     Log.levelDetailed
                   )
+                }
 
                 // prepare update to soeData collection, do not put into SOE when alarm disabled or update is not for historical record
                 if (
@@ -1144,6 +1234,7 @@ const pipeline = [
                   !sourceDataUpdate?.isNotForHistorical
                 )
                   if (!(value === 0 && fullDocument.isEvent)) {
+                    const soeStart = process.hrtime.bigint()
                     let eventText = fullDocument.eventTextFalse
                     if (value !== 0) {
                       eventText = fullDocument.eventTextTrue
@@ -1170,7 +1261,12 @@ const pipeline = [
                           },
                         }
                       )
+                      .then(function () {
+                        Metrics.stage(Stage.SoeWrite).observeSince(soeStart)
+                        Metrics.inc(Counter.SoeInserted)
+                      })
                       .catch(function (err) {
+                        Metrics.inc(Counter.Errors)
                         Log.log('Error on Mongodb query!', err)
                       })
                     Log.log(
@@ -1186,7 +1282,11 @@ const pipeline = [
                     )
                   }
               } catch (e) {
+                Metrics.inc(Counter.Errors)
                 Log.log(e)
+              } finally {
+                Metrics.stage(Stage.Processing).observeSince(procStart)
+                Metrics.inc(Counter.ChangesProcessed)
               }
             })
           } catch (e) {
