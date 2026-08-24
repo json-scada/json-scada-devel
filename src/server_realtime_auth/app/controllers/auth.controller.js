@@ -242,6 +242,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'ICCP_SERVER',
       'ONVIF',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (
@@ -276,6 +277,9 @@ exports.updateProtocolConnection = async (req, res) => {
           break
         case 'ONVIF':
           req.body.ipAddressLocalBind = '127.0.0.1:9001'
+          break
+        case 'MODBUS_SERVER':
+          req.body.ipAddressLocalBind = '0.0.0.0:502'
       }
     }
   }
@@ -295,6 +299,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'ICCP',
       'ICCP_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('ipAddresses' in req.body)) {
@@ -319,6 +325,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'IEC60870-5-104',
       'IEC60870-5-101_SERVER',
       'IEC60870-5-101',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('autoCreateTags' in req.body)) {
@@ -344,6 +351,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'IEC60870-5-104',
       'IEC60870-5-101_SERVER',
       'IEC60870-5-101',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('topics' in req.body)) {
@@ -622,6 +630,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-DA',
       'ICCP',
       'ONVIF',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('giInterval' in req.body)) {
@@ -675,6 +684,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'OPC-UA',
       'OPC-DA',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('localCertFilePath' in req.body)) {
@@ -691,6 +702,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3',
       'DNP3_SERVER',
       'OPC-DA',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('peerCertFilePath' in req.body)) {
@@ -716,9 +729,12 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   if (
-    ['IEC60870-5-104', 'IEC60870-5-104_SERVER'].includes(
-      req?.body?.protocolDriver
-    )
+    [
+      'IEC60870-5-104',
+      'IEC60870-5-104_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
+    ].includes(req?.body?.protocolDriver)
   ) {
     if (!('allowOnlySpecificCertificates' in req.body)) {
       req.body.allowOnlySpecificCertificates = false
@@ -745,6 +761,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'IEC61850',
       'IEC61850_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('privateKeyFilePath' in req.body)) {
@@ -753,9 +771,13 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   if (
-    ['DNP3', 'DNP3_SERVER', 'MQTT-SPARKPLUG-B'].includes(
-      req?.body?.protocolDriver
-    )
+    [
+      'DNP3',
+      'DNP3_SERVER',
+      'MQTT-SPARKPLUG-B',
+      'MODBUS',
+      'MODBUS_SERVER',
+    ].includes(req?.body?.protocolDriver)
   ) {
     if (!('allowTLSv10' in req.body)) {
       req.body.allowTLSv10 = false
@@ -868,6 +890,144 @@ exports.updateProtocolConnection = async (req, res) => {
       req.body.sizeOfLinkAddress = 1.0
     } else {
       req.body.sizeOfLinkAddress = Math.floor(req.body.sizeOfLinkAddress)
+    }
+  }
+
+  // MODBUS, MODBUS_SERVER - shared data representation and link parameters
+  if (['MODBUS', 'MODBUS_SERVER'].includes(req?.body?.protocolDriver)) {
+    // Byte order for non-standard multi-register layouts. Accepts a named alias
+    // (BE|LE|SW|SB) or an explicit byte permutation (CDAB, BADC, GHEFCDAB, ...).
+    if (!('byteOrder16' in req.body)) {
+      req.body.byteOrder16 = 'AB'
+    }
+    if (!('byteOrder32' in req.body)) {
+      req.body.byteOrder32 = 'ABCD'
+    }
+    if (!('byteOrder64' in req.body)) {
+      req.body.byteOrder64 = 'ABCDEFGH'
+    }
+    if (!('byteOrderStr' in req.body)) {
+      req.body.byteOrderStr = 'AB'
+    }
+    if (!('stringEncoding' in req.body)) {
+      req.body.stringEncoding = 'latin1'
+    }
+    if (!('useModiconAddresses' in req.body)) {
+      req.body.useModiconAddresses = false
+    }
+    // RTU inter-frame idle gap, 0 = auto (3.5 char times at the configured baud)
+    if (!('interFrameDelayMs' in req.body)) {
+      req.body.interFrameDelayMs = 0.0
+    }
+    if (!('privateKeyPassphrase' in req.body)) {
+      req.body.privateKeyPassphrase = ''
+    }
+    if (!('chainValidation' in req.body)) {
+      req.body.chainValidation = true
+    }
+    // serial parameters (connectionMode 'Serial')
+    if (!('portName' in req.body)) {
+      req.body.portName = ''
+    }
+    if (!('baudRate' in req.body)) {
+      req.body.baudRate = 9600.0
+    } else {
+      req.body.baudRate = Math.floor(req.body.baudRate)
+    }
+    if (!('parity' in req.body)) {
+      req.body.parity = 'Even'
+    }
+    if (!('stopBits' in req.body)) {
+      req.body.stopBits = 'One'
+    }
+    if (!('handshake' in req.body)) {
+      req.body.handshake = 'None'
+    }
+  }
+
+  // MODBUS (client) specific
+  if (['MODBUS'].includes(req?.body?.protocolDriver)) {
+    if (!('connectionMode' in req.body)) {
+      req.body.connectionMode = 'TCP Active'
+    }
+    if (!('timeoutMs' in req.body)) {
+      req.body.timeoutMs = 1000.0
+    }
+    if (!('pollingInterval' in req.body)) {
+      req.body.pollingInterval = 1000.0
+    }
+    if (!('maxRetries' in req.body)) {
+      req.body.maxRetries = 2.0
+    } else {
+      req.body.maxRetries = Math.floor(req.body.maxRetries)
+    }
+    if (!('interRequestDelayMs' in req.body)) {
+      req.body.interRequestDelayMs = 0.0
+    }
+    // clamp request sizes to the protocol maximums
+    if (!('maxReadRegisters' in req.body)) {
+      req.body.maxReadRegisters = 125.0
+    } else {
+      req.body.maxReadRegisters = Math.min(
+        125,
+        Math.max(1, Math.floor(req.body.maxReadRegisters))
+      )
+    }
+    if (!('maxReadCoils' in req.body)) {
+      req.body.maxReadCoils = 2000.0
+    } else {
+      req.body.maxReadCoils = Math.min(
+        2000,
+        Math.max(1, Math.floor(req.body.maxReadCoils))
+      )
+    }
+    if (!('maxAddressGap' in req.body)) {
+      req.body.maxAddressGap = 8.0
+    } else {
+      req.body.maxAddressGap = Math.max(0, Math.floor(req.body.maxAddressGap))
+    }
+    // use FC22 Mask Write for single-bit writes, else read-modify-write
+    if (!('useMaskWrite' in req.body)) {
+      req.body.useMaskWrite = true
+    }
+  }
+
+  // MODBUS_SERVER specific
+  if (['MODBUS_SERVER'].includes(req?.body?.protocolDriver)) {
+    if (!('connectionMode' in req.body)) {
+      req.body.connectionMode = 'TCP Passive'
+    }
+    if (!('maxClientConnections' in req.body)) {
+      req.body.maxClientConnections = 8
+    } else {
+      req.body.maxClientConnections = Math.floor(req.body.maxClientConnections)
+    }
+    if (!('clientIdleTimeoutMs' in req.body)) {
+      req.body.clientIdleTimeoutMs = 60000.0
+    }
+    // unit ids (slave addresses) served by this connection
+    if (!('serverUnitIds' in req.body) || !Array.isArray(req.body.serverUnitIds)) {
+      req.body.serverUnitIds = [1.0]
+    } else {
+      req.body.serverUnitIds = req.body.serverUnitIds
+        .map((v) => Math.floor(Number(v)))
+        .filter((v) => Number.isFinite(v) && v >= 0 && v <= 255)
+      if (req.body.serverUnitIds.length === 0) {
+        req.body.serverUnitIds = [1.0]
+      }
+    }
+    if (!('strictUnitId' in req.body)) {
+      req.body.strictUnitId = false
+    }
+    if (!('serveUnmappedAsZero' in req.body)) {
+      req.body.serveUnmappedAsZero = false
+    }
+    // Modbus has no quality bits: how to serve a tag flagged invalid
+    if (!('invalidValuePolicy' in req.body)) {
+      req.body.invalidValuePolicy = 'last'
+    }
+    if (!('allowWritesToSupervised' in req.body)) {
+      req.body.allowWritesToSupervised = false
     }
   }
 

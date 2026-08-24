@@ -562,6 +562,83 @@ const typeDefs = `#graphql
     autoCreateTags: Boolean
     timeoutMs: Float
     stats: JSONValue
+
+    # ---- link / transport, shared by several drivers ----
+    # DNP3, DNP3_SERVER, MODBUS, MODBUS_SERVER
+    connectionMode: String
+    # IEC60870-5-104(_SERVER), DNP3, PLCTAG, I104M, IEC61850, PLC4X, OPC-UA, OPC-DA, ICCP, ONVIF, MODBUS
+    giInterval: Float
+    # OPC-UA, OPC-DA(_SERVER), ICCP(_SERVER), DNP3_SERVER
+    hoursShift: Float
+    # IEC60870-5-104(_SERVER), DNP3(_SERVER), PLCTAG, I104M
+    localLinkAddress: Float
+    remoteLinkAddress: Float
+    # IEC60870-5-101(_SERVER), DNP3(_SERVER), MODBUS, MODBUS_SERVER
+    portName: String
+    baudRate: Float
+    parity: String
+    stopBits: String
+    handshake: String
+    # IEC60870-5-104_SERVER, IEC61850_SERVER, MODBUS_SERVER
+    maxClientConnections: Float
+    # OPC-UA, OPC-DA, DNP3_SERVER
+    serverQueueSize: Float
+
+    # ---- DNP3, DNP3_SERVER ----
+    asyncOpenDelay: Float
+    enableUnsolicited: Boolean
+    # DNP3
+    timeSyncMode: Float
+    class0ScanInterval: Float
+    class1ScanInterval: Float
+    class2ScanInterval: Float
+    class3ScanInterval: Float
+    rangeScans: JSONValue
+
+    # ---- MODBUS, MODBUS_SERVER ----
+    # Byte order for non-standard multi-register layouts: a named alias
+    # (BE|LE|SW|SB) or an explicit byte permutation (CDAB, BADC, GHEFCDAB, ...).
+    byteOrder16: String
+    byteOrder32: String
+    byteOrder64: String
+    byteOrderStr: String
+    stringEncoding: String
+    useModiconAddresses: Boolean
+    # RTU inter-frame idle gap, 0 = auto (3.5 char times)
+    interFrameDelayMs: Float
+
+    # ---- MODBUS (client) ----
+    pollingInterval: Float
+    maxRetries: Float
+    interRequestDelayMs: Float
+    maxReadRegisters: Float
+    maxReadCoils: Float
+    maxAddressGap: Float
+    useMaskWrite: Boolean
+
+    # ---- MODBUS_SERVER ----
+    clientIdleTimeoutMs: Float
+    serverUnitIds: [Float]
+    strictUnitId: Boolean
+    serveUnmappedAsZero: Boolean
+    invalidValuePolicy: String
+    allowWritesToSupervised: Boolean
+
+    # ---- TLS policy and certificate paths ----
+    # Secret material (privateKeyPassphrase, password) is deliberately NOT
+    # exposed here: these queries are not admin-gated.
+    localCertFilePath: String
+    peerCertFilePath: String
+    peerCertFilesPaths: [String]
+    rootCertFilePath: String
+    privateKeyFilePath: String
+    chainValidation: Boolean
+    allowOnlySpecificCertificates: Boolean
+    allowTLSv10: Boolean
+    allowTLSv11: Boolean
+    allowTLSv12: Boolean
+    allowTLSv13: Boolean
+    cipherList: String
   }
 `
 
