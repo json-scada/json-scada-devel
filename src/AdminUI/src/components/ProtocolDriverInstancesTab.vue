@@ -478,6 +478,8 @@
     'DNP3',
     'DNP3_SERVER',
     'MQTT-SPARKPLUG-B',
+    'MODBUS',
+    'MODBUS_SERVER',
     'OPC-UA',
     'OPC-UA_SERVER',
     'OPC-DA',
