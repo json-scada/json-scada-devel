@@ -87,6 +87,13 @@ cp plc4x-client ../../bin/
 
 cd ../cs_data_processor
 npm install
+
+# Go implementation of cs_data_processor, a drop-in replacement for the
+# Node.js one (run only one of them per instance number)
+cd ../cs_data_processor-go
+go mod tidy
+go build -ldflags="-s -w" -o ../../bin/cs_data_processor-go
+
 cd ../cs_custom_processor
 npm install
 npm run build
