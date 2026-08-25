@@ -1836,6 +1836,117 @@ exports.changePassword = async (req, res) => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Platform maintenance scripts (project export/import and process restarts).
+//
+// These endpoints run scripts shipped with the installation. Everything about
+// the command line is decided here and never by the request: the program is
+// picked from the fixed table below and joined to a fixed directory, and no
+// shell is involved, so arguments are passed as separate argv entries instead
+// of being parsed as a command line. Requests can only choose *whether* one of
+// these fixed scripts runs, never *what* runs.
+// ---------------------------------------------------------------------------
+
+const IS_WINDOWS = process.platform === 'win32'
+
+// Installation root used by the maintenance scripts. Read once at startup from
+// the same JS_INSTALL_DIR override the process manager honours; it is server
+// configuration, never anything a request can influence. Note that the scripts
+// themselves still derive their own paths from ~/json-scada (c:\json-scada on
+// Windows), so an override that does not match the real install makes them fail
+// to be found rather than run against the wrong tree.
+const JS_ROOT_DIR =
+  process.env.JS_INSTALL_DIR && process.env.JS_INSTALL_DIR.trim() !== ''
+    ? path.resolve(process.env.JS_INSTALL_DIR.trim())
+    : IS_WINDOWS
+      ? 'c:\\json-scada'
+      : path.join(os.homedir(), 'json-scada')
+const PLATFORM_SCRIPTS_DIR = path.join(
+  JS_ROOT_DIR,
+  IS_WINDOWS ? 'platform-windows' : 'platform-linux'
+)
+const PROJECT_TMP_DIR = path.join(JS_ROOT_DIR, 'tmp')
+
+// The only scripts these endpoints are ever allowed to run.
+const PLATFORM_SCRIPTS = {
+  exportProject: IS_WINDOWS ? 'export_project.bat' : 'export_project.sh',
+  importProject: IS_WINDOWS ? 'import_project.bat' : 'import_project.sh',
+  restartProtocols: IS_WINDOWS
+    ? 'restart_protocols.bat'
+    : 'restart_protocols.sh',
+  restartProcesses: IS_WINDOWS
+    ? 'restart_services.bat'
+    : 'restart_processes.sh',
+}
+
+// Kill a script that never finishes instead of leaking child processes.
+const SCRIPT_TIMEOUT_MS = 5 * 60 * 1000
+
+// Scripts currently running, so that repeated requests cannot pile up an
+// unbounded number of restarts/imports on the machine.
+const scriptsInProgress = new Set()
+
+// Spawns one of the scripts of PLATFORM_SCRIPTS. `action` is a key of that
+// table written in this file - never a value taken from a request. `args` are
+// handed over as argv entries with shell:false; on Windows the .bat is run by
+// the command interpreter itself (cmd.exe /c <script> <args...>), which also
+// receives them as separate argv entries and not as a line to re-parse.
+// Returns the ChildProcess, or throws if the action is unknown, the script is
+// missing or the same script is still running.
+function spawnPlatformScript(action, args = []) {
+  if (!Object.prototype.hasOwnProperty.call(PLATFORM_SCRIPTS, action))
+    throw new Error('Unknown maintenance script: ' + action)
+  const scriptName = PLATFORM_SCRIPTS[action]
+  const scriptPath = path.join(PLATFORM_SCRIPTS_DIR, scriptName)
+
+  let stat = null
+  try {
+    stat = fs.statSync(scriptPath)
+  } catch (e) {
+    stat = null
+  }
+  if (stat === null || !stat.isFile())
+    throw new Error('Maintenance script not found: ' + scriptPath)
+
+  if (scriptsInProgress.has(action))
+    throw new Error(scriptName + ' is already running!')
+
+  const child = IS_WINDOWS
+    ? spawn(process.env.ComSpec || 'cmd.exe', ['/c', scriptPath, ...args], {
+        shell: false,
+        windowsHide: true,
+      })
+    : // absolute interpreter path: not subject to a hijacked PATH
+      spawn('/bin/sh', [scriptPath, ...args], { shell: false })
+
+  scriptsInProgress.add(action)
+  Log.log('Running ' + scriptPath)
+
+  child.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
+  child.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+  // Without an 'error' listener a failed spawn raises an unhandled 'error'
+  // event, which would take down the whole web server process.
+  child.on('error', (err) =>
+    Log.log(`${scriptName} could not be executed: ${err.message}`)
+  )
+
+  const timer = setTimeout(() => {
+    Log.log(`${scriptName} timed out after ${SCRIPT_TIMEOUT_MS}ms, killing it`)
+    try {
+      child.kill()
+    } catch (e) {
+      /* already gone */
+    }
+  }, SCRIPT_TIMEOUT_MS)
+
+  child.on('close', () => {
+    clearTimeout(timer)
+    scriptsInProgress.delete(action)
+  })
+
+  return child
+}
+
 // export project file: dump collections and some files to a zip file
 exports.exportProject = async (req, res) => {
   Log.log('Save project')
@@ -1857,36 +1968,16 @@ exports.exportProject = async (req, res) => {
       return
     }
 
-    let cmd = ''
-    let dir = ''
-    if (process.platform === 'win32') {
-      dir = 'c:\\json-scada\\tmp'
-      // A .bat file cannot be spawned on Windows without a shell; the strict
-      // file-name validation above guarantees the argument contains no shell
-      // metacharacters, so no injection is possible.
-      cmd = spawn(
-        'c:\\json-scada\\platform-windows\\export_project.bat',
-        [project.fileName],
-        { shell: true }
-      )
-    } else {
-      dir = path.join(os.homedir(), 'json-scada', 'tmp')
-      const script = path.join(
-        os.homedir(),
-        'json-scada',
-        'platform-linux',
-        'export_project.sh'
-      )
-      // No shell: the file name is passed as a separate argv entry to sh and
-      // is never interpreted by a shell.
-      cmd = spawn('sh', [script, project.fileName])
-    }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // The file name is passed as a separate argv entry and never reaches a
+    // shell, so it cannot extend the command line.
+    const cmd = spawnPlatformScript('exportProject', [project.fileName])
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
       // basename is a further guard even though the name is already validated.
-      const filePath = path.join(dir, path.basename(project.fileName))
+      const filePath = path.join(
+        PROJECT_TMP_DIR,
+        path.basename(project.fileName)
+      )
       if (!fs.existsSync(filePath) || code != 0) {
         Log.log('Project file not found! ' + filePath)
         res.status(200).send({ error: 'Project file not found! ' + filePath })
@@ -1897,7 +1988,7 @@ exports.exportProject = async (req, res) => {
     })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
@@ -1919,40 +2010,59 @@ exports.importProject = async (req, res) => {
       return
     }
 
-    let projectPath = ''
-    let importScript = ''
-    if (process.platform === 'win32') {
-      projectPath = 'c:\\json-scada\\tmp'
-      importScript = 'c:\\json-scada\\platform-windows\\import_project.bat'
-    } else {
-      // Use the resolved home directory: fs/AdmZip do not expand a literal '~'.
-      projectPath = path.join(os.homedir(), 'json-scada', 'tmp')
-      importScript = path.join(
-        os.homedir(),
-        'json-scada',
-        'platform-linux',
-        'import_project.sh'
-      )
+    // An upload that hit the express-fileupload size limit arrives truncated:
+    // do not try to unpack a partial archive.
+    const upload = req.files.projectFileData
+    if (upload.truncated) {
+      Log.log('Project file too large: ' + safeName)
+      res.status(413).send({ error: 'Project file too large!' })
+      return
     }
+    if (!upload.size) {
+      Log.log('Empty project file: ' + safeName)
+      res.status(400).send({ error: 'Empty project file!' })
+      return
+    }
+
+    // Fixed extraction directory, not influenced by the request.
+    const projectPath = PROJECT_TMP_DIR
     if (!fs.existsSync(projectPath))
-      fs.mkdirSync(projectPath, { recursive: true })
+      fs.mkdirSync(projectPath, { recursive: true, mode: 0o700 })
 
     const zipPath = path.join(projectPath, safeName)
-    await req.files.projectFileData.mv(zipPath)
+    await upload.mv(zipPath)
     const zip = new AdmZip(zipPath)
 
     // Zip-Slip guard: reject archives whose entries would be written outside
     // the extraction directory via path traversal, before extracting anything.
+    // The resolve/prefix test below is the check that matters; the explicit
+    // rejections in front of it also stop names that are harmless on the
+    // platform doing the extraction but traverse on the other one (a '\'
+    // separator is a path separator on Windows and an ordinary character on
+    // Linux, and adm-zip writes entry names verbatim).
     const resolvedBase = path.resolve(projectPath)
     for (const entry of zip.getEntries()) {
-      const resolvedTarget = path.resolve(projectPath, entry.entryName)
+      const entryName = entry.entryName
+      // directory entries legitimately end with '/', everything else must be a
+      // plain relative path of non-empty, non-traversing segments
+      const parts = entryName.replace(/\/+$/, '').split('/')
+      if (
+        entryName.includes('\\') ||
+        entryName.startsWith('/') ||
+        /^[a-zA-Z]:/.test(entryName) ||
+        parts.some(
+          (part) => part === '..' || part === '.' || part.trim() === ''
+        )
+      ) {
+        throw new Error('Invalid ZIP entry name: ' + entryName)
+      }
+      const resolvedTarget = path.resolve(projectPath, entryName)
       if (
         resolvedTarget !== resolvedBase &&
         !resolvedTarget.startsWith(resolvedBase + path.sep)
       ) {
         throw new Error(
-          'ZIP entry attempts to write outside target directory: ' +
-            entry.entryName
+          'ZIP entry attempts to write outside target directory: ' + entryName
         )
       }
     }
@@ -1960,13 +2070,8 @@ exports.importProject = async (req, res) => {
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
 
-    const cmd = spawn(
-      importScript,
-      // [project.fileName],
-      { shell: true }
-    )
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // Fixed script, no shell, no arguments taken from the request.
+    const cmd = spawnPlatformScript('importProject')
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
       registerUserAction(req, 'importProject')
@@ -1975,65 +2080,39 @@ exports.importProject = async (req, res) => {
     })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
 exports.restartProtocols = async (req, res) => {
   Log.log('restartProtocols')
   try {
-    let cmd = ''
-    if (process.platform === 'win32') {
-      cmd = spawn(
-        'cmd',
-        ['/c', 'c:\\json-scada\\platform-windows\\restart_protocols.bat'],
-        {
-          shell: true,
-        }
-      )
-    } else {
-      cmd = spawn('sh', ['~/json-scada/platform-linux/restart_protocols.sh'], {
-        shell: true,
-      })
-    }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // No arguments and no shell: the request decides only that the fixed
+    // restart_protocols script of this installation is started.
+    const cmd = spawnPlatformScript('restartProtocols')
     cmd.on('close', (code) => Log.log(`child process exited with code ${code}`))
 
     registerUserAction(req, 'restartProtocols')
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
 exports.restartProcesses = async (req, res) => {
   Log.log('restartProcesses')
   try {
-    let cmd = ''
-    if (process.platform === 'win32') {
-      cmd = spawn(
-        'cmd',
-        ['/c', 'c:\\json-scada\\platform-windows\\restart_services.bat'],
-        {
-          shell: true,
-        }
-      )
-    } else {
-      cmd = spawn('sh', ['~/json-scada/platform-linux/restart_processes.sh'], {
-        shell: true,
-      })
-    }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // No arguments and no shell: the request decides only that the fixed
+    // restart_processes/restart_services script of this install is started.
+    const cmd = spawnPlatformScript('restartProcesses')
     cmd.on('close', (code) => Log.log(`child process exited with code ${code}`))
 
     registerUserAction(req, 'restartProcesses')
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
