@@ -4,7 +4,13 @@ version: '3.8'
 
 # ACCESS VIA WEB BROWSER AT http://127.0.0.1:8080
 # Credentials for JSON-SCADA and Grafana: user=admin password=jsonscada
-# Must be online to connect to the IEC60870-5-104 live demo server at 207.180.242.96:2404. 
+# Must be online to connect to the IEC60870-5-104 live demo server at 207.180.242.96:2404.
+#
+# BEFORE THE FIRST RUN: create the .env file holding a unique random JWT secret,
+# otherwise compose stops with an error:
+#     ./generate-env.sh          (Linux/macOS)
+#     .\generate-env.ps1         (Windows PowerShell)
+# Published ports are bound to JS_BIND_ADDR (127.0.0.1 by default).
 
 services:
 
@@ -23,7 +29,7 @@ services:
       - MONGO_INITDB_DATABASE=json_scada
     # to export mongodb port on main host!
     ports:
-      - "27017:27017"
+      - "${JS_BIND_ADDR:-127.0.0.1}:27017:27017"
     # internal container port
     expose:
       - "27017"
@@ -42,7 +48,7 @@ services:
       #- POSTGRES_PASSWORD=passw0rd
     # to export postgresql port on main host!
     ports:
-      - 5432:5432
+      - "${JS_BIND_ADDR:-127.0.0.1}:5432:5432"
     # internal container port
     expose:
       - "5432"
@@ -65,7 +71,7 @@ services:
       - GF_AUTH_DISABLE_SIGNOUT_MENU=true
     # export grafana port to the host
     ports:
-      - 3000:3000
+      - "${JS_BIND_ADDR:-127.0.0.1}:3000:3000"
     expose:
       - "3000"
     links:
@@ -94,7 +100,7 @@ services:
       - jsdemo_mongorsn1
     # exports the iec 104 server port to the host
     ports:
-      - 2404:2404
+      - "${JS_BIND_ADDR:-127.0.0.1}:2404:2404"
     expose:
       - "2404"
     networks:
@@ -126,6 +132,11 @@ services:
     command:  sh -c "cd /json-scada/src/server_realtime_auth && sleep 10 && node index.js"
     restart: unless-stopped
     environment:
+      # Secret used to sign the JWT session tokens. It MUST be unique and private
+      # for every installation: whoever knows it can forge admin tokens and send
+      # commands to field devices. Generate it with ./generate-env.sh (or
+      # ./generate-env.ps1 on Windows), which writes it to the .env file.
+      - JS_JWT_SECRET=${JS_JWT_SECRET:?not set - run ./generate-env.sh (Linux/macOS) or ./generate-env.ps1 (Windows) in the demo-docker folder to create a .env file with a unique random secret}
       - JS_IP_BIND=0.0.0.0
       - JS_HTTP_PORT=8080
       - JS_GRAFANA_SERVER=http://jsdemo_grafana:3000
@@ -138,7 +149,7 @@ services:
       - jsdemo_mongorsn1
     # exports the HTTP port to the main host
     ports:
-      - 8080:8080
+      - "${JS_BIND_ADDR:-127.0.0.1}:8080:8080"
     expose:
       - "8080"
     networks:
@@ -172,7 +183,7 @@ services:
 #    container_name: jsdemo_metabase
 #    restart: unless-stopped
 #    ports:
-#      - 3001:3000
+#      - "${JS_BIND_ADDR:-127.0.0.1}:3001:3000"
 #    links:
 #      - jsdemo_mongorsn1
 #      - timescaledb

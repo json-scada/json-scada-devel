@@ -394,7 +394,7 @@ To each user can be attributed a set of roles. Each right in each user role are 
 - _**JS_HTTP_PORT**_ [Integer] - HTTP Port for server listening. **Default=8080**.
 - _**JS_GRAFANA_SERVER**_ [Integer] - HTTP URL to the Grafana server (for reverse proxy on /grafana). **Default="http://127.0.0.1:3000"**.
 - _**JS_CONFIG_FILE**_ [String] - JSON SCADA config file name. **Default="../../conf/json-scada.json"**.
-- _**JS_JWT_SECRET**_ [String] - Encryption key for the JWT token. **Default=value defined in ./app/config/auth.config.js**.
+- _**JS_JWT_SECRET**_ [String] - Signing key for the JWT session tokens. Must be unique per installation and kept private: whoever knows it can forge a valid admin token. **Default=value defined in ./app/config/auth.config.js, which is public (it is in the repository) and MUST be overridden in any real installation**. The docker demo generates one in demo-docker/.env (see demo-docker/generate-env.sh), the Windows services get one from platform-windows/create_services.bat and the supervisor setup from platform-ubuntu-2404/start_server_realtime_auth.sh.
 - _**JS_READ_FROM_SECONDARY**_ [String] - Use "TRUE" to change the preferred read to a secondary MongoDB server. By default all read operations are directed to the primary server.
 
 #### LDAP Authentication Configuration

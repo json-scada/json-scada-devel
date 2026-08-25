@@ -391,6 +391,10 @@ COPY ./platform-ubuntu-2404/plc4jclient.ini /etc/supervisor/conf.d/plc4jclient.i
 COPY ./platform-ubuntu-2404/process_pg_hist.ini /etc/supervisor/conf.d/process_pg_hist.ini
 COPY ./platform-ubuntu-2404/process_pg_rtdata.ini /etc/supervisor/conf.d/process_pg_rtdata.ini
 COPY ./platform-ubuntu-2404/server_realtime_auth.ini /etc/supervisor/conf.d/server_realtime_auth.ini
+
+# Launcher that gives server_realtime_auth a JWT signing secret unique to this
+# container instead of the public default from the repository (see the script).
+COPY ./platform-ubuntu-2404/start_server_realtime_auth.sh /app/json-scada/platform-ubuntu-2404/start_server_realtime_auth.sh
 COPY ./platform-ubuntu-2404/telegraf_listener.ini /etc/supervisor/conf.d/telegraf_listener.ini
 COPY ./platform-ubuntu-2404/telegraf.ini /etc/supervisor/conf.d/telegraf.ini
 COPY ./platform-ubuntu-2404/nginx.conf /etc/nginx/nginx.conf
@@ -415,7 +419,12 @@ COPY ./sql/ /app/json-scada/sql/
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
-    && chmod +x /app/json-scada/sql/*.sh 
+    && chmod +x /app/json-scada/sql/*.sh \
+    && chmod +x /app/json-scada/platform-ubuntu-2404/start_server_realtime_auth.sh
+
+# The JWT secret is generated at first start inside conf/, so the service user
+# must be able to write there.
+RUN chown -R jsonscada /app/json-scada/conf
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
