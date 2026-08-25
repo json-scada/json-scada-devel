@@ -466,8 +466,8 @@ SetRegView 64
   SetOutPath $INSTDIR\src\modbus
   File /a "..\src\modbus\*.json"
   File /a  /x *_plan.md "..\src\modbus\*.md"
-  ;SetOutPath $INSTDIR\src\modbus\node_modules
-  ;File /a /r "..\src\modbus\node_modules\*.*"
+  SetOutPath $INSTDIR\src\modbus\node_modules
+  File /a /r "..\src\modbus\node_modules\*.*"
   SetOutPath $INSTDIR\src\modbus\src
   File /a /r "..\src\modbus\src\*.*"
   SetOutPath $INSTDIR\src\modbus\dist

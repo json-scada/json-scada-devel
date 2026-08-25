@@ -38,14 +38,14 @@ If msbuild.exe is not on the PATH, find it and add it:
 
     winget install Kitware.CMake
 
-## Install NSIS 3.12 
+## Install NSISBI 3.12 
 
-    winget install NSIS.NSIS
+    https://sourceforge.net/projects/nsisbi/files/latest/download
 
 Install Access Control plugin for NSIS
-https://nsis.sourceforge.io/mediawiki/images/4/4a/AccessControl.zip
-Copy AccessControl.dll from Plugins\i386-ansi to NSIS\Plugins\x86-ansi
-Copy AccessControl.dll from Plugins\i386-unicode to NSIS\Plugins\x86-unicode
+    https://nsis.sourceforge.io/mediawiki/images/4/4a/AccessControl.zip
+    Copy AccessControl.dll from Plugins\i386-ansi to NSIS\Plugins\x86-ansi
+    Copy AccessControl.dll from Plugins\i386-unicode to NSIS\Plugins\x86-unicode
 
 ### Install GO 
 

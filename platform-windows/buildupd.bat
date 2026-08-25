@@ -138,6 +138,13 @@ go get -u ./...
 go mod tidy
 go build -ldflags="-s -w" -o %BINPATH%\iec61850_server.exe 
 
+rem Go implementation of cs_data_processor, a drop-in replacement for the
+rem Node.js one (run only one of them per instance number)
+cd %SRCPATH%\cs_data_processor-go
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\cs_data_processor-go.exe
+
 rem PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
 where mvn >nul 2>nul
 if %ERRORLEVEL% neq 0 goto skip_plc4j

@@ -47,6 +47,17 @@ nssm set JSON_SCADA_cs_data_processor AppRotateOnline 1
 nssm set JSON_SCADA_cs_data_processor AppRotateBytes 10000000
 nssm set JSON_SCADA_cs_data_processor Start SERVICE_AUTO_START
 
+REM Change Stream Data Processor in Go: alternative executable for CS_DATA_PROCESSOR
+REM (lower latency, no Node.js needed). Install EITHER this OR the Node.js service
+REM above for a given instance number, never both. Uncomment to use it instead.
+REM nssm install JSON_SCADA_cs_data_processor "C:\json-scada\bin\cs_data_processor-go.exe" 1 1 "c:\json-scada\conf\json-scada.json"
+REM nssm set JSON_SCADA_cs_data_processor AppDirectory "C:\json-scada\bin"
+REM nssm set JSON_SCADA_cs_data_processor AppEnvironmentExtra JS_CSDATAPROC_METRICS_PORT=8082
+REM nssm set JSON_SCADA_cs_data_processor AppStdout C:\json-scada\log\cs_data_processor.log
+REM nssm set JSON_SCADA_cs_data_processor AppRotateOnline 1
+REM nssm set JSON_SCADA_cs_data_processor AppRotateBytes 10000000
+REM nssm set JSON_SCADA_cs_data_processor Start SERVICE_AUTO_START
+
 nssm install JSON_SCADA_cs_custom_processor "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\cs_custom_processor\dist\cs_custom_processor.js" 1 1 "c:\json-scada\conf\json-scada.json"
 nssm set JSON_SCADA_cs_custom_processor AppDirectory "C:\json-scada\src\cs_custom_processor"
 nssm set JSON_SCADA_cs_custom_processor AppStdout C:\json-scada\log\cs_custom_processor.log

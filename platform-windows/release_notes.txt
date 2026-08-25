@@ -143,6 +143,7 @@ Notes for version 0.64:
 * Integration with NodeRed (embedded).
 * Integration with n8n.
 * Inkscape editor: fixed crash when XSAC properties are missing.
+* New Go-based cs_data_processor for reduced latency when processing protocol driver's updates.
 * New IEC61850 server driver.
 * New ICCP client driver with TLS support.
 * New Modbus client and server drivers.
@@ -157,10 +158,10 @@ Notes for version 0.64:
 * Improved OPC-UA client driver.
 * Improved Telegraf-listener driver.
 * SKILL.md file for development of new protocol drivers.
-* MongoDB Community Server updated to 8.3.4.
-* MongoDB Compass updated to 1.49.12.
-* Grafana updated to version 13.1.0.
-* Metabase updated to version 0.63.1.
+* MongoDB Community Server updated to 8.3.8.
+* MongoDB Compass updated to 1.49.14.
+* Grafana updated to version 13.2.0.
+* Metabase updated to version 0.63.14.
 * Nodejs runtime updated to 26.5.0.
 * Removed Chromium browser from the installer.
 
