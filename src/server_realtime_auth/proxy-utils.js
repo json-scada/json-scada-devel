@@ -19,7 +19,7 @@
 'use strict'
 
 const {
-  legacyCreateProxyMiddleware: createProxyMiddleware,
+  createProxyMiddleware,
   fixRequestBody,
 } = require('http-proxy-middleware')
 const jwt = require('jsonwebtoken')
@@ -30,6 +30,23 @@ const NODERED_MOUNT_PATH = '/nodered'
 const NODERED_DEFAULT_SERVER = 'http://127.0.0.1:1880/nodered/'
 const LOGIO_MOUNT_PATH = '/log-io'
 const LOGIO_DEFAULT_SERVER = 'http://127.0.0.1:6688'
+
+// Express strips the mount path from req.url when a middleware is mounted with
+// app.use('/nodered', ...), so a proxy mounted that way would forward '/' instead of
+// '/nodered/' and the target answers 404. http-proxy-middleware did this restore itself
+// while legacyCreateProxyMiddleware existed (req.url = req.originalUrl || req.url); v4
+// removed both the legacy factory and that patch, so it has to be done here.
+// Websocket upgrades never go through express: they are handed to proxy.upgrade() with
+// the full url already in req.url and no originalUrl, so they are left untouched.
+function withMountedUrl(proxy) {
+  const middleware = function (req, res, next) {
+    if (req.originalUrl) req.url = req.originalUrl
+    return proxy(req, res, next)
+  }
+  if (typeof proxy.upgrade === 'function')
+    middleware.upgrade = proxy.upgrade.bind(proxy)
+  return middleware
+}
 
 // Express strips the mount path from req.url, while http upgrade requests (websockets)
 // never go through express and keep the full url. Matching on originalUrl when available
@@ -89,28 +106,30 @@ function createNoderedProxy(noderedServer) {
       '/'
   )
 
-  return createProxyMiddleware({
-    target: target.origin,
-    changeOrigin: true,
-    ws: false, // upgrades are handled by attachNoderedUpgrade, to keep them authenticated
-    pathFilter: mountPathFilter(NODERED_MOUNT_PATH),
-    ...(basePath === NODERED_MOUNT_PATH
-      ? {}
-      : { pathRewrite: { ['^' + NODERED_MOUNT_PATH]: basePath } }),
-    on: {
-      // the json/urlencoded body parsers run before this proxy, restore the consumed body
-      proxyReq: fixRequestBody,
-      error: (err, req, resOrSocket) => {
-        Log.log('Node-RED proxy error: ' + err.message)
-        if (typeof resOrSocket?.writeHead === 'function') {
-          if (!resOrSocket.headersSent) {
-            resOrSocket.writeHead(502, { 'Content-Type': 'text/plain' })
-            resOrSocket.end('Node-RED server not available')
-          }
-        } else resOrSocket?.destroy?.()
+  return withMountedUrl(
+    createProxyMiddleware({
+      target: target.origin,
+      changeOrigin: true,
+      ws: false, // upgrades are handled by attachNoderedUpgrade, to keep them authenticated
+      pathFilter: mountPathFilter(NODERED_MOUNT_PATH),
+      ...(basePath === NODERED_MOUNT_PATH
+        ? {}
+        : { pathRewrite: { ['^' + NODERED_MOUNT_PATH]: basePath } }),
+      on: {
+        // the json/urlencoded body parsers run before this proxy, restore the consumed body
+        proxyReq: fixRequestBody,
+        error: (err, req, resOrSocket) => {
+          Log.log('Node-RED proxy error: ' + err.message)
+          if (typeof resOrSocket?.writeHead === 'function') {
+            if (!resOrSocket.headersSent) {
+              resOrSocket.writeHead(502, { 'Content-Type': 'text/plain' })
+              resOrSocket.end('Node-RED server not available')
+            }
+          } else resOrSocket?.destroy?.()
+        },
       },
-    },
-  })
+    })
+  )
 }
 
 // Reverse proxy for the websocket transport of the log.io ui, mounted on /log-io.
@@ -141,26 +160,28 @@ function createLogioProxy(logioServer) {
       '/'
   )
 
-  return createProxyMiddleware({
-    target: target.origin,
-    changeOrigin: true,
-    ws: false, // upgrades are handled by attachLogioUpgrade, to keep them authenticated
-    pathFilter: mountPathFilter(LOGIO_MOUNT_PATH), // do not grab upgrades of other proxies
-    pathRewrite: { ['^' + LOGIO_MOUNT_PATH]: '' },
-    on: {
-      // the json/urlencoded body parsers run before this proxy, restore the consumed body
-      proxyReq: fixRequestBody,
-      error: (err, req, resOrSocket) => {
-        Log.log('Log.io proxy error: ' + err.message)
-        if (typeof resOrSocket?.writeHead === 'function') {
-          if (!resOrSocket.headersSent) {
-            resOrSocket.writeHead(502, { 'Content-Type': 'text/plain' })
-            resOrSocket.end('Log.io server not available')
-          }
-        } else resOrSocket?.destroy?.()
+  return withMountedUrl(
+    createProxyMiddleware({
+      target: target.origin,
+      changeOrigin: true,
+      ws: false, // upgrades are handled by attachLogioUpgrade, to keep them authenticated
+      pathFilter: mountPathFilter(LOGIO_MOUNT_PATH), // do not grab upgrades of other proxies
+      pathRewrite: { ['^' + LOGIO_MOUNT_PATH]: '' },
+      on: {
+        // the json/urlencoded body parsers run before this proxy, restore the consumed body
+        proxyReq: fixRequestBody,
+        error: (err, req, resOrSocket) => {
+          Log.log('Log.io proxy error: ' + err.message)
+          if (typeof resOrSocket?.writeHead === 'function') {
+            if (!resOrSocket.headersSent) {
+              resOrSocket.writeHead(502, { 'Content-Type': 'text/plain' })
+              resOrSocket.end('Log.io server not available')
+            }
+          } else resOrSocket?.destroy?.()
+        },
       },
-    },
-  })
+    })
+  )
 }
 
 // Proxy the websocket upgrades of a mounted reverse proxy.
@@ -201,6 +222,7 @@ module.exports = {
   LOGIO_MOUNT_PATH,
   LOGIO_DEFAULT_SERVER,
   mountPathFilter,
+  withMountedUrl,
   createNoderedProxy,
   attachNoderedUpgrade,
   createLogioProxy,

@@ -2,9 +2,8 @@ const express = require('express')
 const httpProxy = require('express-http-proxy')
 const fs = require('fs')
 const path = require('path')
-const {
-  legacyCreateProxyMiddleware: createProxyMiddleware,
-} = require('http-proxy-middleware')
+const { createProxyMiddleware } = require('http-proxy-middleware')
+const { withMountedUrl } = require('../../proxy-utils')
 const { authJwt } = require('../middlewares')
 const controller = require('../controllers/user.controller')
 const authController = require('../controllers/auth.controller')
@@ -92,10 +91,14 @@ module.exports = function (
     },
     logioServer.indexOf('//dozzle') === -1 ?
       httpProxy(logioServer)
-    : createProxyMiddleware({
-        target: logioServer,
-        changeOrigin: true,
-      })
+      // dozzle serves itself under /log-io (DOZZLE_BASE), so the mount path that
+      // express strips from req.url has to be restored before proxying
+    : withMountedUrl(
+        createProxyMiddleware({
+          target: logioServer,
+          changeOrigin: true,
+        })
+      )
   )
   app.use('/static', express.static('../log-io/ui/build/static'))
 
