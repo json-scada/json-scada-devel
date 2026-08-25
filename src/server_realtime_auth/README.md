@@ -401,6 +401,13 @@ To each user can be attributed a set of roles. Each right in each user role are 
 
 LDAP can be configured by editing the file ./app/config/auth.config.js or by setting the following environment variables. The environment variables have precedence over the configuration file.
 
+Notes on how the login name is used:
+
+- The value substituted for `{{username}}` is escaped per RFC 4515 before it is placed in the search filter, and per RFC 4514 when it is used to build a DN, so a login name cannot alter the shape of the filter or of the DN. Every occurrence of the placeholder is replaced, so filters naming it more than once work as written.
+- A login attempt with an empty password is rejected before any bind is issued. A simple bind carrying a zero-length password is an *unauthenticated* bind (RFC 4513 5.1.2) that many servers answer with success, which would otherwise let any existing account in without a password.
+- A search filter that matches more than one entry is rejected instead of authenticating the first match, so an ambiguous filter cannot be used to log in as another user.
+- Prefer an `ldaps://` URL. With a plain `ldap://` URL, credentials cross the network unprotected and the TLS options below are not applied.
+
 - _**JS_LDAP_ENABLED**_ [Boolean] - Use "true" to enable LDAP authentication. **Default="false"**.
 - _**JS_LDAP_URL**_ [String] - LDAP server URL. **E.g."ldap://localhost:389"**.
 - _**JS_LDAP_BIND_DN**_ [String] - LDAP bind DN. **E.g."cn=read-only-admin,dc=example,dc=com"**.

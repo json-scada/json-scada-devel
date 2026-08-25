@@ -29,7 +29,10 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { spawn } = require('child_process')
 const AdmZip = require('adm-zip')
-const { Client } = require('ldapts')
+// Filter.escape implements RFC 4515 escaping and DN/RDN implement RFC 4514
+// escaping. Both come from ldapts itself, so they match exactly the encoders
+// the client uses when it serializes a search request.
+const { Client, Filter, DN } = require('ldapts')
 const ProcessManager = require('../services/process-manager')
 const RestartScheduler = require('../services/restart-scheduler')
 const SystemSettings = require('../services/system-settings')
@@ -2154,9 +2157,38 @@ function registerUserAction(req, actionName) {
 async function authenticateWithLDAP(username, password) {
   if (!config.ldap.enabled) return null
 
+  // The credentials must be strings: anything else (a number, or an object
+  // sent as JSON) has no defined meaning for a bind and must not reach it.
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    Log.log('LDAP - Credentials of invalid type rejected')
+    return null
+  }
+  if (username.trim() === '') {
+    Log.log('LDAP - Empty username rejected')
+    return null
+  }
+  // An empty password must never reach client.bind(). A simple bind carrying a
+  // zero-length password is an *unauthenticated* bind (RFC 4513 5.1.2): the
+  // server answers success without checking anything, which would let any
+  // existing account be logged into with no password at all.
+  if (password.length === 0) {
+    Log.log('LDAP - Empty password rejected for username: ' + username)
+    return null
+  }
+
+  // Everything below that comes from the request is escaped before it is put
+  // into a search filter (RFC 4515) or into a DN (RFC 4514), so a username
+  // like '*)(uid=*' can only ever match a user literally named that instead of
+  // changing the shape of the filter.
+  const filterUsername = Filter.escape(username)
+  const userDNFor = (attribute) =>
+    new DN().addPairRDN(attribute, username).toString() +
+    ',' +
+    config.ldap.searchBase
+
   Log.log('LDAP - Server: ' + config.ldap.url)
 
-  const tlsOptions = null
+  let tlsOptions = null
   if (config.ldap.url.startsWith('ldaps')) {
     tlsOptions = config.ldap.tlsOptions
   }
@@ -2175,10 +2207,11 @@ async function authenticateWithLDAP(username, password) {
       await client.bind(config.ldap.bindDN, config.ldap.bindCredentials)
       Log.log('LDAP - Ok for BindDN: ' + config.ldap.bindDN)
 
-      // Search for user
-      const searchFilter = config.ldap.searchFilter.replace(
+      // Search for user (replaceAll: the configured filter may name the
+      // placeholder more than once, as the Active Directory example does)
+      const searchFilter = config.ldap.searchFilter.replaceAll(
         '{{username}}',
-        username
+        filterUsername
       )
       const { searchEntries } = await client.search(config.ldap.searchBase, {
         filter: searchFilter,
@@ -2187,7 +2220,17 @@ async function authenticateWithLDAP(username, password) {
 
       if (searchEntries.length === 0) {
         Log.log('LDAP - User not found: ' + username)
-        await client.unbind()
+        return null
+      }
+      // An authentication decision must not be taken on an ambiguous match:
+      // refuse rather than pick the first of several entries.
+      if (searchEntries.length > 1) {
+        Log.log(
+          'LDAP - Ambiguous match (' +
+            searchEntries.length +
+            ' entries) for username: ' +
+            username
+        )
         return null
       }
 
@@ -2200,12 +2243,7 @@ async function authenticateWithLDAP(username, password) {
     }
 
     if (userDN === '') {
-      userDN =
-        config.ldap.attributes.username +
-        '=' +
-        username +
-        ',' +
-        config.ldap.searchBase
+      userDN = userDNFor(config.ldap.attributes.username)
     }
 
     try {
@@ -2215,12 +2253,7 @@ async function authenticateWithLDAP(username, password) {
     } catch (err) {
       Log.log('LDAP - Auth error for userDN: ' + userDN)
 
-      userDN =
-        config.ldap.attributes.displayName +
-        '=' +
-        username +
-        ',' +
-        config.ldap.searchBase
+      userDN = userDNFor(config.ldap.attributes.displayName)
 
       await client.bind(userDN, password)
       Log.log('LDAP - Ok for userDN: ' + userDN)
@@ -2230,7 +2263,7 @@ async function authenticateWithLDAP(username, password) {
       // Search for user
       const searchFilter = config.ldap.searchFilter.replaceAll(
         '{{username}}',
-        username
+        filterUsername
       )
       const { searchEntries } = await client.search(config.ldap.searchBase, {
         filter: searchFilter,
@@ -2239,7 +2272,15 @@ async function authenticateWithLDAP(username, password) {
 
       if (searchEntries.length === 0) {
         Log.log('LDAP - User not found: ' + searchFilter)
-        await client.unbind()
+        return null
+      }
+      if (searchEntries.length > 1) {
+        Log.log(
+          'LDAP - Ambiguous match (' +
+            searchEntries.length +
+            ' entries) for username: ' +
+            username
+        )
         return null
       }
 
@@ -2310,11 +2351,15 @@ async function authenticateWithLDAP(username, password) {
       }
     } else {
       try {
+        // userDN carries the supplied username when the directory could not be
+        // searched beforehand, so it is escaped here as well: role assignment
+        // must not be steerable through the login name.
+        const filterUserDN = Filter.escape(userDN)
         const filter =
           '(&(|(objectClass=groupOfUniqueNames)(objectClass=groupOfNames)(objectClass=group))(|(uniqueMember=' +
-          userDN +
+          filterUserDN +
           ')(member=' +
-          userDN +
+          filterUserDN +
           ')))'
         Log.log('LDAP - Search for user groups: ' + filter)
         const { searchEntries, searchReferences } = await client.search(
@@ -2351,11 +2396,18 @@ async function authenticateWithLDAP(username, password) {
     }
 
     await user.save()
-    await client.unbind()
 
     return user
   } catch (error) {
     Log.log('LDAP - error for userDN ' + userDN + ': ' + error)
     return null
+  } finally {
+    // Close the connection on every path, including the rejected logins that
+    // return early above, so failed attempts cannot pile up open binds.
+    try {
+      await client.unbind()
+    } catch (e) {
+      /* already closed or never connected */
+    }
   }
 }

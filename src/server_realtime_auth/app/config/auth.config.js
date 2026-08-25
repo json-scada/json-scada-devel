@@ -33,7 +33,9 @@ module.exports = {
     bindDN: 'cn=read-only-admin,dc=example,dc=com', // Admin bind DN
     bindCredentials: 'password', // Admin bind password
     searchBase: 'dc=example,dc=com', // Search base for users
-    searchFilter: '(uid={{username}})', // Search filter, {{username}} will be replaced with the login username
+    // Search filter. Every occurrence of {{username}} is replaced with the
+    // login username, escaped per RFC 4515 - do not add quoting of your own.
+    searchFilter: '(uid={{username}})',
     // User attributes mapping
     attributes: {
       username: 'uid',
