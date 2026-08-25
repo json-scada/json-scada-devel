@@ -216,6 +216,26 @@
     },
     {
       "source": "node1",
+      "stream": "modbus",
+      "config": {
+        "path": "/json-scada/log/modbusclient.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
+      "stream": "modbusserver",
+      "config": {
+        "path": "/json-scada/log/modbusserver.log",
+        "watcherOptions": {
+          "usePolling": true
+        }
+      }
+    },
+    {
+      "source": "node1",
       "stream": "plc4xclient",
       "config": {
         "path": "/json-scada/log/plc4xclient.log",
