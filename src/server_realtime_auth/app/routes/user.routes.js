@@ -90,20 +90,20 @@ module.exports = function (
       authController.addXWebAuthUser(req)
       next()
     },
-    logioServer.indexOf('//dozzle') === -1
-      ? httpProxy(logioServer)
-      : createProxyMiddleware({
-          target: logioServer,
-          changeOrigin: true,
-        })
+    logioServer.indexOf('//dozzle') === -1 ?
+      httpProxy(logioServer)
+    : createProxyMiddleware({
+        target: logioServer,
+        changeOrigin: true,
+      })
   )
   app.use('/static', express.static('../log-io/ui/build/static'))
 
-  app.post(accessPoint, opcApi) // realtime data API
+  app.post(accessPoint, [authJwt.verifyToken], opcApi) // realtime data API
 
-  app.get(customJsonQueryAP, customJsonQuery) // custom queries returning JSON
+  app.get(customJsonQueryAP, [authJwt.verifyToken], customJsonQuery) // custom queries returning JSON
 
-  app.get(accessPointGetFile, getFileApi) // get file from mongo API
+  app.get(accessPointGetFile, [authJwt.verifyToken], getFileApi) // get file from mongo API
 
   app.get(
     accessPoint + 'test/user',
@@ -114,8 +114,12 @@ module.exports = function (
   app.get(accessPoint + 'test/admin', [authJwt.isAdmin], controller.adminBoard)
 
   app.use('/svg', [authJwt.verifyToken], express.static('../../svg'))
-  
-  app.use('/svgedit', [authJwt.verifyToken], express.static('../svgedit/dist/editor'))
+
+  app.use(
+    '/svgedit',
+    [authJwt.verifyToken],
+    express.static('../svgedit/dist/editor')
+  )
 
   // production
   app.use('/', express.static('../AdminUI/dist'))
@@ -125,7 +129,13 @@ module.exports = function (
 
   // Dynamically create routes for custom developments
   try {
-    const customDevPath = path.join(__dirname, '..', '..', '..', 'custom-developments')
+    const customDevPath = path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'custom-developments'
+    )
     const folders = fs
       .readdirSync(customDevPath)
       .filter((file) =>
@@ -145,16 +155,24 @@ module.exports = function (
     console.error('Error setting up custom development routes:', error)
   }
 
-  app.use("/custom-developments", (req, res) => {
+  app.use('/custom-developments', (req, res) => {
     try {
-        const customDevPath = path.join(__dirname, '..', '..', '..', 'custom-developments');
-        
-        // Read directory contents
-        const items = fs.readdirSync(customDevPath, { withFileTypes: true });
-        const folders = items.filter(item => item.isDirectory()).map(item => item.name);
+      const customDevPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'custom-developments'
+      )
 
-        // Generate HTML response
-        const html = `
+      // Read directory contents
+      const items = fs.readdirSync(customDevPath, { withFileTypes: true })
+      const folders = items
+        .filter((item) => item.isDirectory())
+        .map((item) => item.name)
+
+      // Generate HTML response
+      const html = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -194,22 +212,26 @@ module.exports = function (
             <body>
                 <h1>Custom Developments</h1>
                 <ul class="folder-list">
-                    ${folders.map(folder => `
+                    ${folders
+                      .map(
+                        (folder) => `
                         <li>
                             <a href="/custom-developments/${folder}">${folder}</a>
                         </li>
-                    `).join('')}
+                    `
+                      )
+                      .join('')}
                 </ul>
             </body>
             </html>
-        `;
+        `
 
-        res.send(html);
+      res.send(html)
     } catch (error) {
-        console.error('Error reading custom developments directory:', error);
-        res.status(500).send('Error reading custom developments directory');
+      console.error('Error reading custom developments directory:', error)
+      res.status(500).send('Error reading custom developments directory')
     }
-});
+  })
 
   // app.use('/test', httpProxy('localhost:4321/'))
 
