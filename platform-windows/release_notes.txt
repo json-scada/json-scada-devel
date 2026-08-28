@@ -143,18 +143,18 @@ Notes for version 0.64:
 * Integration with NodeRed (embedded).
 * Integration with n8n.
 * Inkscape editor: fixed crash when XSAC properties are missing.
-* New Go-based cs_data_processor for reduced latency when processing protocol driver's updates.
-* New IEC61850 server driver.
-* New ICCP client driver with TLS support.
-* New Modbus client and server drivers.
-* Improved ICCP server driver with TLS support.
-* New PLC4X Java driver.
+* New Go-based alternative cs_data_processor for reduced latency when processing protocol driver's updates.
+* New Go-based IEC61850 client and server drivers.
 * New Go-based IEC60870-5-101/103/104 drivers.
+* New ICCP client driver with TLS support.
+* Improved ICCP server driver with TLS support.
+* New Modbus client and server drivers.
+* New PLC4X Java driver.
 * Improved MQTT/Sparkplug-b driver.
 * Improved Camera/Onvif driver.
 * Improved GraphQL server, new SKILL.md file.
 * Improved MCP server.
-* Improved OPC-UA server driver, historical data access.
+* Improved OPC-UA server driver, added historical data access.
 * Improved OPC-UA client driver.
 * Improved Telegraf-listener driver.
 * SKILL.md file for development of new protocol drivers.
