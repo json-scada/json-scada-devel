@@ -20,6 +20,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Linq;
 using System.Threading;
 using MongoDB.Bson;
@@ -337,6 +338,14 @@ namespace ServerPlugin
 
                     Log($"OnWriteItems: tag '{meta.tag}' doubleValue='{doubleVal}' stringValue='{strVal}'");
 
+                    // Apply kconv1/kconv2 conversion to the routed command value
+                    // mirrors OPC-UA-Server/index.js sendCommand()
+                    ApplyCommandConversion(meta, ref doubleVal, ref strVal);
+
+                    Log($"OnWriteItems: tag '{meta.tag}' converted doubleValue='{doubleVal}' " +
+                        $"stringValue='{strVal}' (type={meta.type} " +
+                        $"kconv1={meta.kconv1.ToDouble()} kconv2={meta.kconv2.ToDouble()})", 3);
+
                     var cmdDoc = new BsonDocument
                     {
                         { "protocolSourceConnectionNumber", meta.protocolSourceConnectionNumber.ToDouble() },
@@ -474,6 +483,8 @@ namespace ServerPlugin
                 .Include(x => x.type)
                 .Include(x => x.value)
                 .Include(x => x.valueString)
+                .Include(x => x.kconv1)
+                .Include(x => x.kconv2)
                 .Include(x => x.timeTag)
                 .Include(x => x.timeTagAtSource)
                 .Include(x => x.timeTagAtSourceOk)
@@ -636,6 +647,39 @@ namespace ServerPlugin
             if (val is bool b)   return b ? 1.0 : 0.0;
             try { return Convert.ToDouble(val); }
             catch { return 0.0; }
+        }
+
+        // -----------------------------------------------------------------------
+        // Apply the point's kconv1/kconv2 to a command value before routing it
+        // to commandsQueue. Mirrors sendCommand() in OPC-UA-Server/index.js.
+        //
+        //   digital, kconv1 != -1 : value forced to 1 or 0
+        //   digital, kconv1 == -1 : value forced to 1 or 0 and then inverted
+        //   analog                : value * kconv1 + kconv2
+        // -----------------------------------------------------------------------
+        private static void ApplyCommandConversion(RtDataItem meta,
+                                                   ref double doubleVal,
+                                                   ref string strVal)
+        {
+            if (meta == null) return;
+
+            double kconv1 = meta.kconv1?.ToDouble() ?? 1.0;
+            double kconv2 = meta.kconv2?.ToDouble() ?? 0.0;
+
+            switch (meta.type)
+            {
+                case "digital":
+                    doubleVal = doubleVal != 0.0 ? 1.0 : 0.0;
+                    if (kconv1 == -1.0)
+                        doubleVal = doubleVal != 0.0 ? 0.0 : 1.0;
+                    strVal = doubleVal != 0.0 ? "true" : "false";
+                    break;
+
+                case "analog":
+                    doubleVal = doubleVal * kconv1 + kconv2;
+                    strVal = doubleVal.ToString(CultureInfo.InvariantCulture);
+                    break;
+            }
         }
 
         // -----------------------------------------------------------------------

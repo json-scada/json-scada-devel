@@ -1,18 +1,18 @@
-﻿/* 
- * IEC 60870-5-104 Client Protocol driver for {json:scada}
- * {json:scada} - Copyright (c) 2020 - Ricardo L. Olsen
+/*
+ * PLCTags CIP Ethernet/IP & Modbus TCP Client Protocol driver for {json:scada}
+ * {json:scada} - Copyright (c) 2020 - 2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
- * 
- * This program is free software: you can redistribute it and/or modify  
- * it under the terms of the GNU General Public License as published by  
+ *
+ * This program is free software: you can redistribute it and/or modify
+ * it under the terms of the GNU General Public License as published by
  * the Free Software Foundation, version 3.
  *
- * This program is distributed in the hope that it will be useful, but 
- * WITHOUT ANY WARRANTY; without even the implied warranty of 
- * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU 
+ * This program is distributed in the hope that it will be useful, but
+ * WITHOUT ANY WARRANTY; without even the implied warranty of
+ * MERCHANTABILITY or FITNESS FOR A PARTICULAR PURPOSE. See the GNU
  * General Public License for more details.
  *
- * You should have received a copy of the GNU General Public License 
+ * You should have received a copy of the GNU General Public License
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
@@ -25,13 +25,37 @@ namespace PLCTagDriver
 {
     partial class MainClass
     {
+        static double GetTagElementValue(ScanTag st, int index)
+        {
+            switch (st.Type)
+            {
+                case PlcDataType.Bool:
+                    // a single BOOL is held in a byte, BOOL arrays are bit-packed
+                    if (st.IsArray)
+                        return st.Tag.GetBit(index) ? 1 : 0;
+                    return st.Tag.GetUInt8(0) != 0 ? 1 : 0;
+                case PlcDataType.Sint:
+                    return st.Tag.GetInt8(index);
+                default:
+                case PlcDataType.Int:
+                    return st.Tag.GetInt16(2 * index);
+                case PlcDataType.Dint:
+                    return st.Tag.GetInt32(4 * index);
+                case PlcDataType.Lint:
+                    return st.Tag.GetInt64(8 * index);
+                case PlcDataType.Real:
+                    return st.Tag.GetFloat32(4 * index);
+                case PlcDataType.Lreal:
+                    return st.Tag.GetFloat64(8 * index);
+            }
+        }
+
         static void ProcessPLCScan(PLC_connection srv)
         {
             for (; ; )
             {
                 try
                 {
-
                     if (!Active)
                     {
                         Thread.Sleep(1000);
@@ -40,542 +64,51 @@ namespace PLCTagDriver
 
                     var asyncStopWatch = Stopwatch.StartNew();
 
-                    foreach (var tag in srv.listBoolTags)
+                    foreach (var st in srv.listTags)
                     {
                         try
                         {
-                            var type = "bool";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
+                            st.Tag.Read();
+                            var status = st.Tag.GetStatus();
+                            if (status != Status.Ok)
                             {
-                                Log(srv.name + " - ERROR!");
+                                Log(srv.name + " - " + st.Tag.Name + " - Error status: " + status);
+                                continue;
                             }
-                            else
+
+                            var count = st.IsArray ? st.ArrayLength : 1;
+                            for (var i = 0; i < count; i++)
                             {
                                 PLC_Value iv =
                                 new PLC_Value()
                                 {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value?1:0,
+                                    conn_number = srv.protocolConnectionNumber,
+                                    address = st.IsArray ? st.Tag.Name + "[" + i + "]" : st.Tag.Name,
+                                    common_address = st.Tag.Path,
+                                    asdu = st.TypeName,
+                                    value = GetTagElementValue(st, i),
                                     time_tag = DateTime.Now,
                                     cot = 20
                                 };
                                 PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
+                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value, LogLevelDetailed);
                             }
                         }
                         catch (LibPlcTagException e)
                         {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listSintTags)
-                    {
-                        try
-                        {
-                            var type = "sint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listIntTags)
-                    {
-                        try
-                        {
-                            var type = "int";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listDintTags)
-                    {
-                        try
-                        {
-                            var type = "dint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listLintTags)
-                    {
-                        try
-                        {
-                            var type = "lint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listRealTags)
-                    {
-                        try
-                        {
-                            var type = "real";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listLrealTags)
-                    {
-                        try
-                        {
-                            var type = "lreal";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                PLC_Value iv =
-                                new PLC_Value()
-                                {
-                                    conn_number = 81,
-                                    address = tag.Name,
-                                    common_address = tag.Path,
-                                    asdu = type,
-                                    value = tag.Value,
-                                    time_tag = DateTime.Now,
-                                    cot = 20
-                                };
-                                PLCDataQueue.Enqueue(iv);
-                                Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                            }
-                        }
-                        catch (LibPlcTagException e)
-                        {
-                            Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-                            Log(srv.name + "- " + e);
-                            Thread.Sleep(10000);
-                        }
-                    }
-
-                    foreach (var tag in srv.listBoolArrayTags)
-                    {
-                        try
-                        {
-                            var type = "bool";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value ? 1 : 0,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
+                            Log(srv.name + " - Error scanning tag: " + st.Tag.Name + " - Status: " + e.Status);
                         }
                         catch (Exception e)
                         {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listSintArrayTags)
-                    {
-                        try
-                        {
-                            var type = "sint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listIntArrayTags)
-                    {
-                        try
-                        {
-                            var type = "int";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listDintArrayTags)
-                    {
-                        try
-                        {
-                            var type = "dint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listLintArrayTags)
-                    {
-                        try
-                        {
-                            var type = "lint";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listRealArrayTags)
-                    {
-                        try
-                        {
-                            var type = "real";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
-                        }
-                    }
-
-                    foreach (var tag in srv.listLrealArrayTags)
-                    {
-                        try
-                        {
-                            var type = "lreal";
-                            tag.Read();
-                            Log(tag.GetStatus().ToString());
-                            if (tag.GetStatus() != Status.Ok)
-                            {
-                                Log(srv.name + " - ERROR!");
-                            }
-                            else
-                            {
-                                var cnt = 0;
-                                foreach (var value in tag.Value)
-                                {
-                                    PLC_Value iv =
-                                    new PLC_Value()
-                                    {
-                                        conn_number = 81,
-                                        address = tag.Name + "[" + cnt + "]",
-                                        common_address = tag.Path,
-                                        asdu = type,
-                                        value = value,
-                                        time_tag = DateTime.Now,
-                                        cot = 20
-                                    };
-                                    PLCDataQueue.Enqueue(iv);
-                                    Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-                                    cnt++;
-                                }
-                            }
-                        }
-                        catch (Exception e)
-                        {
-                            Log("Error scanning tag: " + tag.Name);
-                            Log(e);
+                            Log(srv.name + " - Error scanning tag: " + st.Tag.Name);
+                            Log(e, LogLevelDetailed);
                         }
                     }
 
                     asyncStopWatch.Stop();
-                    Log($"{srv.name} - Connection scan took {(float)asyncStopWatch.ElapsedMilliseconds} ms.");
+                    Log($"{srv.name} - Connection scan took {(float)asyncStopWatch.ElapsedMilliseconds} ms.", LogLevelDetailed);
 
-                    Log($"{srv.name} - Sleep {(float)srv.giInterval} ms...");
+                    Log($"{srv.name} - Sleep {(float)srv.giInterval} ms...", LogLevelDetailed);
                     Thread.Sleep(srv.giInterval);
                 }
                 catch (Exception e)
@@ -587,37 +120,3 @@ namespace PLCTagDriver
         }
     }
 }
-
-/*
- * Async read
- * 
-foreach (var tag in srv.listIntTags)
-{
-    try
-    {
-        var type = "int";
-        var task = tag.ReadAsync();
-        var conttask = task.ContinueWith((tsk) =>
-        {
-            PLC_Value iv =
-                new PLC_Value()
-                {
-                    conn_number = 81,
-                    address = tag.Name,
-                    common_address = tag.Path,
-                    asdu = type,
-                    value = tag.Value,
-                    time_tag = DateTime.Now,
-                    cot = 20
-                };
-            PLCDataQueue.Enqueue(iv);
-            Log(srv.name + " - " + iv.address + " " + iv.asdu + " " + iv.value);
-        });
-    }
-    catch (Exception e)
-    {
-        Log(srv.name + "- " + "Error scanning tag: " + tag.Name);
-        Log(srv.name + "- " + e);
-    }
-}
-*/

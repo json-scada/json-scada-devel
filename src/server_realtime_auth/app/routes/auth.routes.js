@@ -1,5 +1,6 @@
 const { authJwt } = require('../middlewares')
 const controller = require('../controllers/auth.controller')
+const processController = require('../controllers/processManagement.controller')
 
 module.exports = function (app, accessPoint) {
   app.use(function (req, res, next) {
@@ -182,5 +183,42 @@ module.exports = function (app, accessPoint) {
     accessPoint + 'auth/sanitizeDatabase',
     [authJwt.isAdmin],
     controller.sanitizeDatabase
+  )
+
+  // Protocol driver process (service) management
+  app.post(
+    accessPoint + 'auth/startProtocolDriverInstance',
+    [authJwt.isAdmin],
+    processController.startProtocolDriverInstance
+  )
+  app.post(
+    accessPoint + 'auth/stopProtocolDriverInstance',
+    [authJwt.isAdmin],
+    processController.stopProtocolDriverInstance
+  )
+  app.post(
+    accessPoint + 'auth/restartProtocolDriverInstance',
+    [authJwt.isAdmin],
+    processController.restartProtocolDriverInstance
+  )
+  app.use(
+    accessPoint + 'auth/listDriverProcessStatus',
+    [authJwt.isAdmin],
+    processController.listDriverProcessStatus
+  )
+  app.post(
+    accessPoint + 'auth/syncDriverServices',
+    [authJwt.isAdmin],
+    processController.syncDriverServices
+  )
+  app.use(
+    accessPoint + 'auth/getSystemSettings',
+    [authJwt.isAdmin],
+    processController.getSystemSettings
+  )
+  app.post(
+    accessPoint + 'auth/updateSystemSettings',
+    [authJwt.isAdmin],
+    processController.updateSystemSettings
   )
 }

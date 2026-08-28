@@ -1,6 +1,6 @@
 {
   "name": "opc-ua-server",
-  "version": "1.0.0",
+  "version": "0.4.0",
   "description": "",
   "main": "index.js",
   "scripts": {
@@ -10,6 +10,8 @@
   "license": "ISC",
   "dependencies": {
     "mongodb": "^7.0.0",
-    "node-opcua": "^2.124.0"
+    "node-opcua": "^2.124.0",
+    "node-opcua-aggregates": "^2.175.2",
+    "pg": "^8.13.0"
   }
 }

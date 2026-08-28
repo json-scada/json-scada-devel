@@ -85,6 +85,11 @@ type protocolConnection struct {
 	RemoteApTitle                string                 `bson:"remoteApTitle"`
 	RemoteAeQualifier            int                    `bson:"remoteAeQualifier"`
 	UseSecurity                  bool                   `bson:"useSecurity"`
+	LocalCertFilePath            string                 `bson:"localCertFilePath"`
+	PrivateKeyFilePath           string                 `bson:"privateKeyFilePath"`
+	PeerCertFilePath             string                 `bson:"peerCertFilePath"`
+	RootCertFilePath             string                 `bson:"rootCertFilePath"`
+	ChainValidation              bool                   `bson:"chainValidation"`
 	Password                     string                 `bson:"password"`
 	HoursShift                   float64                `bson:"hoursShift"`
 	Stats                        map[string]interface{} `bson:"stats"`
@@ -114,6 +119,8 @@ type rtData struct {
 	ProtocolSourceCommandDuration  float64     `bson:"protocolSourceCommandDuration"`
 	ProtocolSourceCommandUseSBO    bool        `bson:"protocolSourceCommandUseSBO"`
 	ProtocolSourceAccessLevel      string      `bson:"protocolSourceAccessLevel"`
+	Kconv1                         interface{} `bson:"kconv1"`
+	Kconv2                         interface{} `bson:"kconv2"`
 	TimeTagAtSource                *time.Time  `bson:"timeTagAtSource"`
 	TimeTagAtSourceOk              bool        `bson:"timeTagAtSourceOk"`
 	CommandBlocked                 bool        `bson:"commandBlocked"`
@@ -193,7 +200,10 @@ func readConfigFile() (cfg configData, instanceNumber int, instLogLevel int) {
 		cfgFileName = filepath.Join("~", "json-scada", "conf", "json-scada.json")
 	}
 	if _, err := os.Stat(cfgFileName); err != nil {
-		cfgFileName = filepath.Join("c:", "json-scada", "conf", "json-scada.json")
+		cfgFileName = filepath.Join("/json-scada", "conf", "json-scada.json")
+	}
+	if _, err := os.Stat(cfgFileName); err != nil {
+		cfgFileName = filepath.Join("c:/json-scada", "conf", "json-scada.json")
 	}
 	if os.Getenv("JS_CONFIG_FILE") != "" {
 		cfgFileName = os.Getenv("JS_CONFIG_FILE")
@@ -460,6 +470,33 @@ func commonAddrToFloat64(v interface{}) float64 {
 		return 0
 	default:
 		return 0
+	}
+}
+
+// kconvToFloat64 converts a kconv1/kconv2 field (which can be missing, string or
+// any numeric BSON type) to float64, falling back to def when absent or invalid.
+func kconvToFloat64(v interface{}, def float64) float64 {
+	if v == nil {
+		return def
+	}
+	switch val := v.(type) {
+	case float64:
+		return val
+	case float32:
+		return float64(val)
+	case int32:
+		return float64(val)
+	case int64:
+		return float64(val)
+	case int:
+		return float64(val)
+	case string:
+		if f, err := strconv.ParseFloat(val, 64); err == nil {
+			return f
+		}
+		return def
+	default:
+		return def
 	}
 }
 

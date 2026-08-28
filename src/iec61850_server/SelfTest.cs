@@ -25,6 +25,12 @@ namespace IEC61850_Server
 
             Log("=== IEC61850_SERVER SELF TEST (no MongoDB) ===");
 
+            if (!TestDeserialization())
+            {
+                Log("SELF TEST: rtData deserialization FAILED.");
+                Environment.Exit(-1);
+            }
+
             srvConn = new Iec61850ServerConnection
             {
                 protocolDriver = ProtocolDriverName,
@@ -44,6 +50,13 @@ namespace IEC61850_Server
             };
 
             PointsSnapshot = BuildSyntheticPoints();
+            // optional 3rd arg: bulk-generate N extra points in one topic, to exercise the
+            // model at realistic scale (large logical nodes stress the MMS type-description PDU)
+            if (args.Length > 2 && int.TryParse(args[2], out int bulk) && bulk > 0)
+            {
+                AddBulkPoints(PointsSnapshot, bulk);
+                Log("Bulk points added: " + bulk);
+            }
             Log("Synthetic points: " + PointsSnapshot.Count);
 
             ParseBindAddress();
@@ -89,13 +102,156 @@ namespace IEC61850_Server
                 Thread.Sleep(500);
             }
 
-            Log("SELF TEST: updates applied without error. Server stays up 20 s for manual browsing...");
-            for (int i = 0; i < 20 && !Shutdown; i++) Thread.Sleep(1000);
+            // optional 4th arg: seconds to keep serving, for manual browsing with a real client
+            int holdSecs = 20;
+            if (args.Length > 3 && int.TryParse(args[3], out int hs) && hs > 0) holdSecs = hs;
+            Log($"SELF TEST: updates applied without error. Server stays up {holdSecs} s for manual browsing...");
+            for (int i = 0; i < holdSecs && !Shutdown; i++) Thread.Sleep(1000);
 
             StopServer();
             iedServer?.Destroy();
             Log("SELF TEST: done.");
             Environment.Exit(0);
+        }
+
+        // Generate a large batch of points in a single topic, mimicking a real substation
+        // database, so logical-node sizing can be validated against real MMS clients.
+        static void AddBulkPoints(List<rtData> list, int count)
+        {
+            int id = 10000;
+            for (int i = 0; i < count; i++)
+            {
+                var isAnalog = (i % 3) == 0;
+                var isString = (i % 17) == 0; // string points carry long VisibleString values
+                // ~11% command points and realistic description lengths, matching the shape of
+                // a real substation database (commands add large CO structures, and every
+                // description is returned by a single DC read)
+                var isCommand = (i % 9) == 0 && !isString;
+                var desc = "SUBSTATION KAW2 BAY 12 CIRCUIT BREAKER 52-" + i +
+                           (isAnalog ? " ANALOG MEASUREMENT MW" : " STATUS OPEN/CLOSED");
+                list.Add(new rtData
+                {
+                    _id = BsonInt64.Create(id + i),
+                    tag = BsonString.Create("BULK_" + (isAnalog ? "AI_" : "DI_") + i),
+                    type = BsonString.Create(isString ? "string" : (isAnalog ? "analog" : "digital")),
+                    value = BsonDouble.Create(i),
+                    valueString = BsonString.Create(isString
+                        ? new string('X', 200) // worst-case long string value
+                        : ""),
+                    invalid = BsonBoolean.Create(false),
+                    origin = BsonString.Create(isCommand ? "command" : "supervised"),
+                    description = BsonString.Create(desc),
+                    ungroupedDescription = BsonString.Create("bulk " + i),
+                    group1 = BsonString.Create("BULK"),
+                    group2 = BsonString.Create(""),
+                    group3 = BsonString.Create(""),
+                    timeTagAtSourceOk = BsonBoolean.Create(false),
+                    protocolSourceConnectionNumber = BsonDouble.Create(999),
+                });
+            }
+        }
+
+        // Regression guard: realtimeData stores protocolSource{ASDU,CommonAddress,ObjectAddress}
+        // as numbers when numeric and as strings otherwise (see auth.controller.js updateTag),
+        // and this driver reads points from every source driver. Deserialization must tolerate both.
+        static bool TestDeserialization()
+        {
+            var ok = true;
+
+            Action<string, BsonDocument, Func<rtData, bool>> check =
+                (name, doc, verify) =>
+                {
+                    try
+                    {
+                        var d = MongoDB.Bson.Serialization.BsonSerializer.Deserialize<rtData>(doc);
+                        if (verify(d))
+                            Log("  OK   " + name, LogLevelBasic);
+                        else
+                        {
+                            Log("  FAIL " + name + " (deserialized, wrong value)", LogLevelBasic);
+                            ok = false;
+                        }
+                    }
+                    catch (Exception e)
+                    {
+                        Log("  FAIL " + name + ": " + e.Message, LogLevelBasic);
+                        ok = false;
+                    }
+                };
+
+            Log("Checking rtData deserialization against mixed BSON types...", LogLevelBasic);
+
+            // the exact shape that crashed against the live database: numeric ASDU/addresses
+            check("numeric protocolSource* (IEC 104 style)",
+                new BsonDocument {
+                    { "_id", 1234.0 },
+                    { "tag", "NUMERIC_ASDU_TAG" },
+                    { "type", "analog" },
+                    { "value", 12.5 },
+                    { "protocolSourceASDU", 13.0 },
+                    { "protocolSourceCommonAddress", 1.0 },
+                    { "protocolSourceObjectAddress", 4001.0 },
+                    { "protocolSourceConnectionNumber", 71.0 },
+                },
+                // routing metadata must survive with its ORIGINAL BSON type, because it is
+                // copied verbatim into commandsQueue for the destination driver
+                d => d.protocolSourceASDU.IsDouble && d.protocolSourceASDU.ToDouble() == 13.0 &&
+                     d.protocolSourceCommonAddress.ToDouble() == 1.0 &&
+                     d.protocolSourceObjectAddress.ToDouble() == 4001.0 &&
+                     d._id.ToInt32() == 1234);
+
+            check("string protocolSource* (IEC 61850 style)",
+                new BsonDocument {
+                    { "_id", 5.0 },
+                    { "tag", "STRING_ASDU_TAG" },
+                    { "type", "digital" },
+                    { "protocolSourceASDU", "M_SP_NA_1" },
+                    { "protocolSourceCommonAddress", "ST" },
+                    { "protocolSourceObjectAddress", "SENSORS/GGIO1.Ind1" },
+                },
+                d => d.protocolSourceASDU.IsString &&
+                     d.protocolSourceASDU.AsString == "M_SP_NA_1" &&
+                     d.protocolSourceObjectAddress.AsString == "SENSORS/GGIO1.Ind1");
+
+            check("int32 ASDU + numeric booleans",
+                new BsonDocument {
+                    { "_id", 7 },
+                    { "tag", "INT_TAG" },
+                    { "protocolSourceASDU", 45 },
+                    { "invalid", 1 },
+                    { "substituted", 0 },
+                    { "protocolSourceCommandUseSBO", 1.0 },
+                },
+                d => d.protocolSourceASDU.IsInt32 && d.protocolSourceASDU.ToInt32() == 45 &&
+                     d.invalid.ToBoolean() == true &&
+                     d.substituted.ToBoolean() == false &&
+                     d.protocolSourceCommandUseSBO.ToBoolean() == true);
+
+            check("nulls and missing fields",
+                new BsonDocument {
+                    { "_id", 9.0 },
+                    { "tag", "NULL_TAG" },
+                    { "protocolSourceASDU", BsonNull.Value },
+                    { "valueString", BsonNull.Value },
+                    { "invalid", BsonNull.Value },
+                },
+                d => (d.protocolSourceASDU == null || d.protocolSourceASDU.IsBsonNull) &&
+                     d.invalid.ToBoolean() == false);
+
+            check("boolean/string coercions",
+                new BsonDocument {
+                    { "_id", 11.0 },
+                    { "tag", "COERCE_TAG" },
+                    { "protocolSourceASDU", true },
+                    { "invalid", "true" },
+                    { "value", "42.5" },
+                },
+                d => d.protocolSourceASDU.IsBoolean &&
+                     d.invalid.ToBoolean() == true &&
+                     Math.Abs(d.value.ToDouble() - 42.5) < 1e-9);
+
+            Log(ok ? "rtData deserialization: ALL CHECKS PASSED" : "rtData deserialization: FAILURES", LogLevelBasic);
+            return ok;
         }
 
         static void DrainOnce()
@@ -119,7 +275,7 @@ namespace IEC61850_Server
                 {
                     list.Add(new rtData
                     {
-                        _id = BsonInt32.Create(id++),
+                        _id = BsonInt64.Create(id++),
                         tag = BsonString.Create(tag),
                         type = BsonString.Create(type),
                         value = BsonDouble.Create(value),

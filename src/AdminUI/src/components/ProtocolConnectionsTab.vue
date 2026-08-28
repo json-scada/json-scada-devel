@@ -159,6 +159,7 @@
             'TELEGRAF-LISTENER',
             'IEC61850',
             'PLC4X',
+            'MODBUS',
             'OPC-DA',
             'ICCP',
             'DNP3_SERVER',
@@ -167,6 +168,7 @@
             'IEC60870-5-104',
             'IEC60870-5-101_SERVER',
             'IEC60870-5-104',
+            'N8N',
           ].includes(editedConnection.protocolDriver)
         "
         ></v-switch>
@@ -182,6 +184,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104',
                   'IEC60870-5-104_SERVER',
@@ -227,6 +230,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104',
                   'IEC60870-5-104_SERVER',
@@ -273,11 +277,12 @@
             <v-list-item
               v-if="
                 [
-                  'OPC-UA', 
-                  'MQTT-SPARKPLUG-B', 
-                  'PLC4X', 
+                  'OPC-UA',
+                  'MQTT-SPARKPLUG-B',
+                  'PLC4X',
                   'OPC-DA',
                   'ONVIF',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -325,6 +330,8 @@
                           ? rules.endpointMQTT
                           : editedConnection.protocolDriver === 'OPC-UA'
                           ? rules.endpointOPC
+                          : editedConnection.protocolDriver === 'N8N'
+                          ? rules.endpointN8N
                           : rules.endpointOPCDA,
                       ]"
                     ></v-text-field>
@@ -358,6 +365,7 @@
               v-if="
                 [
                   'ONVIF',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -389,11 +397,12 @@
             <v-list-item
               v-if="
                 [
-                  'MQTT-SPARKPLUG-B', 
-                  'IEC61850', 
+                  'MQTT-SPARKPLUG-B',
+                  'IEC61850',
                   'OPC-DA',
                   'OPC-UA',
                   'ONVIF',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -427,13 +436,15 @@
             <v-list-item
               v-if="
                 [
-                  'MQTT-SPARKPLUG-B', 
+                  'MQTT-SPARKPLUG-B',
                   'IEC61850',
                   'OPC-DA',
                   'OPC-UA',
                   'ONVIF',
                   'ICCP',
                   'ICCP_SERVER',
+                  'NODE-RED',
+                  'N8N',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -603,7 +614,7 @@
             </v-list-item>
 
             <v-list-item
-              v-if="['OPC-DA'].includes(editedConnection.protocolDriver)"
+              v-if="['OPC-DA', 'N8N'].includes(editedConnection.protocolDriver)"
             >
               <template #default="{ isActive }">
                 <v-row>
@@ -678,6 +689,8 @@
                   'ICCP',
                   'ICCP_SERVER',
                   'ONVIF',
+                  'N8N',
+                  'MODBUS',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -710,6 +723,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC61850',
                   'DNP3',
@@ -720,7 +734,9 @@
                   'OPC-UA',
                   'OPC-DA',
                   'ICCP',
-                  'ONVIF',	
+                  'ONVIF',
+                  'N8N',
+                  'MODBUS',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -752,7 +768,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-104'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-104'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -785,7 +801,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-104', 'PLCTAG'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-104', 'PLCTAG'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1022,6 +1038,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1057,6 +1074,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1092,6 +1110,7 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-104',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
@@ -1146,9 +1165,11 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-104_SERVER', 'IEC61850_SERVER'].includes(
-                  editedConnection.protocolDriver
-                )
+                [
+                  'IEC60870-5-104_SERVER',
+                  'IEC61850_SERVER',
+                  'MODBUS_SERVER',
+                ].includes(editedConnection.protocolDriver)
               "
             >
               <template v-slot:default="{ active }">
@@ -1194,6 +1215,7 @@
                   'IEC61850_SERVER',
                   'PI_DATA_ARCHIVE_INJECTOR',
                   'PI_DATA_ARCHIVE_CLIENT',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -1494,7 +1516,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1527,7 +1549,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1560,7 +1582,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1598,7 +1620,7 @@
 
             <v-list-item
               v-if="
-                ['IEC60870-5-101', 'IEC60870-5-101_SERVER'].includes(
+                ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
                   editedConnection.protocolDriver
                 )
               "
@@ -1657,6 +1679,30 @@
                 outlined
               ></v-select>
             </v-list-item>
+
+            <v-list-item
+              class="ma-0"
+              v-if="editedConnection.protocolDriver === 'MODBUS'"
+            >
+              <v-select
+                :items="connectionModeModbusItems"
+                :label="$t('admin.protocolConnections.connectionMode')"
+                v-model="editedConnection.connectionMode"
+                outlined
+              ></v-select>
+            </v-list-item>
+
+            <v-list-item
+              class="ma-0"
+              v-if="editedConnection.protocolDriver === 'MODBUS_SERVER'"
+            >
+              <v-select
+                :items="connectionModeModbusServerItems"
+                :label="$t('admin.protocolConnections.connectionMode')"
+                v-model="editedConnection.connectionMode"
+                outlined
+              ></v-select>
+            </v-list-item>
           </v-list>
         </v-card>
 
@@ -1671,14 +1717,15 @@
               'IEC61850',
               'IEC61850_SERVER',
               'I104M',
-              'MODBUS',
               'PLCTAG',
               'TELEGRAF-LISTENER',
+              'NODE-RED',
+              'N8N',
               'OPC-UA_SERVER',
               'ICCP',
               'ICCP_SERVER',
             ].includes(editedConnection.protocolDriver) ||
-            (['DNP3', 'DNP3_SERVER'].includes(
+            (['DNP3', 'DNP3_SERVER', 'MODBUS', 'MODBUS_SERVER'].includes(
               editedConnection.protocolDriver
             ) &&
               editedConnection.connectionMode !== 'Serial')
@@ -1696,7 +1743,10 @@
                   'IEC60870-5-104_SERVER',
                   'IEC61850_SERVER',
                   'I104M',
+                  'MODBUS_SERVER',
                   'TELEGRAF-LISTENER',
+                  'NODE-RED',
+                  'N8N',
                   'OPC-UA_SERVER',
                   'ICCP_SERVER',
                   'ONVIF',
@@ -1744,7 +1794,10 @@
                   'I104M',
                   'PLCTAG',
                   'MODBUS',
+                  'MODBUS_SERVER',
                   'TELEGRAF-LISTENER',
+                  'NODE-RED',
+                  'N8N',
                   'OPC-UA_SERVER',
                   'ICCP',
                   'ICCP_SERVER',
@@ -1842,7 +1895,11 @@
             (['DNP3', 'DNP3_SERVER'].includes(
               editedConnection.protocolDriver
             ) &&
-              editedConnection.connectionMode.startsWith('TLS'))
+              editedConnection.connectionMode.startsWith('TLS')) ||
+            (['MODBUS', 'MODBUS_SERVER'].includes(
+              editedConnection.protocolDriver
+            ) &&
+              editedConnection.connectionMode.includes('TLS'))
           "
         >
           <v-card-title>
@@ -1867,6 +1924,8 @@
                   'OPC-UA',
                   'ICCP',
                   'ICCP_SERVER',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2011,6 +2070,7 @@
                   'IEC61850_SERVER',
                   'ICCP',
                   'ICCP_SERVER',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2050,6 +2110,8 @@
                   'IEC61850_SERVER',
                   'ICCP',
                   'ICCP_SERVER',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2090,11 +2152,45 @@
 
             <v-list-item
               v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="password"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.privateKeyPassphrase')"
+                        hide-details="auto"
+                        v-model="editedConnection.privateKeyPassphrase"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.privateKeyPassphraseTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.privateKeyPassphraseHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
                 [
                   'DNP3', 
                   'DNP3_SERVER', 
                   'OPC-DA', 
-                  'OPC-DA_SERVER'
+                  'OPC-DA_SERVER',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -2280,7 +2376,9 @@
                 [
                   'DNP3', 
                   'DNP3_SERVER',
-                  'MQTT-SPARKPLUG-B'
+                  'MQTT-SPARKPLUG-B',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(
                   editedConnection.protocolDriver
                 )
@@ -2373,6 +2471,8 @@
                   'MQTT-SPARKPLUG-B',
                   'ICCP',
                   'ICCP_SERVER',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2397,6 +2497,8 @@
                   'MQTT-SPARKPLUG-B',
                   'ICCP',
                   'ICCP_SERVER',
+                  'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -2506,6 +2608,8 @@
               'PLC4X',
               'OPC-DA_SERVER',
               'ICCP_SERVER',
+              'NODE-RED',
+              'N8N',
             ].includes(editedConnection.protocolDriver)
             ||
             [
@@ -2515,6 +2619,7 @@
               'DNP3_SERVER',
               'IEC60870-5-101_SERVER',
               'IEC60870-5-104_SERVER',
+              'MODBUS',
             ].includes(editedConnection.protocolDriver) && editedConnection.autoCreateTags
           "
         >
@@ -2539,6 +2644,8 @@
                   'OPC-DA',
                   'OPC-DA_SERVER',
                   'ICCP_SERVER',
+                  'NODE-RED',
+                  'N8N',
                 ].includes(editedConnection.protocolDriver)
                 ||
                 [
@@ -2546,6 +2653,7 @@
                   'DNP3_SERVER',
                   'IEC60870-5-101_SERVER',
                   'IEC60870-5-104_SERVER',
+                  'MODBUS',
                 ].includes(editedConnection.protocolDriver) && editedConnection.autoCreateTags
               "
             >
@@ -2631,7 +2739,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.localAeQualifier')"
                         hide-details="auto"
-                        v-model="editedConnection.aeQualifier"
+                        v-model="editedConnection.localAeQualifier"
                       ></v-text-field>
                     </div>
                   </v-col>
@@ -2663,7 +2771,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.localApTitle')"
                         hide-details="auto"
-                        v-model="editedConnection.localAppTitle"
+                        v-model="editedConnection.localApTitle"
                       ></v-text-field>
                     </div>
                   </v-col>
@@ -2696,7 +2804,7 @@
                         :input-value="active"
                         :label="$t('admin.protocolConnections.remoteAeQualifier')"
                         hide-details="auto"
-                        v-model="editedConnection.aeQualifier"
+                        v-model="editedConnection.remoteAeQualifier"
                       ></v-text-field>
                     </div>
                   </v-col>
@@ -3098,15 +3206,604 @@
           </v-list>
         </v-card>
 
+
         <v-card
           class="mt-6"
           tile
           variant="outlined"
           v-if="
-            ['IEC60870-5-101', 'IEC60870-5-101_SERVER', 'MODBUS'].includes(
+            ['MODBUS', 'MODBUS_SERVER'].includes(
+              editedConnection.protocolDriver
+            )
+          "
+        >
+          <v-card-title>
+            <span class="text-h5">
+              {{ $t('admin.protocolConnections.modbusParameters') }}
+            </span>
+          </v-card-title>
+
+          <v-list flat density="compact" shaped>
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-combobox
+                        :items="byteOrder16Items"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.byteOrder16')"
+                        hide-details="auto"
+                        v-model="editedConnection.byteOrder16"
+                      ></v-combobox>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.byteOrder16Title') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.byteOrder16Hint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-combobox
+                        :items="byteOrder32Items"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.byteOrder32')"
+                        hide-details="auto"
+                        v-model="editedConnection.byteOrder32"
+                      ></v-combobox>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.byteOrder32Title') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.byteOrder32Hint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-combobox
+                        :items="byteOrder64Items"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.byteOrder64')"
+                        hide-details="auto"
+                        v-model="editedConnection.byteOrder64"
+                      ></v-combobox>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.byteOrder64Title') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.byteOrder64Hint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-combobox
+                        :items="byteOrder16Items"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.byteOrderStr')"
+                        hide-details="auto"
+                        v-model="editedConnection.byteOrderStr"
+                      ></v-combobox>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.byteOrderStrTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.byteOrderStrHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-select
+                        :items="stringEncodingItems"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.stringEncoding')"
+                        hide-details="auto"
+                        v-model="editedConnection.stringEncoding"
+                      ></v-select>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.stringEncodingTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.stringEncodingHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                )
+              "
+            >
+              <v-switch
+                v-model="editedConnection.useModiconAddresses"
+                inset
+                color="primary"
+                :label="`${$t('admin.protocolConnections.useModiconAddresses')}${
+                  editedConnection.useModiconAddresses
+                    ? $t('admin.protocolConnections.useModiconAddressesTrue')
+                    : $t('admin.protocolConnections.useModiconAddressesFalse')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.pollingInterval')"
+                        hide-details="auto"
+                        v-model="editedConnection.pollingInterval"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.pollingIntervalTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.pollingIntervalHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.maxRetries')"
+                        hide-details="auto"
+                        v-model="editedConnection.maxRetries"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.maxRetriesTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.maxRetriesHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.interRequestDelayMs')"
+                        hide-details="auto"
+                        v-model="editedConnection.interRequestDelayMs"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.interRequestDelayMsTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.interRequestDelayMsHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="1"
+                        max="125"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.maxReadRegisters')"
+                        hide-details="auto"
+                        v-model="editedConnection.maxReadRegisters"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.maxReadRegistersTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.maxReadRegistersHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="1"
+                        max="2000"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.maxReadCoils')"
+                        hide-details="auto"
+                        v-model="editedConnection.maxReadCoils"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.maxReadCoilsTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.maxReadCoilsHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.maxAddressGap')"
+                        hide-details="auto"
+                        v-model="editedConnection.maxAddressGap"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.maxAddressGapTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.maxAddressGapHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS'
+              "
+            >
+              <v-switch
+                v-model="editedConnection.useMaskWrite"
+                inset
+                color="primary"
+                :label="`${$t('admin.protocolConnections.useMaskWrite')}${
+                  editedConnection.useMaskWrite
+                    ? $t('admin.protocolConnections.useMaskWriteTrue')
+                    : $t('admin.protocolConnections.useMaskWriteFalse')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                ['MODBUS', 'MODBUS_SERVER'].includes(
+                  editedConnection.protocolDriver
+                ) &&
+                (editedConnection.connectionMode === 'Serial' ||
+                  editedConnection.connectionMode.includes('RTU'))
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.interFrameDelayMs')"
+                        hide-details="auto"
+                        v-model="editedConnection.interFrameDelayMs"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.interFrameDelayMsTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.interFrameDelayMsHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-text-field
+                        type="number"
+                        min="0"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.clientIdleTimeoutMs')"
+                        hide-details="auto"
+                        v-model="editedConnection.clientIdleTimeoutMs"
+                      ></v-text-field>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.clientIdleTimeoutMsTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.clientIdleTimeoutMsHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-combobox
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.serverUnitIds')"
+                        hide-details="auto"
+                        v-model="editedConnection.serverUnitIds"
+                        multiple
+                        chips
+                        closable-chips
+                      ></v-combobox>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.serverUnitIdsTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.serverUnitIdsHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <v-switch
+                v-model="editedConnection.strictUnitId"
+                inset
+                color="primary"
+                :label="`${$t('admin.protocolConnections.strictUnitId')}${
+                  editedConnection.strictUnitId
+                    ? $t('admin.protocolConnections.strictUnitIdTrue')
+                    : $t('admin.protocolConnections.strictUnitIdFalse')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <v-switch
+                v-model="editedConnection.serveUnmappedAsZero"
+                inset
+                color="primary"
+                :label="`${$t('admin.protocolConnections.serveUnmappedAsZero')}${
+                  editedConnection.serveUnmappedAsZero
+                    ? $t('admin.protocolConnections.serveUnmappedAsZeroTrue')
+                    : $t('admin.protocolConnections.serveUnmappedAsZeroFalse')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <template v-slot:default="{ active }">
+                <v-row>
+                  <v-col>
+                    <div>
+                      <v-select
+                        :items="invalidValuePolicyItems"
+                        :input-value="active"
+                        :label="$t('admin.protocolConnections.invalidValuePolicy')"
+                        hide-details="auto"
+                        v-model="editedConnection.invalidValuePolicy"
+                      ></v-select>
+                    </div>
+                  </v-col>
+                  <v-col>
+                    <v-list-item-title>
+                      {{ $t('admin.protocolConnections.invalidValuePolicyTitle') }}
+                    </v-list-item-title>
+                    <v-list-item-subtitle>
+                      {{ $t('admin.protocolConnections.invalidValuePolicyHint') }}
+                    </v-list-item-subtitle>
+                  </v-col>
+                </v-row>
+              </template>
+            </v-list-item>
+
+            <v-list-item
+              v-if="
+                editedConnection.protocolDriver === 'MODBUS_SERVER'
+              "
+            >
+              <v-switch
+                v-model="editedConnection.allowWritesToSupervised"
+                inset
+                color="primary"
+                :label="`${$t('admin.protocolConnections.allowWritesToSupervised')}${
+                  editedConnection.allowWritesToSupervised
+                    ? $t('admin.protocolConnections.allowWritesToSupervisedTrue')
+                    : $t('admin.protocolConnections.allowWritesToSupervisedFalse')
+                }`"
+                class="mb-n6"
+              ></v-switch>
+            </v-list-item>
+
+          </v-list>
+        </v-card>
+
+        <v-card
+          class="mt-6"
+          tile
+          variant="outlined"
+          v-if="
+            ['IEC60870-5-101', 'IEC60870-5-103', 'IEC60870-5-101_SERVER'].includes(
               editedConnection.protocolDriver
             ) ||
-            (['DNP3', 'DNP3_SERVER'].includes(
+            (['DNP3', 'DNP3_SERVER', 'MODBUS', 'MODBUS_SERVER'].includes(
               editedConnection.protocolDriver
             ) &&
               editedConnection.connectionMode === 'Serial')
@@ -3123,10 +3820,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3159,10 +3858,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3196,10 +3897,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3232,10 +3935,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3268,10 +3973,12 @@
               v-if="
                 [
                   'IEC60870-5-101',
+                  'IEC60870-5-103',
                   'IEC60870-5-101_SERVER',
                   'DNP3',
                   'DNP3_SERVER',
                   'MODBUS',
+                  'MODBUS_SERVER',
                 ].includes(editedConnection.protocolDriver)
               "
             >
@@ -3507,6 +4214,13 @@
         t('admin.protocolConnections.rulesInvalidEndpoint')
       )
     },
+    endpointN8N: (value) => {
+      let pattern = /^https?:\/\/[a-zA-Z0-9-_.]+(:\d{1,5})?(\/[^\s]*)?$/
+      return (
+        pattern.test(value) ||
+        t('admin.protocolConnections.rulesInvalidEndpoint')
+      )
+    },
     subtopic: (value) => {
       return (
         !(
@@ -3535,15 +4249,34 @@
     'Serial',
   ]
 
+  const connectionModeModbusItems = [
+    'TCP Active',
+    'TLS Active',
+    'Serial',
+    'RTU over TCP',
+    'RTU over TLS',
+  ]
+
+  const connectionModeModbusServerItems = [
+    'TCP Passive',
+    'TLS Passive',
+    'Serial',
+    'RTU over TCP Passive',
+    'RTU over TLS Passive',
+  ]
+
   const driverNameItems = [
     'IEC60870-5-104',
     'IEC60870-5-104_SERVER',
     'IEC60870-5-101',
+    'IEC60870-5-103',
     'IEC60870-5-101_SERVER',
     'IEC61850',
     'IEC61850_SERVER',
     'DNP3',
     'DNP3_SERVER',
+    'MODBUS',
+    'MODBUS_SERVER',
     'MQTT-SPARKPLUG-B',
     'OPC-UA',
     'OPC-UA_SERVER',
@@ -3558,7 +4291,17 @@
     'PI_DATA_ARCHIVE_INJECTOR',
     'PI_DATA_ARCHIVE_CLIENT',
     'ONVIF',
+    'NODE-RED',
+    'N8N',
   ]
+
+  // Modbus byte orders: named aliases plus any explicit byte permutation.
+  // The combobox accepts free text, so e.g. 'BADCFEHG' can be typed directly.
+  const byteOrder16Items = ['AB', 'BA']
+  const byteOrder32Items = ['ABCD', 'DCBA', 'CDAB', 'BADC']
+  const byteOrder64Items = ['ABCDEFGH', 'HGFEDCBA', 'GHEFCDAB', 'BADCFEHG']
+  const stringEncodingItems = ['latin1', 'utf8', 'ascii']
+  const invalidValuePolicyItems = ['last', 'zero']
 
   const parityItems = ['None', 'Even', 'Odd', 'Mark', 'Space']
   const stopBitsItems = ['One', 'One5', 'Two']

@@ -129,6 +129,37 @@
                   </v-row>
                 </v-expansion-panel-text>
               </v-expansion-panel>
+
+              <v-expansion-panel
+                :title="$t('admin.systemSettings.processManagement')"
+              >
+                <v-expansion-panel-text>
+                  <v-alert
+                    v-if="!processManagementEnabled"
+                    type="info"
+                    variant="tonal"
+                    class="my-2"
+                  >
+                    {{ $t('admin.systemSettings.processManagementDisabled') }}
+                  </v-alert>
+                  <v-switch
+                    v-model="settings.autoManageServices"
+                    inset
+                    color="primary"
+                    :label="$t('admin.systemSettings.autoManageServices')"
+                    @update:model-value="saveSystemSettings"
+                  ></v-switch>
+                  <v-switch
+                    v-model="settings.autoRestartOnConnectionChange"
+                    inset
+                    color="primary"
+                    :label="
+                      $t('admin.systemSettings.autoRestartOnConnectionChange')
+                    "
+                    @update:model-value="saveSystemSettings"
+                  ></v-switch>
+                </v-expansion-panel-text>
+              </v-expansion-panel>
             </v-expansion-panels>
           </v-card-text>
         </v-card>
@@ -172,7 +203,7 @@
 </template>
 
 <script setup>
-  import { ref } from 'vue'
+  import { ref, onMounted } from 'vue'
   import { useI18n } from 'vue-i18n'
 
   const { t } = useI18n()
@@ -185,6 +216,51 @@
   const isDragging = ref(false)
   const restartProcessesDialog = ref(false)
   const restartProtocolsDialog = ref(false)
+  const settings = ref({
+    autoManageServices: true,
+    autoRestartOnConnectionChange: true,
+  })
+  const processManagementEnabled = ref(false)
+
+  onMounted(() => {
+    fetchSystemSettings()
+  })
+
+  const fetchSystemSettings = async () => {
+    try {
+      const response = await fetch('/Invoke/auth/getSystemSettings')
+      const json = await response.json()
+      if (json.error) {
+        setError(json)
+        return
+      }
+      if (json.settings) settings.value = json.settings
+      processManagementEnabled.value = !!json.processManagementEnabled
+    } catch (err) {
+      setError(err)
+    }
+  }
+
+  const saveSystemSettings = async () => {
+    try {
+      const response = await fetch('/Invoke/auth/updateSystemSettings', {
+        method: 'POST',
+        headers: {
+          Accept: 'application/json',
+          'Content-Type': 'application/json',
+        },
+        body: JSON.stringify({
+          autoManageServices: settings.value.autoManageServices,
+          autoRestartOnConnectionChange:
+            settings.value.autoRestartOnConnectionChange,
+        }),
+      })
+      const json = await response.json()
+      if (json.error) setError(json)
+    } catch (err) {
+      setError(err)
+    }
+  }
 
   const isZipFile = (fileName) => {
     return fileName.toLowerCase().endsWith('.zip')

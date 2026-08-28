@@ -86,7 +86,7 @@ public:
                 connNumbers.push_back(other->protocolConnectionNumber);
             }
         }
-        Log.log(conn->name + " - Channel state changed.");
+        Log.log(conn->name + " - Channel state: " + ChannelStateSpec::to_string(state));
         if (state != ChannelState::CLOSED)
             return;
         // This runs on the opendnp3 executor strand; do the MongoDB write on a

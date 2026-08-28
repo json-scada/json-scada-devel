@@ -25,10 +25,18 @@ esac
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../log'
 
+# MONGODB WONT'T START IF KERNEL IS UPDATED TO 6.19 OR LATER!
+# Hold the current kernel version to prevent automatic updates.
+sudo apt -y install linux-generic linux-image-generic linux-headers-generic
+sudo apt -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04
+#sudo apt-mark hold linux-generic-24.04 \
+#                   linux-image-generic-24.04 \
+#                   linux-headers-generic-24.04
+
 # Update and install base packages
 sudo apt update
 sudo apt -y upgrade
-sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
+sudo apt -y install ffmpeg bzip2 tar build-essential openjdk-21-jdk maven php-fpm nginx wget curl vim nano cmake libpcap-dev sasl2-bin libsasl2-dev libsqlite3-dev libzstd-dev
 sudo apt -y install dotnet-sdk-8.0 
 
 # Docker and container tools
@@ -38,8 +46,8 @@ sudo systemctl enable docker
 sudo systemctl start docker
 
 # Install Go
-wget --inet4-only https://go.dev/dl/go1.26.2.linux-$ARCHITECTURE.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-$ARCHITECTURE.tar.gz
+wget --inet4-only https://go.dev/dl/go1.27.0.linux-$ARCHITECTURE.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.27.0.linux-$ARCHITECTURE.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 
@@ -123,10 +131,13 @@ sudo systemctl enable telegraf
 sudo apt -y install supervisor
 sudo cp supervisord.conf /etc/supervisor/
 sudo cp *.ini /etc/supervisor/conf.d/
+# JSON-SCADA process manager: dir for driver services created from the AdminUI
+# (owned by jsonscada, included by the copied supervisord.conf).
+mkdir -p ~/json-scada/conf/supervisor.d
 sudo systemctl enable supervisor
 
 # Install Grafana
-sudo apt -y install grafana=12.4.3
+sudo apt -y install grafana=13.2.0
 sudo apt-mark hold grafana
 sudo cp grafana.ini /etc/grafana/
 sudo systemctl enable grafana-server
@@ -134,11 +145,11 @@ sudo systemctl daemon-reload
 
 # Install Metabase
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.63.2.x/metabase.jar -O ../metabase/metabase.jar'
 
 # Install Mongodb Compass
-sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.8_$ARCHITECTURE.deb"
-sudo apt install ./mongodb-compass_1.49.5_$ARCHITECTURE.deb
+sudo -u $JS_USERNAME sh -c "wget https://downloads.mongodb.com/compass/mongodb-compass_1.49.14_$ARCHITECTURE.deb"
+sudo apt install ./mongodb-compass_1.49.14_$ARCHITECTURE.deb
 
 # Install Node.js
 curl -fsSL https://deb.nodesource.com/setup_24.x | sudo -E bash -
@@ -196,3 +207,10 @@ echo "To compile and install Inkscape+SAGE, run: sudo sh ./inkscape-plus-sage.sh
 echo "To open web interface run: firefox http://localhost"
 echo "Default credentials: admin / jsonscada"
 echo "Default Metabase credentials: json@scada.com / jsonscada123"
+
+# Optional: install a local Node-RED runtime for the NODE-RED driver (commented by
+# default). The driver also works with a remote or containerized Node-RED. To enable:
+#   sudo -u '$JS_USERNAME' bash -c 'cd ~/json-scada && mkdir -p nodered-runtime && npm install --prefix nodered-runtime node-red@4 node-red-contrib-jsonscada'
+#   cp ../conf-templates/node-red-settings.js ~/json-scada/conf/node-red-settings.js
+#   mkdir -p ~/json-scada/conf/node-red
+# Then enable the nodered_driver (and optionally nodered_runtime) supervisor programs.

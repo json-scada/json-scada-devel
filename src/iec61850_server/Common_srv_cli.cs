@@ -24,6 +24,7 @@
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
+using System.Globalization;
 using System.Net.Security;
 using System.Security.Cryptography.X509Certificates;
 using System.Threading;
@@ -192,11 +193,13 @@ namespace IEC61850_Server
             public int pointKey;
             public string objRef;
 
-            // command routing metadata (copied from rtData at model build time)
+            // command routing metadata (copied from rtData at model build time).
+            // The BsonValue fields keep the source document's original type so commandsQueue
+            // entries look exactly like the ones the OPC server drivers produce.
             public double protocolSourceConnectionNumber;
-            public string protocolSourceCommonAddress;
-            public string protocolSourceObjectAddress;
-            public string protocolSourceASDU;
+            public BsonValue protocolSourceCommonAddress;
+            public BsonValue protocolSourceObjectAddress;
+            public BsonValue protocolSourceASDU;
             public double protocolSourceCommandDuration;
             public bool protocolSourceCommandUseSBO;
 
@@ -226,51 +229,51 @@ namespace IEC61850_Server
         [BsonIgnoreExtraElements]
         public class rtData
         {
-            [BsonSerializer(typeof(BsonIntSerializer)), BsonDefaultValue(0)]
-            public BsonInt32 _id { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonIntSerializer))]
+            public BsonInt64 _id { get; set; }
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString tag { get; set; }
-            [BsonDefaultValue("digital")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString type { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
+            [BsonSerializer(typeof(BsonDoubleSerializer))]
             public BsonDouble value { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString valueString { get; set; }
-            [BsonDefaultValue(true)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean invalid { get; set; }
-            [BsonDefaultValue(false)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean substituted { get; set; }
-            [BsonDefaultValue(false)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean overflow { get; set; }
-            [BsonDefaultValue(false)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean transient { get; set; }
-            [BsonDefaultValue("supervised")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString origin { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString description { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString ungroupedDescription { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString group1 { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString group2 { get; set; }
-            [BsonDefaultValue("")]
+            [BsonSerializer(typeof(BsonStringSerializer))]
             public BsonString group3 { get; set; }
             public BsonValue timeTag { get; set; }
             public BsonValue timeTagAtSource { get; set; }
-            [BsonDefaultValue(false)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean timeTagAtSourceOk { get; set; }
-            [BsonDefaultValue("")]
-            public BsonString protocolSourceASDU { get; set; }
-            [BsonDefaultValue("")]
-            public BsonString protocolSourceCommonAddress { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
+            // Routing metadata is copied verbatim into commandsQueue, so the original BSON type
+            // must be preserved (numeric for IEC 60870-5/DNP3 style sources, string for
+            // IEC 61850/OPC style). BsonValue accepts any type and keeps it intact.
+            public BsonValue protocolSourceASDU { get; set; }
+            public BsonValue protocolSourceCommonAddress { get; set; }
+            [BsonSerializer(typeof(BsonDoubleSerializer))]
             public BsonDouble protocolSourceConnectionNumber { get; set; }
-            [BsonDefaultValue("")]
-            public BsonString protocolSourceObjectAddress { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
+            public BsonValue protocolSourceObjectAddress { get; set; }
+            [BsonSerializer(typeof(BsonDoubleSerializer))]
             public BsonDouble protocolSourceCommandDuration { get; set; }
-            [BsonDefaultValue(false)]
+            [BsonSerializer(typeof(BsonBooleanSerializer))]
             public BsonBoolean protocolSourceCommandUseSBO { get; set; }
         }
 
@@ -340,6 +343,100 @@ namespace IEC61850_Server
             }
         }
 
+        // generic permissive deserializer resulting string.
+        // Needed because JSON-SCADA stores protocolSource{ASDU,CommonAddress,ObjectAddress} as
+        // numbers when the value is numeric (see auth.controller.js updateTag) and as strings
+        // otherwise. This driver reads points from every source driver, so it sees both forms.
+        public class BsonStringSerializer : SerializerBase<BsonString>
+        {
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, BsonString sval)
+            {
+                context.Writer.WriteString(sval == null ? "" : sval.AsString);
+            }
+            public override BsonString Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            {
+                var type = context.Reader.GetCurrentBsonType();
+                var sval = "";
+                switch (type)
+                {
+                    case BsonType.String:
+                        return BsonString.Create(context.Reader.ReadString());
+                    case BsonType.Null:
+                        context.Reader.ReadNull();
+                        break;
+                    case BsonType.Double:
+                        // whole doubles render without a decimal point (13.0 -> "13")
+                        sval = context.Reader.ReadDouble().ToString(CultureInfo.InvariantCulture);
+                        break;
+                    case BsonType.Int32:
+                        sval = context.Reader.ReadInt32().ToString(CultureInfo.InvariantCulture);
+                        break;
+                    case BsonType.Int64:
+                        sval = context.Reader.ReadInt64().ToString(CultureInfo.InvariantCulture);
+                        break;
+                    case BsonType.Decimal128:
+                        sval = context.Reader.ReadDecimal128().ToString();
+                        break;
+                    case BsonType.Boolean:
+                        sval = context.Reader.ReadBoolean() ? "true" : "false";
+                        break;
+                    case BsonType.ObjectId:
+                        sval = context.Reader.ReadObjectId().ToString();
+                        break;
+                    case BsonType.DateTime:
+                        sval = BsonUtils.ToDateTimeFromMillisecondsSinceEpoch(
+                            context.Reader.ReadDateTime()).ToString("o", CultureInfo.InvariantCulture);
+                        break;
+                    case BsonType.JavaScript:
+                        sval = context.Reader.ReadJavaScript();
+                        break;
+                    default:
+                        context.Reader.SkipValue();
+                        break;
+                }
+                return BsonString.Create(sval);
+            }
+        }
+
+        // generic permissive deserializer resulting boolean (accepts numeric/string truthy forms)
+        public class BsonBooleanSerializer : SerializerBase<BsonBoolean>
+        {
+            public override void Serialize(BsonSerializationContext context, BsonSerializationArgs args, BsonBoolean bval)
+            {
+                context.Writer.WriteBoolean(bval != null && bval.AsBoolean);
+            }
+            public override BsonBoolean Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            {
+                var type = context.Reader.GetCurrentBsonType();
+                var bval = false;
+                switch (type)
+                {
+                    case BsonType.Boolean:
+                        return BsonBoolean.Create(context.Reader.ReadBoolean());
+                    case BsonType.Null:
+                        context.Reader.ReadNull();
+                        break;
+                    case BsonType.Double:
+                        bval = context.Reader.ReadDouble() != 0.0;
+                        break;
+                    case BsonType.Int32:
+                        bval = context.Reader.ReadInt32() != 0;
+                        break;
+                    case BsonType.Int64:
+                        bval = context.Reader.ReadInt64() != 0;
+                        break;
+                    case BsonType.String:
+                        var s = context.Reader.ReadString();
+                        bval = s.Equals("true", StringComparison.OrdinalIgnoreCase) || s == "1";
+                        break;
+                    default:
+                        context.Reader.SkipValue();
+                        break;
+                }
+                return BsonBoolean.Create(bval);
+            }
+        }
+
         // generic permissive numeric deserializer resulting int (read most types as int, write to double)
         public class BsonIntSerializer : SerializerBase<BsonInt32>
         {
@@ -385,6 +482,70 @@ namespace IEC61850_Server
                         break;
                 }
                 return Convert.ToInt32(dval);
+            }
+        }
+        public class BsonInt64Serializer : SerializerBase<BsonInt64> // generic permissive numeric deserializer resulting int
+        { // read most types as int but write to double
+            public override void Serialize(MongoDB.Bson.Serialization.BsonSerializationContext context, MongoDB.Bson.Serialization.BsonSerializationArgs args, BsonInt64 ival)
+            {
+                context.Writer.WriteDouble(ival.ToDouble());
+            }
+            public override BsonInt64 Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            {
+                var type = context.Reader.GetCurrentBsonType();
+                var dval = 0.0;
+                String s;
+                switch (type)
+                {
+                    case BsonType.Int32:
+                        dval = context.Reader.ReadInt32();
+                        break;
+                    case BsonType.Int64:
+                        return context.Reader.ReadInt64();
+                    case BsonType.Double:
+                        dval = context.Reader.ReadDouble();
+                        break;
+                    case BsonType.Null:
+                        context.Reader.ReadNull();
+                        break;
+                    case BsonType.String:
+                        s = context.Reader.ReadString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.ObjectId:
+                        s = context.Reader.ReadObjectId().ToString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.JavaScript:
+                        s = context.Reader.ReadJavaScript();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.Decimal128:
+                        dval = System.Convert.ToDouble(context.Reader.ReadDecimal128());
+                        break;
+                    case BsonType.Boolean:
+                        dval = System.Convert.ToDouble(context.Reader.ReadBoolean());
+                        break;
+                }
+                return System.Convert.ToInt64(dval);
             }
         }
 

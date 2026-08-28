@@ -39,6 +39,7 @@ nssm remove JSON_SCADA_iec104server confirm
 nssm remove JSON_SCADA_iec104client confirm
 nssm remove JSON_SCADA_iec101server confirm
 nssm remove JSON_SCADA_iec101client confirm
+nssm remove JSON_SCADA_iec103client confirm
 nssm remove JSON_SCADA_dnp3client confirm
 nssm remove JSON_SCADA_dnp3server confirm
 nssm remove JSON_SCADA_opcuaclient confirm
@@ -47,10 +48,16 @@ nssm remove JSON_SCADA_iec61850client confirm
 nssm remove JSON_SCADA_i104m confirm
 nssm remove JSON_SCADA_plctags confirm
 nssm remove JSON_SCADA_plc4xclient confirm
+nssm remove JSON_SCADA_plc4jclient confirm
 nssm remove JSON_SCADA_telegraf_runtime confirm
 nssm remove JSON_SCADA_telegraf_listener confirm
+nssm remove JSON_SCADA_nodered_driver confirm
+nssm remove JSON_SCADA_nodered_runtime confirm
+nssm remove JSON_SCADA_n8nclient confirm
 nssm remove JSON_SCADA_mqttsparkplugclient confirm
 nssm remove JSON_SCADA_opcuaserver confirm
+nssm remove JSON_SCADA_modbusclient confirm
+nssm remove JSON_SCADA_modbusserver confirm
 nssm remove JSON_SCADA_log_io_file confirm
 nssm remove JSON_SCADA_log_io_server confirm
 nssm remove JSON_SCADA_onvif confirm

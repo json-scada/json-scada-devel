@@ -40,12 +40,15 @@ c:\json-scada\platform-windows\nodejs-runtime\node.exe c:\json-scada\src\mcp-jso
 
 The server exposes the following tools to the MCP client:
 
-- `search_points`: Search for points using filters.
-- `get_point`: Get full details of a specific point.
-- `send_command`: Write a value to a command point.
+- `search_points`: Search for points by tag/description regex, group, type, origin, alarmed and invalid filters. Returns compact summaries plus total match count.
+- `get_point`: Get the full document of a specific point by tag or numeric point key.
+- `send_command`: Write a value to a command point. Respects `commandBlocked`, records the action in `userActions` and can wait for delivery confirmation from the protocol driver.
+- `get_history`: Get historical values for a point in a time range (from the `hist` collection).
+- `get_soe_events`: Get Sequence of Events records with regex/group/time filters.
+- `get_system_status`: Summary of process instances, protocol driver instances and protocol connections with keep-alive based liveness.
 - `list_collections`: View all available database collections.
-- `query_collection`: Run a custom JSON query on any collection.
-- `describe_collection`: Get document counts and samples.
+- `query_collection`: Run a custom read-only query (MongoDB Extended JSON filter, projection and sort) on any collection. Credential fields are redacted.
+- `describe_collection`: Get estimated document counts and sample documents.
 - `list_database_info`: High-level summary of the database.
 - `get_collection_fields`: Inspect unique fields in a collection.
 - `get_database_schema`: View the known {json:scada} schema.

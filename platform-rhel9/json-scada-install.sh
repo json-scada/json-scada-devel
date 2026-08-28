@@ -27,7 +27,7 @@ sudo subscription-manager repos --enable codeready-builder-for-rhel-9-$(arch)-rp
 sudo dnf -y install https://dl.fedoraproject.org/pub/epel/epel-release-latest-9.noarch.rpm 
 sudo dnf -y install epel-release 
 sudo dnf config-manager --set-enabled crb
-sudo dnf -y install tar vim nano nginx wget chkconfig dotnet-sdk-8.0 java-21-openjdk php cmake libpcap-devel cyrus-sasl-lib cyrus-sasl-devel python3-tkinter sqlite-devel
+sudo dnf -y install tar vim nano nginx wget chkconfig dotnet-sdk-8.0 java-21-openjdk maven php cmake libpcap-devel cyrus-sasl-lib cyrus-sasl-devel python3-tkinter sqlite-devel
 sudo dnf -y install curl --allowerasing
 
 # docker/podman can be used to run DNP3 and OPC-DA on linux
@@ -52,8 +52,8 @@ sudo dnf remove -y python3-circuitbreaker
 
 sudo update-crypto-policies --set LEGACY
 
-wget --inet4-only https://go.dev/dl/go1.26.2.linux-$JS_ARCH.tar.gz
-sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.26.2.linux-$JS_ARCH.tar.gz
+wget --inet4-only https://go.dev/dl/go1.27.0.linux-$JS_ARCH.tar.gz
+sudo rm -rf /usr/local/go && sudo tar -C /usr/local -xzf go1.27.0.linux-$JS_ARCH.tar.gz
 sudo -u $JS_USERNAME sh -c 'export PATH=$PATH:/usr/local/go/bin'
 sudo -u $JS_USERNAME sh -c 'echo "export PATH=\$PATH:/usr/local/go/bin" >> ~/.bashrc'
 source ~/.bashrc
@@ -147,15 +147,21 @@ sudo systemctl enable telegraf
 
 sudo dnf -y install supervisor
 sudo cp *.ini /etc/supervisord.d/
+# JSON-SCADA process manager: dir for driver services created from the AdminUI.
+# Owned by jsonscada so services can be managed without root; scanned by supervisord.
+mkdir -p ~/json-scada/conf/supervisor.d
+if ! grep -q 'json-scada/conf/supervisor.d' /etc/supervisord.conf; then
+  sudo sed -i "s#^files *= *supervisord.d/\*.ini#files = supervisord.d/*.ini $HOME/json-scada/conf/supervisor.d/*.ini#" /etc/supervisord.conf
+fi
 sudo systemctl enable supervisord
 
-sudo yum install -y https://dl.grafana.com/grafana/release/12.4.3/grafana_12.4.3_24388279614_linux_$JS_ARCH.rpm
+sudo yum install -y https://dl.grafana.com/grafana/release/13.2.0/grafana_13.2.0_32077357341_linux_$JS_ARCH.rpm
 #sudo dnf -y install grafana
 sudo cp grafana.ini /etc/grafana
 sudo systemctl enable grafana-server
 
 sudo -u $JS_USERNAME sh -c 'mkdir ../metabase'
-sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.60.2/metabase.jar -O ../metabase/metabase.jar'
+sudo -u $JS_USERNAME sh -c 'wget --inet4-only https://downloads.metabase.com/v0.63.2/metabase.jar -O ../metabase/metabase.jar'
 
 sudo -u $JS_USERNAME sh -c 'curl -fsSL https://rpm.nodesource.com/setup_24.x -o nodesource_setup.sh'
 sudo bash nodesource_setup.sh
@@ -202,3 +208,10 @@ echo "To compile and install Inkscape+SAGE, run the following command: sudo sh .
 echo "To open web interface run: firefox http://localhost"
 echo "Default credentials: admin / jsonscada"
 echo "Default Metabase credentials: json@scada.com / jsonscada123"
+
+# Optional: install a local Node-RED runtime for the NODE-RED driver (commented by
+# default). The driver also works with a remote or containerized Node-RED. To enable:
+#   sudo -u '$JS_USERNAME' bash -c 'cd ~/json-scada && mkdir -p nodered-runtime && npm install --prefix nodered-runtime node-red@4 node-red-contrib-jsonscada'
+#   cp ../conf-templates/node-red-settings.js ~/json-scada/conf/node-red-settings.js
+#   mkdir -p ~/json-scada/conf/node-red
+# Then enable the nodered_driver (and optionally nodered_runtime) supervisor programs.

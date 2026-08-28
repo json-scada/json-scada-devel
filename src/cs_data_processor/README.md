@@ -49,6 +49,50 @@ Env. variable: **JS_CSDATAPROC_READ_FROM_SECONDARY** [String] - Use "TRUE" to ch
 
 Command line args take precedence over environment variables.
 
+## Latency Instrumentation
+
+The process measures the latency of every stage of the pipeline and reports it
+as counters and percentiles.
+
+Env. variable: **JS_CSDATAPROC_METRICS_PORT** [Integer] - HTTP port exposing the
+metrics. **Default=0 (disabled)**. Endpoints: `/metrics` (JSON),
+`/metrics/text` (human readable), `/metrics/prom` (Prometheus),
+`/metrics/reset` (clears the counters and restarts the measurement window),
+`/health`.
+Env. variable: **JS_CSDATAPROC_METRICS_LOG_INTERVAL** [Integer] - Seconds
+between metric reports written to the log. **Default=60**, 0 disables.
+Env. variable: **JS_CSDATAPROC_METRICS_FILE** [String] - Path of a file to dump
+the metrics snapshot as JSON on every report.
+
+A condensed snapshot is also published in the `stats` field of the
+`processInstances` document on every redundancy keep-alive.
+
+Stages measured:
+
+| Stage | What it measures |
+| --- | --- |
+| `sourceToRecv` | Protocol driver's `sourceDataUpdate.timeTag` -> change event delivered to this process |
+| `queueWait` | Delivered -> picked up for processing (always 0 here: the change stream callback runs straight on the event loop) |
+| `processing` | Conversion and the decision of what to write |
+| `writeLinger` | Queued -> included in a flushed batch (bounded by the 150 ms drain cycle) |
+| `bulkWrite` | Duration of the `realtimeData` bulk write |
+| `endToEnd` | `sourceDataUpdate.timeTag` -> `realtimeData` write completed |
+| `soeWrite` | Duration of the `soeData` insert |
+| `histWrite` | Duration of the historian insert plus the SQL file write |
+
+### Comparing with the Go implementation
+
+[`src/cs_data_processor-go`](../cs_data_processor-go) is a drop-in replacement
+written in Go that replaces the FIFO queues and fixed drain cycles with
+channels, goroutines and adaptive batching. It emits **the same** metrics
+document, so the two can be compared directly:
+
+    node ../cs_data_processor-go/tools/compare-latency.js --reset --wait 120 http://localhost:8081 http://localhost:8082
+
+Only one of the two implementations may run for a given instance number: they
+would both process the same change stream and share the same
+`processInstances` entry.
+
 ## Process Instance Collection
 
 A _processInstance_ entry will be created with defaults if one is not found. It can be used to configure some parameters and limit nodes allowed to run instances.

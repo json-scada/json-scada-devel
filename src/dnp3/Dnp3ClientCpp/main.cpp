@@ -16,8 +16,12 @@ public:
     void log(opendnp3::ModuleId, const char* id, opendnp3::LogLevel level,
              char const*, char const* message) final
     {
-        const bool important = (level.value & (opendnp3::flags::ERR.value
-                                             | opendnp3::flags::WARN.value)) != 0;
+        // levels::NORMAL is EVENT|ERR|WARN|INFO: the same set the C# driver shows at
+        // its basic log level, including "Connecting to: <host>, port <n>" and
+        // "Begining task: ...", which are essential to diagnose a silent outstation.
+        // Everything else (DBG plus the link/transport/application traffic dumps,
+        // which mapLogLevel only enables from log level 2 up) stays detailed.
+        const bool important = (level.value & opendnp3::levels::NORMAL.get_value()) != 0;
         Log.log(string(id) + " - " + message,
             important ? Logger::Level::Basic : Logger::Level::Detailed);
     }

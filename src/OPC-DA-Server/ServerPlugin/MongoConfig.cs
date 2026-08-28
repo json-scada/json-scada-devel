@@ -137,6 +137,13 @@ namespace ServerPlugin
         [BsonDefaultValue("")]
         public string valueString { get; set; }
 
+        // Conversion factors applied to routed commands (see OnWriteItems)
+        [BsonSerializer(typeof(BsonDoubleSerializer))]
+        public BsonDouble kconv1 { get; set; } = new BsonDouble(1.0);
+
+        [BsonSerializer(typeof(BsonDoubleSerializer))]
+        public BsonDouble kconv2 { get; set; } = new BsonDouble(0.0);
+
         [BsonDefaultValue(null)]
         public BsonDateTime timeTag { get; set; }
 

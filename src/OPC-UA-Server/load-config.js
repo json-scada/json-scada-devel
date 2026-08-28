@@ -62,6 +62,7 @@ function LoadConfig() {
   configObj.GridFsCollectionName = 'files'
   configObj.RealtimeDataCollectionName = 'realtimeData'
   configObj.SoeDataCollectionName = 'soeData'
+  configObj.HistCollectionName = 'hist'
   configObj.CommandsQueueCollectionName = 'commandsQueue'
   configObj.ProtocolDriverInstancesCollectionName = 'protocolDriverInstances'
   configObj.ProtocolConnectionsCollectionName = 'protocolConnections'

@@ -1,0 +1,34 @@
+# DOX: mongo_seed — MongoDB Seed Data
+
+## Purpose
+
+Initialization scripts and seed data for MongoDB: replica set initialization, database/collection creation, demo data population, roles, and users. Used during fresh installations and Docker setup.
+
+## Ownership
+
+- mongo_seed owns the MongoDB bootstrap and seed data
+
+## Local Contracts
+
+- JavaScript (`.js`) files executed with `mongosh`
+- Shell scripts (`.sh`) for automated initialization
+- `a_rs-init.js` — replica set initialization
+- `b_create-db.js` — database and collection creation, indexes
+- `init.sh` — full initialization sequence (Linux)
+- `init-demo.sh` — initialization with demo data
+- `realtime_data.json` — demo real-time data points
+- `roles.json` — RBAC role definitions
+- `users.json` — user accounts for demo
+
+## Work Guidance
+
+- Seed data should represent a realistic SCADA system for demos
+- Keep demo data manageable in size but representative
+- RBAC roles should demonstrate the permission model
+- Keep initialization scripts idempotent where possible
+- When adding new collections, update both `b_create-db.js` and documentation
+
+## Verification
+
+- Test with `mongosh < script.js` against a local MongoDB instance
+- Verify replica set initialization works with `rs.initiate()`

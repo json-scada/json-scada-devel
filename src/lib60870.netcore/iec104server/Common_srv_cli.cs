@@ -103,7 +103,7 @@ namespace Iec10XDriver
             public BsonDouble protocolSourceCommandDuration { get; set; }
             [BsonDefaultValue(false)]
             public BsonBoolean protocolSourceCommandUseSBO { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)),BsonDefaultValue(0)]
+            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble pointKey { get; set; }
             [BsonDefaultValue("")]
             public BsonString tag { get; set; }
@@ -134,12 +134,12 @@ namespace Iec10XDriver
             public BsonDouble protocolSourceCommandDuration { get; set; }
             [BsonDefaultValue(false)]
             public BsonBoolean protocolSourceCommandUseSBO { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)),BsonDefaultValue(0)]
+            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble pointKey { get; set; }
             [BsonDefaultValue("")]
             public BsonString tag { get; set; }
             public BsonDateTime timeTag { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)),BsonDefaultValue(0)]            
+            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble value { get; set; }
             [BsonDefaultValue("")]
             public BsonString valueString { get; set; }
@@ -164,7 +164,7 @@ namespace Iec10XDriver
             public BsonDouble protocolDestinationCommandDuration { get; set; }
             [BsonDefaultValue(false)]
             public BsonBoolean protocolDestinationCommandUseSBO { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)),BsonDefaultValue(0)]
+            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble protocolDestinationGroup { get; set; }
             [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(1)]
             public BsonDouble protocolDestinationKConv1 { get; set; }
@@ -338,6 +338,70 @@ namespace Iec10XDriver
                 return System.Convert.ToInt32(dval);
             }
         }
+        public class BsonInt64Serializer : SerializerBase<BsonInt64> // generic permissive numeric deserializer resulting int
+        { // read most types as int but write to double
+            public override void Serialize(MongoDB.Bson.Serialization.BsonSerializationContext context, MongoDB.Bson.Serialization.BsonSerializationArgs args, BsonInt64 ival)
+            {
+                context.Writer.WriteDouble(ival.ToDouble());
+            }
+            public override BsonInt64 Deserialize(BsonDeserializationContext context, BsonDeserializationArgs args)
+            {
+                var type = context.Reader.GetCurrentBsonType();
+                var dval = 0.0;
+                String s;
+                switch (type)
+                {
+                    case BsonType.Int32:
+                        dval = context.Reader.ReadInt32();
+                        break;
+                    case BsonType.Int64:
+                        return context.Reader.ReadInt64();
+                    case BsonType.Double:
+                        dval = context.Reader.ReadDouble();
+                        break;
+                    case BsonType.Null:
+                        context.Reader.ReadNull();
+                        break;
+                    case BsonType.String:
+                        s = context.Reader.ReadString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.ObjectId:
+                        s = context.Reader.ReadObjectId().ToString();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.JavaScript:
+                        s = context.Reader.ReadJavaScript();
+                        try
+                        {
+                            dval = double.Parse(s);
+                        }
+                        catch (Exception)
+                        {
+                        }
+                        break;
+                    case BsonType.Decimal128:
+                        dval = System.Convert.ToDouble(context.Reader.ReadDecimal128());
+                        break;
+                    case BsonType.Boolean:
+                        dval = System.Convert.ToDouble(context.Reader.ReadBoolean());
+                        break;
+                }
+                return System.Convert.ToInt64(dval);
+            }
+        }
         static InformationObject
         BuildInfoObj(
             Int32 asdu,
@@ -406,16 +470,16 @@ namespace Iec10XDriver
                                 DoublePointValue.INTERMEDIATE,
                                 quality);
                     else
-                    if (kconv1 == -1)
-                        sc =
-                             new DoublePointInformation(addr,
-                                value != 0 ? DoublePointValue.OFF : DoublePointValue.ON,
-                                quality);
-                    else
-                        sc =
-                             new DoublePointInformation(addr,
-                                value != 0 ? DoublePointValue.ON : DoublePointValue.OFF,
-                                quality);
+                        if (kconv1 == -1)
+                            sc =
+                                 new DoublePointInformation(addr,
+                                    value != 0 ? DoublePointValue.OFF : DoublePointValue.ON,
+                                    quality);
+                        else
+                            sc =
+                                 new DoublePointInformation(addr,
+                                    value != 0 ? DoublePointValue.ON : DoublePointValue.OFF,
+                                    quality);
                     break;
                 case TypeID.M_DP_TB_1: // 31
                     if (transient)
@@ -425,18 +489,18 @@ namespace Iec10XDriver
                                 quality,
                                 time_tag);
                     else
-                    if (kconv1 == -1)
-                        sc =
-                             new DoublePointWithCP56Time2a(addr,
-                                value != 0 ? DoublePointValue.OFF : DoublePointValue.ON,
-                                quality,
-                                time_tag);
-                    else
-                        sc =
-                             new DoublePointWithCP56Time2a(addr,
-                                value != 0 ? DoublePointValue.ON : DoublePointValue.OFF,
-                                quality,
-                                time_tag);
+                        if (kconv1 == -1)
+                            sc =
+                                 new DoublePointWithCP56Time2a(addr,
+                                    value != 0 ? DoublePointValue.OFF : DoublePointValue.ON,
+                                    quality,
+                                    time_tag);
+                        else
+                            sc =
+                                 new DoublePointWithCP56Time2a(addr,
+                                    value != 0 ? DoublePointValue.ON : DoublePointValue.OFF,
+                                    quality,
+                                    time_tag);
                     break;
                 case TypeID.M_ST_NA_1: // 5
                     value = value * kconv1 + kconv2;
@@ -446,11 +510,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -64)
-                    {
-                        value = -64;
-                        quality.Overflow = true;
-                    }
+                        if (value < -64)
+                        {
+                            value = -64;
+                            quality.Overflow = true;
+                        }
                     sc = new StepPositionInformation(addr,
                                                 System.Convert.ToInt16(value),
                                                 transient,
@@ -464,11 +528,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -64)
-                    {
-                        value = -64;
-                        quality.Overflow = true;
-                    }
+                        if (value < -64)
+                        {
+                            value = -64;
+                            quality.Overflow = true;
+                        }
                     sc = new StepPositionWithCP56Time2a(addr,
                                                 System.Convert.ToInt16(value),
                                                 transient,
@@ -483,11 +547,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -32768)
-                    {
-                        value = -32768;
-                        quality.Overflow = true;
-                    }
+                        if (value < -32768)
+                        {
+                            value = -32768;
+                            quality.Overflow = true;
+                        }
                     sc = new MeasuredValueNormalized(addr,
                                                 System.Convert.ToInt16(value),
                                                 quality);
@@ -500,11 +564,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -32768)
-                    {
-                        value = -32768;
-                        quality.Overflow = true;
-                    }
+                        if (value < -32768)
+                        {
+                            value = -32768;
+                            quality.Overflow = true;
+                        }
                     sc = new MeasuredValueNormalizedWithoutQuality(addr,
                                                 System.Convert.ToInt16(value));
                     break;
@@ -516,11 +580,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -32768)
-                    {
-                        value = -32768;
-                        quality.Overflow = true;
-                    }
+                        if (value < -32768)
+                        {
+                            value = -32768;
+                            quality.Overflow = true;
+                        }
                     sc = new MeasuredValueNormalizedWithCP56Time2a(addr,
                                                 System.Convert.ToInt16(value),
                                                 quality,
@@ -534,11 +598,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -32768)
-                    {
-                        value = -32768;
-                        quality.Overflow = true;
-                    }
+                        if (value < -32768)
+                        {
+                            value = -32768;
+                            quality.Overflow = true;
+                        }
                     sc = new MeasuredValueScaled(addr,
                                                 System.Convert.ToInt16(value),
                                                 quality);
@@ -551,11 +615,11 @@ namespace Iec10XDriver
                         quality.Overflow = true;
                     }
                     else
-                    if (value < -32768)
-                    {
-                        value = -32768;
-                        quality.Overflow = true;
-                    }
+                        if (value < -32768)
+                        {
+                            value = -32768;
+                            quality.Overflow = true;
+                        }
                     sc = new MeasuredValueScaledWithCP56Time2a(addr,
                                                 System.Convert.ToInt16(value),
                                                 quality,
@@ -644,8 +708,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new SetpointCommandNormalized(addr,
                             System.Convert.ToInt16(value),
@@ -656,8 +720,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new SetpointCommandScaled(addr,
                             new ScaledValue(System.Convert.ToInt16(value)),
@@ -726,8 +790,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new SetpointCommandNormalizedWithCP56Time2a(addr,
                             System.Convert.ToInt16(value),
@@ -739,8 +803,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new SetpointCommandScaledWithCP56Time2a(addr,
                             new ScaledValue(System.Convert.ToInt16(value)),
@@ -797,8 +861,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new ParameterNormalizedValue(System
                                 .Convert
@@ -811,8 +875,8 @@ namespace Iec10XDriver
                     if (value > 32767)
                         value = 32767;
                     else
-                    if (value < -32768)
-                        value = -32768;
+                        if (value < -32768)
+                            value = -32768;
                     sc =
                         new ParameterScaledValue(addr,
                             new ScaledValue(System.Convert.ToInt16(value)),
@@ -891,7 +955,7 @@ namespace Iec10XDriver
                             {
                                 Console.WriteLine("FORCED ACCEPT CERTIFICATE!");
                                 return true;
-                            }                            
+                            }
 
                             if (status.Status != System.Security.Cryptography.X509Certificates.X509ChainStatusFlags.NoError)
                             {
@@ -919,7 +983,7 @@ namespace Iec10XDriver
             }
         }
 
-        static MongoClient ConnectMongoClient(JSONSCADAConfig jsConfig) 
+        static MongoClient ConnectMongoClient(JSONSCADAConfig jsConfig)
         {
             // connect to MongoDB Database server
             MongoClientSettings settings = MongoClientSettings.FromUrl(new MongoUrl(jsConfig.mongoConnectionString));

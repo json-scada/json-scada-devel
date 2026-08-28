@@ -2,7 +2,13 @@
 
 # ACCESS VIA WEB BROWSER AT http://127.0.0.1/
 # Server must have tcp ports 80, 8080, 3000, 20000, 27017, 5432, 2404, 4840, 10001 free!
-# Must be online to connect to IEC60870-5-104 live demo server at 207.180.242.96:2404. 
+# Must be online to connect to IEC60870-5-104 live demo server at 207.180.242.96:2404.
+#
+# BEFORE THE FIRST RUN: create the .env file holding a unique random JWT secret,
+# otherwise compose stops with an error:
+#     ./generate-env.sh          (Linux/macOS)
+#     .\generate-env.ps1         (Windows PowerShell)
+# Published ports are bound to JS_BIND_ADDR (127.0.0.1 by default).
 
 services:
 
@@ -24,7 +30,7 @@ services:
       - MONGO_INITDB_DATABASE=json_scada
     # to export mongodb port on main host!
     ports:
-      - "27017:27017"
+      - "${JS_BIND_ADDR:-127.0.0.1}:27017:27017"
     # internal container port
     expose:
       - "27017"
@@ -47,7 +53,7 @@ services:
       #- ./timescale:/var/lib/postgresql
     # to export postgresql port on main host!
     ports:
-      - 5432:5432
+      - "${JS_BIND_ADDR:-127.0.0.1}:5432:5432"
     # internal container port
     expose:
       - "5432"
@@ -134,7 +140,7 @@ services:
 
     # export grafana port to the host
     ports:
-      - 3000:3000
+      - "${JS_BIND_ADDR:-127.0.0.1}:3000:3000"
     expose:
       - "3000"
     depends_on:
@@ -186,7 +192,7 @@ services:
       - jsdemo_mongorsn1
     # exports the iec 104 server port to the host
     ports:
-      - 2404:2404
+      - "${JS_BIND_ADDR:-127.0.0.1}:2404:2404"
     expose:
       - "2404"
     networks:
@@ -233,7 +239,7 @@ services:
       - JS_CSEXCEL_IP_BIND=0.0.0.0
       - JS_CSEXCEL_HTTP_PORT=10001
     ports:
-      - 10001:10001
+      - "${JS_BIND_ADDR:-127.0.0.1}:10001:10001"
     expose:
       - "10001"
     volumes:
@@ -260,6 +266,41 @@ services:
     networks:
       - jsdemo_net
 
+  # N8N integration driver (bidirectional n8n integration)
+  n8n-client:
+    image: node:22-alpine
+    container_name: jsdemo_n8n-client
+    command:  sh -c "cd /n8n-client && npm install --no-audit --no-fund && sleep 60 && node index.js"
+    restart: unless-stopped
+    expose:
+      - "51930"
+    volumes:
+      - ../src/n8n-client:/n8n-client
+      - ./conf:/conf
+      - ./log:/log
+    links:
+      - jsdemo_mongorsn1
+    networks:
+      - jsdemo_net
+
+  # Optional: n8n workflow-automation platform. n8n is fair-code licensed; this pulls
+  # the public image at runtime (not bundled/redistributed by JSON-SCADA). Enable the
+  # N8N1 demo connection in the AdminUI to try the integration end-to-end.
+  n8n:
+    image: docker.n8n.io/n8nio/n8n:latest
+    container_name: jsdemo_n8n
+    restart: unless-stopped
+    environment:
+      - N8N_SECURE_COOKIE=false
+      - N8N_PORT=5678
+      - GENERIC_TIMEZONE=UTC
+    ports:
+      - "${JS_BIND_ADDR:-127.0.0.1}:5678:5678"
+    volumes:
+      - ./n8n_data:/home/node/.n8n
+    networks:
+      - jsdemo_net
+
   # OPC-UA Server
   opcua_server:
     image: node:22-alpine
@@ -267,7 +308,7 @@ services:
     command:  sh -c "cd /OPC-UA-Server && sleep 60 && node index.js"
     restart: unless-stopped
     ports:
-      - 4840:4840
+      - "${JS_BIND_ADDR:-127.0.0.1}:4840:4840"
     expose:
       - "4840"
     volumes:
@@ -286,6 +327,11 @@ services:
     command:  sh -c "cd /server_realtime_auth && sleep 50 && node index.js"
     restart: unless-stopped
     environment:
+      # Secret used to sign the JWT session tokens. It MUST be unique and private
+      # for every installation: whoever knows it can forge admin tokens and send
+      # commands to field devices. Generate it with ./generate-env.sh (or
+      # ./generate-env.ps1 on Windows), which writes it to the .env file.
+      - JS_JWT_SECRET=${JS_JWT_SECRET:?not set - run ./generate-env.sh (Linux/macOS) or ./generate-env.ps1 (Windows) in the demo-docker folder to create a .env file with a unique random secret}
       - JS_IP_BIND=0.0.0.0
       - JS_HTTP_PORT=8080
       - JS_GRAFANA_SERVER=http://grafana:3000
@@ -309,7 +355,7 @@ services:
       - dozzle
     # exports the HTTP port to the main host
     ports:
-      - 8080:8080
+      - "${JS_BIND_ADDR:-127.0.0.1}:8080:8080"
     expose:
       - "8080"
     networks:
@@ -330,60 +376,6 @@ services:
     networks:
       - jsdemo_net
 
-#  # Dnp3 client: requires wine as it is currently Windows-only
-#  dnp3_client_wine:
-#    image: scottyhardy/docker-wine:latest
-#    container_name: jsdemo_dnp3_client_wine
-#    #dpkg --add-architecture i386 && apt update && apt install -y xvfb wget libfreetype6 wine wine32:i386 && cd /root &&
-#    #apt update && apt install -y xvfb wget libfreetype6 wine && cd /root &&
-#    command: sh -c "export DISPLAY=:0.0 &&
-#                    export WINEDEBUG=-all &&
-#                    rm -rf /tmp/.X0-lock && (Xvfb :0 -screen 0 1024x768x16 &) &&
-#                    cd /tmp &&
-#                    wget -nc https://download.visualstudio.microsoft.com/download/pr/3c01bbe6-a49d-468f-8335-f195588f582f/b935469e8480e611eae4d79b2e51965e/dotnet-runtime-6.0.33-win-x64.exe ;
-#                    wget -nc https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks ;
-#                    sh ./winetricks win10 &&
-#                    wine dotnet-runtime-6.0.33-win-x64.exe /q &&
-#                    cd /jsonscada_bin &&
-#                    sleep 40 &&
-#                    wine Dnp3Client.exe "
-#    restart: unless-stopped
-#    volumes:
-#      - ./conf:/conf
-#      - ./bin_win:/jsonscada_bin
-#      - ./log:/log
-#    links:
-#      - jsdemo_mongorsn1
-#    networks:
-#      - jsdemo_net
-#
-#  # OPC-DA client: requires wine as it is currently Windows-only
-#  opcda_client_wine:
-#    image: scottyhardy/docker-wine:latest
-#    container_name: jsdemo_opcda_client_wine
-#    #dpkg --add-architecture i386 && apt update && apt install -y xvfb wget libfreetype6 wine wine32:i386 && cd /root &&
-#    #apt update && apt install -y xvfb wget libfreetype6 wine && cd /root &&
-#    command: sh -c "export DISPLAY=:0.0 &&
-#                    export WINEDEBUG=-all &&
-#                    rm -rf /tmp/.X0-lock && (Xvfb :0 -screen 0 1024x768x16 &) &&
-#                    cd /tmp &&
-#                    wget -nc https://download.visualstudio.microsoft.com/download/pr/3c01bbe6-a49d-468f-8335-f195588f582f/b935469e8480e611eae4d79b2e51965e/dotnet-runtime-6.0.33-win-x64.exe ;
-#                    wget -nc https://raw.githubusercontent.com/Winetricks/winetricks/master/src/winetricks ;
-#                    sh ./winetricks win10 &&
-#                    wine dotnet-runtime-6.0.33-win-x64.exe /q &&
-#                    cd /jsonscada_bin &&
-#                    sleep 40 &&
-#                    wine OPC-DA-Client.exe "
-#    restart: unless-stopped
-#    volumes:
-#      - ./conf:/conf
-#      - ./bin_win:/jsonscada_bin
-#      - ./log:/log
-#    links:
-#      - jsdemo_mongorsn1
-#    networks:
-#      - jsdemo_net
-
   # DNP3 SERVER, demo config accepts connection on 127.0.0.1:20000 (local address 2, remote address 1)
   dnp3server:
     image: mcr.microsoft.com/dotnet/sdk:8.0
@@ -400,7 +392,7 @@ services:
       - jsdemo_mongorsn1
     # exports the DNP3 server port to the host
     ports:
-      - 20000:20000
+      - "${JS_BIND_ADDR:-127.0.0.1}:20000:20000"
     expose:
       - "20000"
     networks:
@@ -433,13 +425,46 @@ services:
     networks:
       - jsdemo_net
 
+#  # Node-RED integration (opt-in). To enable: set the NODE-RED instance
+#  # (protocolDriverInstances) enabled=true in the seed, then uncomment both services.
+#  # The driver builds itself on first start; Node-RED loads node-red-contrib-jsonscada.
+#  nodered_driver:
+#    image: node:22-alpine
+#    container_name: jsdemo_nodered_driver
+#    command: sh -c "cd /node-red-driver && npm install && npm run build && sleep 40 && node dist/main.js 1 1 /conf/json-scada.json"
+#    restart: unless-stopped
+#    volumes:
+#      - ../src/node-red-driver:/node-red-driver
+#      - ./conf:/conf
+#      - ./log:/log
+#    links:
+#      - jsdemo_mongorsn1
+#    networks:
+#      - jsdemo_net
+#
+#  nodered:
+#    image: nodered/node-red:latest
+#    container_name: jsdemo_nodered
+#    restart: unless-stopped
+#    ports:
+#      - "${JS_BIND_ADDR:-127.0.0.1}:1880:1880"
+#    environment:
+#      # install the palette into the mounted data dir on first boot
+#      - NODE_RED_ENABLE_PROJECTS=false
+#    volumes:
+#      - ./nodered_data:/data
+#    links:
+#      - nodered_driver
+#    networks:
+#      - jsdemo_net
+
 #  # Metabase for dashboards (can connect to MONGODB and POSTGRESQL)
 #  metabase:
 #    image: metabase/metabase:latest
 #    container_name: jsdemo_metabase
 #    restart: unless-stopped
 #    ports:
-#      - 3001:3000
+#      - "${JS_BIND_ADDR:-127.0.0.1}:3001:3000"
 #    links:
 #      - jsdemo_mongorsn1
 #      - timescaledb
@@ -450,7 +475,7 @@ services:
     image: nginx:latest
     container_name: jsdemo_nginx
     ports:
-      - "80:80"
+      - "${JS_BIND_ADDR:-127.0.0.1}:80:80"
     expose:
       - "80"
     volumes:
@@ -479,7 +504,7 @@ services:
       - DOZZLE_NO_ANALYTICS=true
       # - DOZZLE_LEVEL=debug
     ports:
-      - 6688:6688
+      - "${JS_BIND_ADDR:-127.0.0.1}:6688:6688"
     expose:
       - "6688"
     networks:

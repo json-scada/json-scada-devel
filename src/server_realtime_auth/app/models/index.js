@@ -14,5 +14,6 @@ db.tag = require('./tag.model')
 db.protocolDriverInstance = require('./protocolDriverInstance.model')
 db.protocolConnection = require('./protocolConnection.model')
 db.userAction = require('./userAction.model')
+db.systemSetting = require('./systemSetting.model')
 
 module.exports = db

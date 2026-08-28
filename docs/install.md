@@ -138,7 +138,7 @@ To install JSON-SCADA manually, it is required to install all the requirements f
 
 ### 1. MongoDB Server
 
-Versions 6.x.x or 7.x.x - Lower versions are not tested or supported. Newer versions can work but were not tested.
+Versions 7.x.x or 8.x.x - Lower versions are not tested or supported. Newer versions can work but were not tested.
 
 * https://www.mongodb.com/try/download/community
 * https://docs.mongodb.com/manual/installation/
@@ -156,7 +156,7 @@ For not trusted or open to Internet networks it is important to use TLS for Mong
 
 ### 2. PostgreSQL / TimescaleDB
 
-PostgreSQL version 12 - 16. TimescaleDB version 2.x.x. Previous versions can work but are not recommended. Newer versions can work but were not tested.
+PostgreSQL version 16 - 18. TimescaleDB version 2.x.x. Previous versions can work but are not recommended. Newer versions can work but were not tested.
 
 * https://www.timescale.com/products
 * https://docs.timescale.com/latest/getting-started/installation
@@ -164,16 +164,16 @@ PostgreSQL version 12 - 16. TimescaleDB version 2.x.x. Previous versions can wor
 
 For not trusted or open to Internet networks it is important to secure PostgreSQL connections. Consult the PostgreSQL docs to learn how to config connections using certificates.
 
-* https://www.postgresql.org/docs/12/ssl-tcp.html
+* https://www.postgresql.org/docs/18/ssl-tcp.html
 
 Replication to a Standby server is recommended for high availability.
 
-* https://www.postgresql.org/docs/12/different-replication-solutions.html
-* https://www.postgresql.org/docs/12/warm-standby.html#STANDBY-SERVER-OPERATION
+* https://www.postgresql.org/docs/18/different-replication-solutions.html
+* https://www.postgresql.org/docs/18/warm-standby.html#STANDBY-SERVER-OPERATION
 
 ### 3. Grafana
 
-Grafana version 9.x.x, 10.x.x or 11.x.x, OSS or Enterprise editions. Previous versions may work but are not recommended.
+Grafana version 11.x.x, 12.x.x or 13.x.x, OSS or Enterprise editions. Previous versions may work but are not recommended.
 
 * https://grafana.com/grafana/download
 * https://grafana.com/docs/grafana/latest/installation/
@@ -182,22 +182,22 @@ If certificates are configured for PostgreSQL connections to the server, it must
 
 ### 4. Node.js
 
-* Node.js version 20.x.x. Previous versions may work, but are not tested or supported.
+* Node.js version 22.x.x or later. Previous versions may work, but are not tested or supported.
 * https://nodejs.org/en/
 
 ### 5. Golang
 
-* Golang version 1.22.x. Previous versions may work, but are not tested or supported.
+* Golang version 1.23.x or later. Previous versions may work, but are not tested or supported.
 * https://golang.org/dl/
 
 ### 6. DotNet
 
-* DotNet version 6.0.x. Previous versions are not tested or supported.
+* DotNet version 8.0.x. Previous versions are not tested or supported.
 * https://dotnet.microsoft.com/download
 
 ### 7. Other recommended software tools
 
-* Inkscape SAGE or SCADAvis.io SVG Editor for synoptic display creation - https://sourceforge.net/projects/oshmiopensubstationhmi/ or https://www.microsoft.com/en-us/p/scadavisio-synoptic-editor/9p9905hmkz7x . Available only for Windows.
+* Inkscape SAGE or SCADAvis.io SVG Editor for synoptic display creation - https://www.microsoft.com/en-us/p/scadavisio-synoptic-editor/9p9905hmkz7x . Available only for Windows.
 * Open SSL Light 1.1.1m (for Windows) - https://slproweb.com/download/Win64OpenSSL_Light-1_1_1m.msi.
 * NSSM (for Windows) - https://nssm.cc/
 * Visual Studio Community (for Windows) - https://visualstudio.microsoft.com/vs/community/

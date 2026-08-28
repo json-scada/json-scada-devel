@@ -1,0 +1,5 @@
+cs_data_processor
+cs_data_processor.exe
+cs_data_processor-*
+*.test
+*.exe~

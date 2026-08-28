@@ -1,6 +1,8 @@
 /*
- * A process that converts Grafana notifications into JSON-SCADA SOE events, alarms and beeps.
- * {json:scada} - Copyright (c) 2020-2024 - Ricardo L. Olsen
+ * A process that converts Grafana alert notifications into JSON-SCADA SOE events, alarms and beeps.
+ * Supports the Grafana Alerting webhook payload (Grafana >= 8, unified alerting).
+ * The legacy (pre-Grafana 8) webhook notification payload is still accepted for backward compatibility.
+ * {json:scada} - Copyright (c) 2020-2026 - Ricardo L. Olsen
  * This file is part of the JSON-SCADA distribution (https://github.com/riclolsen/json-scada).
  *
  * This program is free software: you can redistribute it and/or modify
@@ -29,7 +31,7 @@ const API_URL = '/grafana_alert2event'
 
 const APP_NAME = 'GRAFANA_ALERT2EVENT'
 const APP_MSG = '{json:scada} - Grafana Alert To Event Listener'
-const VERSION = '0.1.1'
+const VERSION = '0.2.0'
 const RealtimeDataCollectionName = 'realtimeData'
 const SoeCollectionName = 'soeData'
 const NO_TAG_TAG_NAME = '_NO_TAG_'
@@ -46,18 +48,15 @@ const app = express()
 app.use(express.json())
 let soeQueue = new Queue() // queue of SOE events
 
-process.on('uncaughtException', err => console.log('Uncaught Exception:' + JSON.stringify(err)))
+process.on('uncaughtException', (err) =>
+  console.log('Uncaught Exception:' + JSON.stringify(err))
+)
 
 app.listen(HTTP_PORT, IP_BIND, () => {
   console.log('listening on ' + IP_BIND + ':' + HTTP_PORT)
 })
 
 async function basicAuth(req, res, next) {
-  // make authenticate path public
-  if (req.path === '/users/authenticate') {
-    return next()
-  }
-
   // check for basic auth header
   if (
     !req.headers.authorization ||
@@ -93,58 +92,103 @@ async function validateCredentials(cred) {
 
 app.use(basicAuth)
 
-// API access point for Grafana webhook alert channel
+// Extract the list of alerts from the notification body.
+// Grafana Alerting (>= 8) groups one or more alerts in the "alerts" array.
+// A legacy (pre-8) notification body is converted to an equivalent single alert.
+function extractAlerts(body) {
+  if (Array.isArray(body?.alerts)) return body.alerts
+
+  // legacy payload: { state, tags, evalMatches, message, ruleUrl }
+  if (['ok', 'alerting'].includes(body?.state)) {
+    const labels = Object.assign({}, body?.tags)
+    if (!labels.tag && body?.evalMatches?.[0]?.metric)
+      labels.tag = body.evalMatches[0].metric
+    return [
+      {
+        status: body.state === 'alerting' ? 'firing' : 'resolved',
+        labels: labels,
+        annotations: { summary: body?.message },
+        generatorURL: body?.ruleUrl,
+      },
+    ]
+  }
+  return []
+}
+
+// API access point for the Grafana webhook contact point
 app.post(API_URL, function (req, res) {
-  res.setHeader('Access-Control-Allow-Origin', '*')
   res.setHeader('Content-Type', 'application/json')
 
-  console.log(req.body)
+  console.log(JSON.stringify(req.body))
 
-  if (
-    !['ok', 'alerting'].includes(req.body?.state) ||
-    req.body?.tags?.event === '0'
-  ) {
-    console.log('Discard event. State: ' + req.body?.state)
-    res.send({ ok: true })
-    return
-  }
+  const alerts = extractAlerts(req.body)
+  if (alerts.length === 0)
+    console.log('No alerts found in notification, discarding.')
 
-  let timeStamp = new Date()
-  let tag =
-    req.body?.tags?.tag || req.body?.evalMatches[0]?.metric || NO_TAG_TAG_NAME
-  let priority = new mongo.Double(parseFloat(req.body?.tags?.priority || 3))
-  let group1 = req.body?.tags?.group1 || 'Grafana'
-  let pointKey = new mongo.Double(parseFloat(req.body?.tags?.pointKey || 0))
-  let eventText = ''
-  switch (req.body?.state) {
-    case 'ok':
-      eventText = OK_MSG
-      if ('okText' in req.body.tags) eventText = req.body.tags.okText
-      break
-    case 'alerting':
-      eventText = ALERTING_MSG
-      if ('alertingText' in req.body.tags)
-        eventText = req.body.tags.alertingText
-      break
-  }
+  for (const alert of alerts) {
+    if (!['firing', 'resolved'].includes(alert?.status)) {
+      console.log('Discard alert. Status: ' + alert?.status)
+      continue
+    }
 
-  let SOE_Event = {
-    tag: tag,
-    pointKey: pointKey,
-    group1: group1,
-    description: req.body?.message,
-    eventText: eventText,
-    invalid: false,
-    priority: priority,
-    timeTag: timeStamp,
-    timeTagAtSource: timeStamp,
-    timeTagAtSourceOk: false,
-    ack: 0,
-    source: req.body?.ruleUrl,
-    alertState: req.body?.state,
+    const labels = alert?.labels || {}
+    const annotations = alert?.annotations || {}
+    const isFiring = alert.status === 'firing'
+    const createEvent = labels?.event !== '0'
+    const createAlarm = labels?.alarm !== '0'
+    if (!createEvent && !createAlarm) {
+      console.log('Discard alert. Event and alarm conversion disabled by labels.')
+      continue
+    }
+
+    const timeStamp = new Date()
+
+    // time of the state change at the source (startsAt when firing, endsAt when resolved)
+    let timeTagAtSource = timeStamp
+    let timeTagAtSourceOk = false
+    const srcDate = new Date(isFiring ? alert?.startsAt : alert?.endsAt)
+    if (!isNaN(srcDate.getTime()) && srcDate.getTime() > 0) {
+      timeTagAtSource = srcDate
+      timeTagAtSourceOk = true
+    }
+
+    const tag = labels?.tag || labels?.alertname || NO_TAG_TAG_NAME
+    const priority = new mongo.Double(parseFloat(labels?.priority || 3))
+    const group1 = labels?.group1 || 'Grafana'
+    const pointKey = new mongo.Double(parseFloat(labels?.pointKey || 0))
+    let eventText = isFiring ? ALERTING_MSG : OK_MSG
+    if (isFiring && 'alertingText' in labels) eventText = labels.alertingText
+    if (!isFiring && 'okText' in labels) eventText = labels.okText
+
+    const description =
+      annotations?.summary ||
+      annotations?.description ||
+      req.body?.title ||
+      req.body?.message ||
+      ''
+
+    const SOE_Event = {
+      tag: tag,
+      pointKey: pointKey,
+      group1: group1,
+      description: description,
+      eventText: eventText,
+      invalid: false,
+      priority: priority,
+      timeTag: timeStamp,
+      timeTagAtSource: timeTagAtSource,
+      timeTagAtSourceOk: timeTagAtSourceOk,
+      ack: 0,
+      source: alert?.generatorURL || req.body?.externalURL || '',
+      alertState: isFiring ? 'alerting' : 'ok',
+    }
+    soeQueue.enqueue({
+      event: SOE_Event,
+      createEvent: createEvent,
+      createAlarm: createAlarm,
+    })
+    console.log(SOE_Event)
   }
-  soeQueue.enqueue(SOE_Event)
-  console.log(SOE_Event)
 
   res.send({ ok: true })
 })
@@ -174,9 +218,7 @@ if (
 
 ;(async () => {
   let connOptions = {
-    useNewUrlParser: true,
-    useUnifiedTopology: true,
-    appname: APP_NAME + ' Version:' + VERSION,
+    appName: APP_NAME + ' Version:' + VERSION,
     maxPoolSize: 20,
     readPreference: ReadPreference.PRIMARY,
   }
@@ -199,7 +241,6 @@ if (
     connOptions.tlsInsecure = jsConfig.tlsInsecure
   }
 
-  let collection = null
   let clientMongo = null
   let checkSoeQueueIntervalHandle = null
   while (true) {
@@ -210,6 +251,9 @@ if (
           clientMongo = client
           console.log('Connected correctly to MongoDB server')
 
+          // specify db and collections
+          const db = client.db(jsConfig.mongoDatabaseName)
+
           // check for event queue each 1s, insert into mongo when dequeued
           clearInterval(checkSoeQueueIntervalHandle)
           checkSoeQueueIntervalHandle = setInterval(async function () {
@@ -217,19 +261,24 @@ if (
               while (!soeQueue.isEmpty()) {
                 try {
                   let res
-                  console.log('Insert SOE')
-                  let event = soeQueue.peek()
+                  const { event, createEvent, createAlarm } = soeQueue.peek()
                   soeQueue.dequeue()
-                  const coll_soe = db.collection(SoeCollectionName)
-                  res = await coll_soe.insertOne(event)
-                  if (res.acknowledged)
-                    console.log('MongoDB - Document inserted')
-                  else console.log('MongoDB - Error inserting Document')
+
+                  if (createEvent) {
+                    console.log('Insert SOE')
+                    const coll_soe = db.collection(SoeCollectionName)
+                    res = await coll_soe.insertOne(event)
+                    if (res.acknowledged)
+                      console.log('MongoDB - Document inserted')
+                    else console.log('MongoDB - Error inserting Document')
+                  }
+
+                  if (!createAlarm) continue
 
                   const coll_rtData = db.collection(RealtimeDataCollectionName)
 
                   // update beep if it is alerting state
-                  if (event.eventText === ALERTING_MSG) {
+                  if (event.alertState === 'alerting') {
                     console.log('Update beep')
                     res = await coll_rtData.updateOne(
                       // new beep
@@ -254,8 +303,7 @@ if (
                     let where = { tag: event.tag }
                     let upd = {
                       $set: {
-                        alerted:
-                          event.eventText === ALERTING_MSG ? true : false,
+                        alerted: event.alertState === 'alerting',
                         alertState: event.alertState,
                         timeTagAlertState: event.timeTag,
                       },
@@ -275,15 +323,11 @@ if (
               }
             }
           }, 1000)
-
-          // specify db and collections
-          const db = client.db(jsConfig.mongoDatabaseName)
-          collection = db.collection(RealtimeDataCollectionName)
         })
         .catch(function (err) {
           if (clientMongo) clientMongo.close()
           clientMongo = null
-          console.log('Connect to MongoDB error!')
+          console.log('Connect to MongoDB error!' + err)
         })
     }
 

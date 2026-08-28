@@ -1,0 +1,8 @@
+# Go build artifacts
+iccp-client.exe
+iccp-client
+
+# IDE
+.idea/
+.vscode/
+*.swp

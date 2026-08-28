@@ -29,7 +29,13 @@ const jwt = require('jsonwebtoken')
 const bcrypt = require('bcryptjs')
 const { spawn } = require('child_process')
 const AdmZip = require('adm-zip')
-const { Client } = require('ldapts')
+// Filter.escape implements RFC 4515 escaping and DN/RDN implement RFC 4514
+// escaping. Both come from ldapts itself, so they match exactly the encoders
+// the client uses when it serializes a search request.
+const { Client, Filter, DN } = require('ldapts')
+const ProcessManager = require('../services/process-manager')
+const RestartScheduler = require('../services/restart-scheduler')
+const SystemSettings = require('../services/system-settings')
 const User = db.user
 const Role = db.role
 const Tag = db.tag
@@ -235,9 +241,11 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3_SERVER',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP_SERVER',
       'ONVIF',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (
@@ -252,6 +260,9 @@ exports.updateProtocolConnection = async (req, res) => {
         case 'IEC60870-5-104_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:2404'
           break
+        case 'IEC61850_SERVER':
+          req.body.ipAddressLocalBind = '0.0.0.0:102'
+          break
         case 'DNP3_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:20000'
           break
@@ -261,11 +272,17 @@ exports.updateProtocolConnection = async (req, res) => {
         case 'TELEGRAF-LISTENER':
           req.body.ipAddressLocalBind = '0.0.0.0:51920'
           break
+        case 'N8N':
+          req.body.ipAddressLocalBind = '0.0.0.0:51930'
+          break
         case 'ICCP_SERVER':
           req.body.ipAddressLocalBind = '0.0.0.0:102'
           break
         case 'ONVIF':
           req.body.ipAddressLocalBind = '127.0.0.1:9001'
+          break
+        case 'MODBUS_SERVER':
+          req.body.ipAddressLocalBind = '0.0.0.0:502'
       }
     }
   }
@@ -281,9 +298,12 @@ exports.updateProtocolConnection = async (req, res) => {
       'PLCTAG',
       'I104M',
       'TELEGRAF-LISTENER',
+      'N8N',
       'OPC-UA_SERVER',
       'ICCP',
       'ICCP_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('ipAddresses' in req.body)) {
@@ -295,6 +315,7 @@ exports.updateProtocolConnection = async (req, res) => {
     [
       'OPC-UA',
       'TELEGRAF-LISTENER',
+      'N8N',
       'MQTT-SPARKPLUG-B',
       'IEC61850',
       'PLC4X',
@@ -307,6 +328,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'IEC60870-5-104',
       'IEC60870-5-101_SERVER',
       'IEC60870-5-101',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('autoCreateTags' in req.body)) {
@@ -317,6 +339,7 @@ exports.updateProtocolConnection = async (req, res) => {
   if (
     [
       'MQTT-SPARKPLUG-B',
+      'N8N',
       'OPC-UA_SERVER',
       'IEC61850',
       'PLC4X',
@@ -331,6 +354,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'IEC60870-5-104',
       'IEC60870-5-101_SERVER',
       'IEC60870-5-101',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('topics' in req.body)) {
@@ -457,7 +481,7 @@ exports.updateProtocolConnection = async (req, res) => {
       req.body.remoteAeQualifier = 12.0
     }
     if (!('remoteAppTitle' in req.body)) {
-      req.body.remoteApTitle = '1.1.999.1'
+      req.body.remoteApTitle = '1.1.999.2'
     }
   }
 
@@ -609,6 +633,7 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-DA',
       'ICCP',
       'ONVIF',
+      'MODBUS',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('giInterval' in req.body)) {
@@ -662,6 +687,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'OPC-UA',
       'OPC-DA',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('localCertFilePath' in req.body)) {
@@ -678,6 +705,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'DNP3',
       'DNP3_SERVER',
       'OPC-DA',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('peerCertFilePath' in req.body)) {
@@ -703,9 +732,12 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   if (
-    ['IEC60870-5-104', 'IEC60870-5-104_SERVER'].includes(
-      req?.body?.protocolDriver
-    )
+    [
+      'IEC60870-5-104',
+      'IEC60870-5-104_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
+    ].includes(req?.body?.protocolDriver)
   ) {
     if (!('allowOnlySpecificCertificates' in req.body)) {
       req.body.allowOnlySpecificCertificates = false
@@ -732,6 +764,8 @@ exports.updateProtocolConnection = async (req, res) => {
       'OPC-UA_SERVER',
       'IEC61850',
       'IEC61850_SERVER',
+      'MODBUS',
+      'MODBUS_SERVER',
     ].includes(req?.body?.protocolDriver)
   ) {
     if (!('privateKeyFilePath' in req.body)) {
@@ -740,9 +774,13 @@ exports.updateProtocolConnection = async (req, res) => {
   }
 
   if (
-    ['DNP3', 'DNP3_SERVER', 'MQTT-SPARKPLUG-B'].includes(
-      req?.body?.protocolDriver
-    )
+    [
+      'DNP3',
+      'DNP3_SERVER',
+      'MQTT-SPARKPLUG-B',
+      'MODBUS',
+      'MODBUS_SERVER',
+    ].includes(req?.body?.protocolDriver)
   ) {
     if (!('allowTLSv10' in req.body)) {
       req.body.allowTLSv10 = false
@@ -858,12 +896,195 @@ exports.updateProtocolConnection = async (req, res) => {
     }
   }
 
+  // MODBUS, MODBUS_SERVER - shared data representation and link parameters
+  if (['MODBUS', 'MODBUS_SERVER'].includes(req?.body?.protocolDriver)) {
+    // Byte order for non-standard multi-register layouts. Accepts a named alias
+    // (BE|LE|SW|SB) or an explicit byte permutation (CDAB, BADC, GHEFCDAB, ...).
+    if (!('byteOrder16' in req.body)) {
+      req.body.byteOrder16 = 'AB'
+    }
+    if (!('byteOrder32' in req.body)) {
+      req.body.byteOrder32 = 'ABCD'
+    }
+    if (!('byteOrder64' in req.body)) {
+      req.body.byteOrder64 = 'ABCDEFGH'
+    }
+    if (!('byteOrderStr' in req.body)) {
+      req.body.byteOrderStr = 'AB'
+    }
+    if (!('stringEncoding' in req.body)) {
+      req.body.stringEncoding = 'latin1'
+    }
+    if (!('useModiconAddresses' in req.body)) {
+      req.body.useModiconAddresses = false
+    }
+    // RTU inter-frame idle gap, 0 = auto (3.5 char times at the configured baud)
+    if (!('interFrameDelayMs' in req.body)) {
+      req.body.interFrameDelayMs = 0.0
+    }
+    if (!('privateKeyPassphrase' in req.body)) {
+      req.body.privateKeyPassphrase = ''
+    }
+    if (!('chainValidation' in req.body)) {
+      req.body.chainValidation = true
+    }
+    // serial parameters (connectionMode 'Serial')
+    if (!('portName' in req.body)) {
+      req.body.portName = ''
+    }
+    if (!('baudRate' in req.body)) {
+      req.body.baudRate = 9600.0
+    } else {
+      req.body.baudRate = Math.floor(req.body.baudRate)
+    }
+    if (!('parity' in req.body)) {
+      req.body.parity = 'Even'
+    }
+    if (!('stopBits' in req.body)) {
+      req.body.stopBits = 'One'
+    }
+    if (!('handshake' in req.body)) {
+      req.body.handshake = 'None'
+    }
+  }
+
+  // MODBUS (client) specific
+  if (['MODBUS'].includes(req?.body?.protocolDriver)) {
+    if (!('connectionMode' in req.body)) {
+      req.body.connectionMode = 'TCP Active'
+    }
+    if (!('timeoutMs' in req.body)) {
+      req.body.timeoutMs = 1000.0
+    }
+    if (!('pollingInterval' in req.body)) {
+      req.body.pollingInterval = 1000.0
+    }
+    if (!('maxRetries' in req.body)) {
+      req.body.maxRetries = 2.0
+    } else {
+      req.body.maxRetries = Math.floor(req.body.maxRetries)
+    }
+    if (!('interRequestDelayMs' in req.body)) {
+      req.body.interRequestDelayMs = 0.0
+    }
+    // clamp request sizes to the protocol maximums
+    if (!('maxReadRegisters' in req.body)) {
+      req.body.maxReadRegisters = 125.0
+    } else {
+      req.body.maxReadRegisters = Math.min(
+        125,
+        Math.max(1, Math.floor(req.body.maxReadRegisters))
+      )
+    }
+    if (!('maxReadCoils' in req.body)) {
+      req.body.maxReadCoils = 2000.0
+    } else {
+      req.body.maxReadCoils = Math.min(
+        2000,
+        Math.max(1, Math.floor(req.body.maxReadCoils))
+      )
+    }
+    if (!('maxAddressGap' in req.body)) {
+      req.body.maxAddressGap = 8.0
+    } else {
+      req.body.maxAddressGap = Math.max(0, Math.floor(req.body.maxAddressGap))
+    }
+    // use FC22 Mask Write for single-bit writes, else read-modify-write
+    if (!('useMaskWrite' in req.body)) {
+      req.body.useMaskWrite = true
+    }
+  }
+
+  // MODBUS_SERVER specific
+  if (['MODBUS_SERVER'].includes(req?.body?.protocolDriver)) {
+    if (!('connectionMode' in req.body)) {
+      req.body.connectionMode = 'TCP Passive'
+    }
+    if (!('maxClientConnections' in req.body)) {
+      req.body.maxClientConnections = 8
+    } else {
+      req.body.maxClientConnections = Math.floor(req.body.maxClientConnections)
+    }
+    if (!('clientIdleTimeoutMs' in req.body)) {
+      req.body.clientIdleTimeoutMs = 60000.0
+    }
+    // unit ids (slave addresses) served by this connection
+    if (!('serverUnitIds' in req.body) || !Array.isArray(req.body.serverUnitIds)) {
+      req.body.serverUnitIds = [1.0]
+    } else {
+      req.body.serverUnitIds = req.body.serverUnitIds
+        .map((v) => Math.floor(Number(v)))
+        .filter((v) => Number.isFinite(v) && v >= 0 && v <= 255)
+      if (req.body.serverUnitIds.length === 0) {
+        req.body.serverUnitIds = [1.0]
+      }
+    }
+    if (!('strictUnitId' in req.body)) {
+      req.body.strictUnitId = false
+    }
+    if (!('serveUnmappedAsZero' in req.body)) {
+      req.body.serveUnmappedAsZero = false
+    }
+    // Modbus has no quality bits: how to serve a tag flagged invalid
+    if (!('invalidValuePolicy' in req.body)) {
+      req.body.invalidValuePolicy = 'last'
+    }
+    if (!('allowWritesToSupervised' in req.body)) {
+      req.body.allowWritesToSupervised = false
+    }
+  }
+
   try {
-    await ProtocolConnection.findOneAndUpdate({ _id: req.body._id }, req.body)
-    res.status(200).send({})
+    // findOneAndUpdate returns the pre-update document (used to detect instance moves)
+    const oldConn = await ProtocolConnection.findOneAndUpdate(
+      { _id: req.body._id },
+      req.body
+    )
+      .lean()
+      .exec()
+    const restartInfo = await scheduleConnectionRestart(
+      req.body.protocolDriver,
+      req.body.protocolDriverInstanceNumber,
+      oldConn
+    )
+    res.status(200).send({ ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
+  }
+}
+
+// Schedules a debounced driver restart after a connection change, honoring the
+// global auto-restart setting. Returns flags the UI uses to inform the operator.
+async function scheduleConnectionRestart(driver, instanceNumber, oldConn) {
+  try {
+    const settings = await SystemSettings.getSettings()
+    const auto = settings.autoRestartOnConnectionChange
+    const result = await RestartScheduler.scheduleRestart(
+      driver,
+      instanceNumber,
+      auto
+    )
+    // connection moved between instances: also restart the previous owner
+    if (
+      oldConn &&
+      (oldConn.protocolDriver !== driver ||
+        Math.trunc(Number(oldConn.protocolDriverInstanceNumber)) !==
+          Math.trunc(Number(instanceNumber)))
+    ) {
+      await RestartScheduler.scheduleRestart(
+        oldConn.protocolDriver,
+        oldConn.protocolDriverInstanceNumber,
+        auto
+      )
+    }
+    return {
+      restartScheduled: !!result.scheduled,
+      restartPending: !!result.pending,
+    }
+  } catch (e) {
+    Log.log('scheduleConnectionRestart: ' + e.message)
+    return {}
   }
 }
 
@@ -877,9 +1098,21 @@ exports.deleteProtocolConnection = async (req, res) => {
       })
     }
 
-    await ProtocolConnection.findOneAndDelete({ _id: req.body._id })
+    const conn = await ProtocolConnection.findOneAndDelete({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
 
-    res.status(200).send({ error: false })
+    const restartInfo = conn
+      ? await scheduleConnectionRestart(
+          conn.protocolDriver,
+          conn.protocolDriverInstanceNumber,
+          null
+        )
+      : {}
+
+    res.status(200).send({ error: false, ...restartInfo })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -945,8 +1178,24 @@ exports.deleteProtocolDriverInstance = async (req, res) => {
   try {
     registerUserAction(req, 'deleteProtocolDriverInstance')
 
+    const doc = await ProtocolDriverInstance.findOne({ _id: req.body._id })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndDelete({ _id: req.body._id })
-    res.status(200).send({ error: false })
+
+    // best-effort: stop and uninstall the OS service for the removed instance
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices && doc) {
+        const r = await ProcessManager.removeService(doc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('deleteProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -1001,12 +1250,35 @@ exports.updateProtocolDriverInstance = async (req, res) => {
       req.body.protocolDriverInstanceNumber
     )
     req.body.logLevel = Math.floor(req.body.logLevel)
+    const oldDoc = await ProtocolDriverInstance.findOne({
+      _id: req.body._id,
+    })
+      .lean()
+      .exec()
     await ProtocolDriverInstance.findOneAndUpdate(
       { _id: req.body._id },
       req.body
     )
     registerUserAction(req, 'updateProtocolDriverInstance')
-    res.status(200).send({ error: false })
+
+    // best-effort: reconcile the OS service to the updated instance definition
+    let processWarning = undefined
+    try {
+      const settings = await SystemSettings.getSettings()
+      if (settings.autoManageServices) {
+        const newDoc = await ProtocolDriverInstance.findOne({
+          _id: req.body._id,
+        })
+          .lean()
+          .exec()
+        const r = await ProcessManager.applyInstanceUpdate(oldDoc, newDoc)
+        if (r && r.error) processWarning = r.error
+      }
+    } catch (e) {
+      Log.log('updateProtocolDriverInstance service hook: ' + e.message)
+      processWarning = e.message
+    }
+    res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
     res.status(200).send({ error: err })
@@ -1567,6 +1839,117 @@ exports.changePassword = async (req, res) => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Platform maintenance scripts (project export/import and process restarts).
+//
+// These endpoints run scripts shipped with the installation. Everything about
+// the command line is decided here and never by the request: the program is
+// picked from the fixed table below and joined to a fixed directory, and no
+// shell is involved, so arguments are passed as separate argv entries instead
+// of being parsed as a command line. Requests can only choose *whether* one of
+// these fixed scripts runs, never *what* runs.
+// ---------------------------------------------------------------------------
+
+const IS_WINDOWS = process.platform === 'win32'
+
+// Installation root used by the maintenance scripts. Read once at startup from
+// the same JS_INSTALL_DIR override the process manager honours; it is server
+// configuration, never anything a request can influence. Note that the scripts
+// themselves still derive their own paths from ~/json-scada (c:\json-scada on
+// Windows), so an override that does not match the real install makes them fail
+// to be found rather than run against the wrong tree.
+const JS_ROOT_DIR =
+  process.env.JS_INSTALL_DIR && process.env.JS_INSTALL_DIR.trim() !== ''
+    ? path.resolve(process.env.JS_INSTALL_DIR.trim())
+    : IS_WINDOWS
+      ? 'c:\\json-scada'
+      : path.join(os.homedir(), 'json-scada')
+const PLATFORM_SCRIPTS_DIR = path.join(
+  JS_ROOT_DIR,
+  IS_WINDOWS ? 'platform-windows' : 'platform-linux'
+)
+const PROJECT_TMP_DIR = path.join(JS_ROOT_DIR, 'tmp')
+
+// The only scripts these endpoints are ever allowed to run.
+const PLATFORM_SCRIPTS = {
+  exportProject: IS_WINDOWS ? 'export_project.bat' : 'export_project.sh',
+  importProject: IS_WINDOWS ? 'import_project.bat' : 'import_project.sh',
+  restartProtocols: IS_WINDOWS
+    ? 'restart_protocols.bat'
+    : 'restart_protocols.sh',
+  restartProcesses: IS_WINDOWS
+    ? 'restart_services.bat'
+    : 'restart_processes.sh',
+}
+
+// Kill a script that never finishes instead of leaking child processes.
+const SCRIPT_TIMEOUT_MS = 5 * 60 * 1000
+
+// Scripts currently running, so that repeated requests cannot pile up an
+// unbounded number of restarts/imports on the machine.
+const scriptsInProgress = new Set()
+
+// Spawns one of the scripts of PLATFORM_SCRIPTS. `action` is a key of that
+// table written in this file - never a value taken from a request. `args` are
+// handed over as argv entries with shell:false; on Windows the .bat is run by
+// the command interpreter itself (cmd.exe /c <script> <args...>), which also
+// receives them as separate argv entries and not as a line to re-parse.
+// Returns the ChildProcess, or throws if the action is unknown, the script is
+// missing or the same script is still running.
+function spawnPlatformScript(action, args = []) {
+  if (!Object.prototype.hasOwnProperty.call(PLATFORM_SCRIPTS, action))
+    throw new Error('Unknown maintenance script: ' + action)
+  const scriptName = PLATFORM_SCRIPTS[action]
+  const scriptPath = path.join(PLATFORM_SCRIPTS_DIR, scriptName)
+
+  let stat = null
+  try {
+    stat = fs.statSync(scriptPath)
+  } catch (e) {
+    stat = null
+  }
+  if (stat === null || !stat.isFile())
+    throw new Error('Maintenance script not found: ' + scriptPath)
+
+  if (scriptsInProgress.has(action))
+    throw new Error(scriptName + ' is already running!')
+
+  const child = IS_WINDOWS
+    ? spawn(process.env.ComSpec || 'cmd.exe', ['/c', scriptPath, ...args], {
+        shell: false,
+        windowsHide: true,
+      })
+    : // absolute interpreter path: not subject to a hijacked PATH
+      spawn('/bin/sh', [scriptPath, ...args], { shell: false })
+
+  scriptsInProgress.add(action)
+  Log.log('Running ' + scriptPath)
+
+  child.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
+  child.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+  // Without an 'error' listener a failed spawn raises an unhandled 'error'
+  // event, which would take down the whole web server process.
+  child.on('error', (err) =>
+    Log.log(`${scriptName} could not be executed: ${err.message}`)
+  )
+
+  const timer = setTimeout(() => {
+    Log.log(`${scriptName} timed out after ${SCRIPT_TIMEOUT_MS}ms, killing it`)
+    try {
+      child.kill()
+    } catch (e) {
+      /* already gone */
+    }
+  }, SCRIPT_TIMEOUT_MS)
+
+  child.on('close', () => {
+    clearTimeout(timer)
+    scriptsInProgress.delete(action)
+  })
+
+  return child
+}
+
 // export project file: dump collections and some files to a zip file
 exports.exportProject = async (req, res) => {
   Log.log('Save project')
@@ -1576,40 +1959,39 @@ exports.exportProject = async (req, res) => {
       project.fileName = 'new_project_' + new Date().getTime() / 1000 + '.zip'
     project.fileName = project.fileName.trim()
 
-    let cmd = ''
-    let dir = ''
-    if (process.platform === 'win32') {
-      cmd = spawn(
-        'c:\\json-scada\\platform-windows\\export_project.bat',
-        [project.fileName],
-        { shell: true }
-      )
-      dir = 'c:\\json-scada\\tmp\\'
-    } else {
-      cmd = spawn(
-        'sh',
-        ['~/json-scada/platform-linux/export_project.sh', project.fileName],
-        { shell: true }
-      )
-      dir = os.homedir() + '/json-scada/tmp/'
+    // Strictly validate the file name before it ever reaches a shell or the
+    // file system. Only a plain zip file name is allowed: no path separators,
+    // no directory traversal and no shell metacharacters. This neutralizes
+    // both command injection (spawn) and arbitrary file read (res.download)
+    // through the user-supplied name.
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(project.fileName)) {
+      Log.log('Invalid project file name: ' + project.fileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
     }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+
+    // The file name is passed as a separate argv entry and never reaches a
+    // shell, so it cannot extend the command line.
+    const cmd = spawnPlatformScript('exportProject', [project.fileName])
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
-      if (!fs.existsSync(dir + project.fileName) || code != 0) {
-        Log.log('Project file not found! ' + dir + project.fileName)
-        res
-          .status(200)
-          .send({ error: 'Project file not found! ' + dir + project.fileName })
+      // basename is a further guard even though the name is already validated.
+      const filePath = path.join(
+        PROJECT_TMP_DIR,
+        path.basename(project.fileName)
+      )
+      if (!fs.existsSync(filePath) || code != 0) {
+        Log.log('Project file not found! ' + filePath)
+        res.status(200).send({ error: 'Project file not found! ' + filePath })
         return
       }
       registerUserAction(req, 'exportProject')
-      res.download(dir + project.fileName)
+      res.download(filePath)
     })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
@@ -1617,38 +1999,82 @@ exports.exportProject = async (req, res) => {
 exports.importProject = async (req, res) => {
   Log.log('Import project')
   try {
-    const projectFileName = req.body.projectFileName
     if (!req.files || !req.files.projectFileData)
       throw new Error('No project file uploaded!')
 
-    let projectPath = ''
-    let importScript = ''
-    if (process.platform === 'win32') {
-      projectPath = 'c:\\json-scada\\tmp\\'
-      importScript = 'c:\\json-scada\\platform-windows\\import_project.bat'
-    } else {
-      projectPath = '~/json-scada/tmp/'
-      importScript = '~/json-scada/platform-linux/import_project.sh'
+    // Strictly validate the uploaded file name. Strip any directory component
+    // with path.basename and allow only a plain zip name, so the name can not
+    // be used to write outside the tmp directory (path traversal).
+    const safeName = path.basename((req.body.projectFileName || '').trim())
+    const safeFileName = /^[a-zA-Z0-9][a-zA-Z0-9._-]{0,250}\.zip$/
+    if (!safeFileName.test(safeName)) {
+      Log.log('Invalid project file name: ' + req.body.projectFileName)
+      res.status(400).send({ error: 'Invalid project file name!' })
+      return
     }
-    if (!fs.existsSync(projectPath)) fs.mkdirSync(projectPath)
-    await req.files.projectFileData.mv(projectPath + projectFileName)
-    const zip = new AdmZip(projectPath + projectFileName)
 
-    //var zipEntries = zip.getEntries(); // an array of ZipEntry records - add password parameter if entries are password protected
-    //zipEntries.forEach(function (zipEntry) {
-    //    console.log(zipEntry.toString()); // outputs zip entries information
-    //});
+    // An upload that hit the express-fileupload size limit arrives truncated:
+    // do not try to unpack a partial archive.
+    const upload = req.files.projectFileData
+    if (upload.truncated) {
+      Log.log('Project file too large: ' + safeName)
+      res.status(413).send({ error: 'Project file too large!' })
+      return
+    }
+    if (!upload.size) {
+      Log.log('Empty project file: ' + safeName)
+      res.status(400).send({ error: 'Empty project file!' })
+      return
+    }
+
+    // Fixed extraction directory, not influenced by the request.
+    const projectPath = PROJECT_TMP_DIR
+    if (!fs.existsSync(projectPath))
+      fs.mkdirSync(projectPath, { recursive: true, mode: 0o700 })
+
+    const zipPath = path.join(projectPath, safeName)
+    await upload.mv(zipPath)
+    const zip = new AdmZip(zipPath)
+
+    // Zip-Slip guard: reject archives whose entries would be written outside
+    // the extraction directory via path traversal, before extracting anything.
+    // The resolve/prefix test below is the check that matters; the explicit
+    // rejections in front of it also stop names that are harmless on the
+    // platform doing the extraction but traverse on the other one (a '\'
+    // separator is a path separator on Windows and an ordinary character on
+    // Linux, and adm-zip writes entry names verbatim).
+    const resolvedBase = path.resolve(projectPath)
+    for (const entry of zip.getEntries()) {
+      const entryName = entry.entryName
+      // directory entries legitimately end with '/', everything else must be a
+      // plain relative path of non-empty, non-traversing segments
+      const parts = entryName.replace(/\/+$/, '').split('/')
+      if (
+        entryName.includes('\\') ||
+        entryName.startsWith('/') ||
+        /^[a-zA-Z]:/.test(entryName) ||
+        parts.some(
+          (part) => part === '..' || part === '.' || part.trim() === ''
+        )
+      ) {
+        throw new Error('Invalid ZIP entry name: ' + entryName)
+      }
+      const resolvedTarget = path.resolve(projectPath, entryName)
+      if (
+        resolvedTarget !== resolvedBase &&
+        !resolvedTarget.startsWith(resolvedBase + path.sep)
+      ) {
+        throw new Error(
+          'ZIP entry attempts to write outside target directory: ' + entryName
+        )
+      }
+    }
 
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
 
-    const cmd = spawn(
-      importScript,
-      // [project.fileName],
-      { shell: true }
-    )
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // Fixed script, no shell, no arguments taken from the request.
+    const cmd = spawnPlatformScript('importProject')
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
       registerUserAction(req, 'importProject')
@@ -1657,65 +2083,39 @@ exports.importProject = async (req, res) => {
     })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
 exports.restartProtocols = async (req, res) => {
   Log.log('restartProtocols')
   try {
-    let cmd = ''
-    if (process.platform === 'win32') {
-      cmd = spawn(
-        'cmd',
-        ['/c', 'c:\\json-scada\\platform-windows\\restart_protocols.bat'],
-        {
-          shell: true,
-        }
-      )
-    } else {
-      cmd = spawn('sh', ['~/json-scada/platform-linux/restart_protocols.sh'], {
-        shell: true,
-      })
-    }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // No arguments and no shell: the request decides only that the fixed
+    // restart_protocols script of this installation is started.
+    const cmd = spawnPlatformScript('restartProtocols')
     cmd.on('close', (code) => Log.log(`child process exited with code ${code}`))
 
     registerUserAction(req, 'restartProtocols')
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
 exports.restartProcesses = async (req, res) => {
   Log.log('restartProcesses')
   try {
-    let cmd = ''
-    if (process.platform === 'win32') {
-      cmd = spawn(
-        'cmd',
-        ['/c', 'c:\\json-scada\\platform-windows\\restart_services.bat'],
-        {
-          shell: true,
-        }
-      )
-    } else {
-      cmd = spawn('sh', ['~/json-scada/platform-linux/restart_processes.sh'], {
-        shell: true,
-      })
-    }
-    cmd.stdout.on('data', (data) => Log.log(`stdout: ${data}`))
-    cmd.stderr.on('data', (data) => Log.log(`stderr: ${data}`))
+    // No arguments and no shell: the request decides only that the fixed
+    // restart_processes/restart_services script of this install is started.
+    const cmd = spawnPlatformScript('restartProcesses')
     cmd.on('close', (code) => Log.log(`child process exited with code ${code}`))
 
     registerUserAction(req, 'restartProcesses')
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: err.message || String(err) })
   }
 }
 
@@ -1757,9 +2157,38 @@ function registerUserAction(req, actionName) {
 async function authenticateWithLDAP(username, password) {
   if (!config.ldap.enabled) return null
 
+  // The credentials must be strings: anything else (a number, or an object
+  // sent as JSON) has no defined meaning for a bind and must not reach it.
+  if (typeof username !== 'string' || typeof password !== 'string') {
+    Log.log('LDAP - Credentials of invalid type rejected')
+    return null
+  }
+  if (username.trim() === '') {
+    Log.log('LDAP - Empty username rejected')
+    return null
+  }
+  // An empty password must never reach client.bind(). A simple bind carrying a
+  // zero-length password is an *unauthenticated* bind (RFC 4513 5.1.2): the
+  // server answers success without checking anything, which would let any
+  // existing account be logged into with no password at all.
+  if (password.length === 0) {
+    Log.log('LDAP - Empty password rejected for username: ' + username)
+    return null
+  }
+
+  // Everything below that comes from the request is escaped before it is put
+  // into a search filter (RFC 4515) or into a DN (RFC 4514), so a username
+  // like '*)(uid=*' can only ever match a user literally named that instead of
+  // changing the shape of the filter.
+  const filterUsername = Filter.escape(username)
+  const userDNFor = (attribute) =>
+    new DN().addPairRDN(attribute, username).toString() +
+    ',' +
+    config.ldap.searchBase
+
   Log.log('LDAP - Server: ' + config.ldap.url)
 
-  const tlsOptions = null
+  let tlsOptions = null
   if (config.ldap.url.startsWith('ldaps')) {
     tlsOptions = config.ldap.tlsOptions
   }
@@ -1778,10 +2207,11 @@ async function authenticateWithLDAP(username, password) {
       await client.bind(config.ldap.bindDN, config.ldap.bindCredentials)
       Log.log('LDAP - Ok for BindDN: ' + config.ldap.bindDN)
 
-      // Search for user
-      const searchFilter = config.ldap.searchFilter.replace(
+      // Search for user (replaceAll: the configured filter may name the
+      // placeholder more than once, as the Active Directory example does)
+      const searchFilter = config.ldap.searchFilter.replaceAll(
         '{{username}}',
-        username
+        filterUsername
       )
       const { searchEntries } = await client.search(config.ldap.searchBase, {
         filter: searchFilter,
@@ -1790,7 +2220,17 @@ async function authenticateWithLDAP(username, password) {
 
       if (searchEntries.length === 0) {
         Log.log('LDAP - User not found: ' + username)
-        await client.unbind()
+        return null
+      }
+      // An authentication decision must not be taken on an ambiguous match:
+      // refuse rather than pick the first of several entries.
+      if (searchEntries.length > 1) {
+        Log.log(
+          'LDAP - Ambiguous match (' +
+            searchEntries.length +
+            ' entries) for username: ' +
+            username
+        )
         return null
       }
 
@@ -1803,12 +2243,7 @@ async function authenticateWithLDAP(username, password) {
     }
 
     if (userDN === '') {
-      userDN =
-        config.ldap.attributes.username +
-        '=' +
-        username +
-        ',' +
-        config.ldap.searchBase
+      userDN = userDNFor(config.ldap.attributes.username)
     }
 
     try {
@@ -1818,12 +2253,7 @@ async function authenticateWithLDAP(username, password) {
     } catch (err) {
       Log.log('LDAP - Auth error for userDN: ' + userDN)
 
-      userDN =
-        config.ldap.attributes.displayName +
-        '=' +
-        username +
-        ',' +
-        config.ldap.searchBase
+      userDN = userDNFor(config.ldap.attributes.displayName)
 
       await client.bind(userDN, password)
       Log.log('LDAP - Ok for userDN: ' + userDN)
@@ -1833,7 +2263,7 @@ async function authenticateWithLDAP(username, password) {
       // Search for user
       const searchFilter = config.ldap.searchFilter.replaceAll(
         '{{username}}',
-        username
+        filterUsername
       )
       const { searchEntries } = await client.search(config.ldap.searchBase, {
         filter: searchFilter,
@@ -1842,7 +2272,15 @@ async function authenticateWithLDAP(username, password) {
 
       if (searchEntries.length === 0) {
         Log.log('LDAP - User not found: ' + searchFilter)
-        await client.unbind()
+        return null
+      }
+      if (searchEntries.length > 1) {
+        Log.log(
+          'LDAP - Ambiguous match (' +
+            searchEntries.length +
+            ' entries) for username: ' +
+            username
+        )
         return null
       }
 
@@ -1913,11 +2351,15 @@ async function authenticateWithLDAP(username, password) {
       }
     } else {
       try {
+        // userDN carries the supplied username when the directory could not be
+        // searched beforehand, so it is escaped here as well: role assignment
+        // must not be steerable through the login name.
+        const filterUserDN = Filter.escape(userDN)
         const filter =
           '(&(|(objectClass=groupOfUniqueNames)(objectClass=groupOfNames)(objectClass=group))(|(uniqueMember=' +
-          userDN +
+          filterUserDN +
           ')(member=' +
-          userDN +
+          filterUserDN +
           ')))'
         Log.log('LDAP - Search for user groups: ' + filter)
         const { searchEntries, searchReferences } = await client.search(
@@ -1954,11 +2396,18 @@ async function authenticateWithLDAP(username, password) {
     }
 
     await user.save()
-    await client.unbind()
 
     return user
   } catch (error) {
     Log.log('LDAP - error for userDN ' + userDN + ': ' + error)
     return null
+  } finally {
+    // Close the connection on every path, including the rejected logins that
+    // return early above, so failed attempts cannot pile up open binds.
+    try {
+      await client.unbind()
+    } catch (e) {
+      /* already closed or never connected */
+    }
   }
 }

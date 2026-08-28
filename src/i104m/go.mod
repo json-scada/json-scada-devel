@@ -3,16 +3,15 @@ module i104m
 go 1.26
 
 require (
-	github.com/apache/plc4x/plc4go v0.0.0-20260602194613-977dc707d590
+	github.com/apache/plc4x/plc4go v0.0.0-20260731075103-e99c09d10aa2
 	github.com/tealeg/xlsx/v3 v3.3.13
-	github.com/xuri/excelize/v2 v2.10.1
-	go.mongodb.org/mongo-driver/v2 v2.2.1
+	github.com/xuri/excelize/v2 v2.11.0
+	go.mongodb.org/mongo-driver/v2 v2.8.0
 )
 
 require (
 	github.com/fatih/color v1.19.0 // indirect
 	github.com/frankban/quicktest v1.14.6 // indirect
-	github.com/golang/snappy v1.0.0 // indirect
 	github.com/google/btree v1.1.3 // indirect
 	github.com/google/go-cmp v0.7.0 // indirect
 	github.com/google/uuid v1.6.0 // indirect
@@ -35,9 +34,9 @@ require (
 	github.com/xuri/efp v0.0.1 // indirect
 	github.com/xuri/nfp v0.0.2-0.20250530014748-2ddeb826f9a9 // indirect
 	github.com/youmark/pkcs8 v0.0.0-20240726163527-a2c0da244d78 // indirect
-	golang.org/x/crypto v0.52.0 // indirect
-	golang.org/x/net v0.55.0 // indirect
-	golang.org/x/sync v0.20.0 // indirect
-	golang.org/x/sys v0.45.0 // indirect
-	golang.org/x/text v0.37.0 // indirect
+	golang.org/x/crypto v0.54.0 // indirect
+	golang.org/x/net v0.57.0 // indirect
+	golang.org/x/sync v0.22.0 // indirect
+	golang.org/x/sys v0.47.0 // indirect
+	golang.org/x/text v0.40.0 // indirect
 )

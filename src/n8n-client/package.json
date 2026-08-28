@@ -1,0 +1,17 @@
+{
+  "name": "n8n-client",
+  "version": "0.1.0",
+  "description": "N8N Integration Driver for JSON-SCADA (webhook push out, HTTP listener in)",
+  "main": "index.js",
+  "scripts": {
+    "start": "node index.js",
+    "test": "node test/self-test.js"
+  },
+  "author": "Ricardo L. Olsen",
+  "license": "GPL-3.0",
+  "dependencies": {
+    "express": "^4.19.2",
+    "mongodb": "^7.0.0",
+    "queue-fifo": "^0.2.6"
+  }
+}

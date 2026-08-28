@@ -1608,6 +1608,9 @@ CREATE TABLE public.playlist (
 
 
 ALTER TABLE public.playlist OWNER TO postgres;
+-- COMMENT FOR GRAFANA 13.2.0
+-- ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS created_at timestamp with time zone;
+-- ALTER TABLE public.playlist ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone;
 
 --
 -- TOC entry 238 (class 1259 OID 20491)
@@ -6312,5 +6315,3 @@ CREATE UNIQUE INDEX "UQE_user_role_org_id_user_id_role_id" ON public.user_role U
 -- PostgreSQL database dump complete
 --
 
-ALTER TABLE playlist ADD COLUMN IF NOT EXISTS created_at timestamp with time zone;
-ALTER TABLE playlist ADD COLUMN IF NOT EXISTS updated_at timestamp with time zone;

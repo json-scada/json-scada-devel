@@ -1,0 +1,49 @@
+# DOX: src/server_realtime_auth — Realtime Data Server
+
+## Purpose
+
+Core realtime WebSocket data server for JSON-SCADA. Handles client connections, JWT authentication, real-time data streaming from MongoDB Change Streams, user session management, and action queue processing. The primary API gateway for the web UI.
+
+## Ownership
+
+- server_realtime_auth owns the realtime data serving infrastructure
+- All web UI clients connect through this server
+
+## Local Contracts
+
+- **Language:** Node.js
+- **Main entry:** `index.js`
+- **Auth:** JWT (JSON Web Tokens) for client authentication
+- **Structure:**
+  - `index.js` — main server entry point
+  - `graphql-server.js` — GraphQL API endpoint
+  - `customJsonQueries.js` — custom query support
+  - `userActionsQueue.js` — user action processing queue
+  - `opc_codes.js` — OPC data type codes
+  - `app-defs.js` — application definitions
+  - `load-config.js` — configuration loader
+  - `simple-logger.js` — logging utility
+  - `app/` — Express.js application subdirectory:
+    - `controllers/` — route handlers
+    - `models/` — data models
+    - `routes/` — Express route definitions
+    - `middlewares/` — Express middleware (auth, etc.)
+    - `config/` — submodule configuration
+- **Config:** INI file via Supervisor or environment variables
+
+## Work Guidance
+
+- WebSocket connections stream real-time data from MongoDB Change Streams
+- JWT tokens are issued on login and validated on every WebSocket message
+- User action queue processes write operations to MongoDB
+- The GraphQL endpoint provides an alternative query interface
+- Supports RBAC (role-based access control) per user/role configuration
+- Session management tracks connected clients and their subscriptions
+
+## Verification
+
+- `npm install` — dependencies install cleanly
+- `node index.js` — server starts and listens on configured port
+- Test WebSocket connection from AdminUI or wscat
+- Verify JWT login flow (admin/jsonscada default credentials)
+- Verify Change Stream subscriptions deliver real-time updates

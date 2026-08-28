@@ -21,6 +21,7 @@ using System.IO;
 using System.Linq;
 using System.Text;
 using System.Text.Json;
+using MongoDB.Bson;
 using IEC61850.Common;
 using IEC61850.Server;
 
@@ -37,11 +38,69 @@ namespace IEC61850_Server
         const uint CDC_CTL_OPTION_ORIGIN = (1u << 6);
         const uint CDC_CTL_OPTION_CTL_NUM = (1u << 7);
 
-        // Max data objects of one category per GGIO instance (keeps DO names short and
-        // reports below the MMS PDU size limit).
-        const int PointsPerGGIO = 100;
-        // Max FCDA entries per dataset (each report of a full dataset must fit one PDU).
-        const int EntriesPerDataSet = 100;
+        // Max data objects per GGIO instance, counting ALL categories together.
+        //
+        // A client browsing the model issues GetVariableAccessAttributes per logical node, and
+        // that MMS service cannot be segmented: libiec61850 replies with an error PDU
+        // (MMS_ERROR_RESOURCE_OTHER) as soon as the type description exceeds the negotiated PDU
+        // size. Measured cost of a full-LN type description is roughly 75 B per status object
+        // and 90 B per measurand (value + q + t + description), so this cap keeps any logical
+        // node near ~2.5 kB, which fits comfortably in the PDU sizes real clients negotiate.
+        // Raising it risks breaking model browsing on clients with small PDUs.
+        const int MaxDataObjectsPerLN = 30;
+
+        // Descriptions are published in the 'd' attribute (FC=DC) and a single DC read returns
+        // EVERY description of the logical node at once, so their length is truncated here.
+        // Without this the model's response sizes would depend on how long the operator made
+        // the tag descriptions - user data must never decide whether browsing works.
+        // The full, untruncated mapping is always available in the JSON manifest.
+        const int MaxDescriptionLength = 32;
+
+        // Cost charged against MaxDataObjectsPerLN. String points carry a VisibleString value
+        // that may be far larger than a status/measurand value, so they consume more of the
+        // logical node's budget and fewer of them are packed together.
+        static int DoCost(PointKind kind)
+        {
+            return kind == PointKind.VSS ? 8 : 1;
+        }
+        // Max FCDA entries per dataset. Reading a data set returns every member in a single
+        // response (~26 B per entry measured), and an integrity/GI report of the full data set
+        // must also fit one PDU, so this is kept small.
+        const int EntriesPerDataSet = 40;
+
+        // Report control blocks all live in the LD's LLN0, and a client browsing or reading
+        // LLN0[BR]/[RP] receives EVERY control block of that family in one response. Measured
+        // cost of an RCB type description is ~250 B, so this caps a BR/RP response near 1.8 kB.
+        const int MaxRcbPerLLN0 = 7;
+
+        // Upper bound on RCB instances created per data set. One instance is needed per client
+        // that wants to report on the same data set concurrently, but each instance multiplies
+        // the LLN0[BR]/[RP] response size, so the count is capped regardless of configuration.
+        const int MaxRcbCopiesPerDataSet = 4;
+
+        // Points per logical device, derived at build time from the two bounds above:
+        // RCBs per LLN0 = (data sets in the LD) x (RCB copies), and data sets are filled to
+        // EntriesPerDataSet. Topics larger than this are split across several logical devices
+        // (KAW2, KAW2_2, ...) so every LLN0 stays small. One data set is held in reserve
+        // because status and measurand points occupy separate data set families.
+        static int rcbCopies_ = 1;
+        static int maxPointsPerLD_ = 240;
+
+        static void ComputeModelBounds()
+        {
+            rcbCopies_ = Math.Max(1, Math.Min(MaxRcbCopiesPerDataSet,
+                                              (int)srvConn.maxClientConnections));
+            if ((int)srvConn.maxClientConnections > MaxRcbCopiesPerDataSet)
+                Log($"maxClientConnections={(int)srvConn.maxClientConnections} exceeds the " +
+                    $"{MaxRcbCopiesPerDataSet} report control block instances created per data set; " +
+                    "clients beyond that cannot enable reports on the same data set concurrently.",
+                    LogLevelBasic);
+            int dataSetBudget = Math.Max(1, MaxRcbPerLLN0 / rcbCopies_);
+            maxPointsPerLD_ = EntriesPerDataSet * Math.Max(1, dataSetBudget - 1);
+            Log($"Model bounds: {rcbCopies_} RCB copies/data set, <= {maxPointsPerLD_} points per " +
+                $"logical device, <= {EntriesPerDataSet} entries per data set, " +
+                $"<= {MaxDataObjectsPerLN} objects per logical node.", LogLevelBasic);
+        }
 
         // Accumulates the state needed to lay out points inside one Logical Device.
         class LdContext
@@ -50,6 +109,13 @@ namespace IEC61850_Server
             public LogicalDevice ld;
             public LogicalNode lln0;
             public Dictionary<int, LogicalNode> ggios = new Dictionary<int, LogicalNode>();
+            // placement state: objects are packed into the current GGIO until it reaches
+            // MaxDataObjectsPerLN, then a new GGIO instance is opened. Each GGIO numbers its
+            // own objects from 1 (GGIO1.Ind1..Ind10, GGIO2.Ind1.., as real IEDs do).
+            public int currentGgioIdx = 0;
+            // starts "full" so the first point opens GGIO1 (must not use int.MaxValue: the
+            // budget check adds the object cost and would overflow)
+            public int currentGgioDoCount = MaxDataObjectsPerLN;
             public Dictionary<string, int> categoryCounters = new Dictionary<string, int>();
             public List<string> statusEntries = new List<string>(); // "GGIOn$ST$Do"
             public List<string> mxEntries = new List<string>();      // "GGIOn$MX$Do"
@@ -62,6 +128,8 @@ namespace IEC61850_Server
             string iedName = SanitizeMms(srvConn.name, 20);
             if (iedName.Length == 0) iedName = "JSONSCADA";
             Log($"IED name: {iedName}", LogLevelBasic);
+
+            ComputeModelBounds();
 
             var model = new IedModel(iedName);
 
@@ -84,8 +152,29 @@ namespace IEC61850_Server
             var usedLdInst = new HashSet<string>();
             var ldContexts = new List<LdContext>();
 
+            // split oversized topics across several logical devices to bound LLN0 size
+            var ldBatches = new List<Tuple<string, List<rtData>>>();
             foreach (var g1 in groups)
             {
+                var pts = byGroup[g1];
+                if (pts.Count <= maxPointsPerLD_)
+                {
+                    ldBatches.Add(Tuple.Create(g1, pts));
+                    continue;
+                }
+                int part = 0;
+                foreach (var chunk in Chunk(pts, maxPointsPerLD_))
+                {
+                    part++;
+                    ldBatches.Add(Tuple.Create(part == 1 ? g1 : g1 + "_" + part, chunk));
+                }
+                Log($"Topic '{g1}' has {pts.Count} points - split across {part} logical devices.",
+                    LogLevelBasic);
+            }
+
+            foreach (var batch in ldBatches)
+            {
+                var g1 = batch.Item1;
                 string ldInst = UniqueName(SanitizeMms(g1, ldNameBudget), usedLdInst);
                 var ctx = new LdContext { ldInst = ldInst };
                 ctx.ld = new LogicalDevice(ldInst, model);
@@ -102,7 +191,7 @@ namespace IEC61850_Server
                 var proxyAttr = ResolveAttr(proxy, "stVal", FunctionalConstraint.ST);
                 if (proxyAttr != null) ProxyAttrs.Add(proxyAttr);
 
-                foreach (var p in byGroup[g1])
+                foreach (var p in batch.Item2)
                     MapPoint(ctx, iedName, p);
 
                 BuildDataSetsAndReports(ctx, iedName);
@@ -143,10 +232,19 @@ namespace IEC61850_Server
                 else { kind = PointKind.SPS; prefix = "Ind"; }
             }
 
+            // open a new GGIO instance once the current one is full (cap counts all categories,
+            // weighted so string points consume more of the budget)
+            int doCost = DoCost(kind);
+            if (ctx.currentGgioDoCount + doCost > MaxDataObjectsPerLN)
+            {
+                ctx.currentGgioIdx++;
+                ctx.currentGgioDoCount = 0;
+                ctx.categoryCounters.Clear();
+            }
+            int ggioIdx = ctx.currentGgioIdx;
             if (!ctx.categoryCounters.ContainsKey(prefix)) ctx.categoryCounters[prefix] = 0;
-            int n = ++ctx.categoryCounters[prefix];
-            int ggioIdx = ((n - 1) / PointsPerGGIO) + 1;
-            int localN = ((n - 1) % PointsPerGGIO) + 1;
+            int localN = ++ctx.categoryCounters[prefix];
+            ctx.currentGgioDoCount += doCost;
             var ggio = GetOrCreateGGIO(ctx, ggioIdx);
             string doName = prefix + localN;
 
@@ -198,9 +296,9 @@ namespace IEC61850_Server
                 pointKey = (int)p._id,
                 objRef = objRef,
                 protocolSourceConnectionNumber = p.protocolSourceConnectionNumber?.ToDouble() ?? 0,
-                protocolSourceCommonAddress = p.protocolSourceCommonAddress?.ToString() ?? "",
-                protocolSourceObjectAddress = p.protocolSourceObjectAddress?.ToString() ?? "",
-                protocolSourceASDU = p.protocolSourceASDU?.ToString() ?? "",
+                protocolSourceCommonAddress = p.protocolSourceCommonAddress ?? BsonString.Create(""),
+                protocolSourceObjectAddress = p.protocolSourceObjectAddress ?? BsonString.Create(""),
+                protocolSourceASDU = p.protocolSourceASDU ?? BsonString.Create(""),
                 protocolSourceCommandDuration = p.protocolSourceCommandDuration?.ToDouble() ?? 0,
                 protocolSourceCommandUseSBO = p.protocolSourceCommandUseSBO?.ToBoolean() ?? false,
                 dobj = dobj,
@@ -217,7 +315,9 @@ namespace IEC61850_Server
             if (daDesc != null)
             {
                 var desc = p.description?.ToString() ?? "";
-                DescAttrs.Add(Tuple.Create(daDesc, string.IsNullOrEmpty(desc) ? tag : desc));
+                if (string.IsNullOrEmpty(desc)) desc = tag;
+                if (desc.Length > MaxDescriptionLength) desc = desc.Substring(0, MaxDescriptionLength);
+                DescAttrs.Add(Tuple.Create(daDesc, desc));
             }
 
             // dataset membership (monitoring points only): DO-level FCDA carries value+q+t.
@@ -260,7 +360,7 @@ namespace IEC61850_Server
         static void BuildDataSetsAndReports(LdContext ctx, string iedName)
         {
             uint confRev = Fnv32(string.Join("|", ctx.memberRefsForConfRev));
-            int maxClients = Math.Max(1, (int)srvConn.maxClientConnections);
+            int maxClients = rcbCopies_;
 
             int dsIdx = 0;
             foreach (var chunk in Chunk(ctx.statusEntries, EntriesPerDataSet))

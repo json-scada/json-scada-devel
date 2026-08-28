@@ -24,6 +24,7 @@ net stop JSON_SCADA_plctags
 net stop JSON_SCADA_iccpclient
 net stop JSON_SCADA_mqttsparkplugclient
 net stop JSON_SCADA_plc4xclient
+net stop JSON_SCADA_plc4jclient
 net stop JSON_SCADA_telegraf_runtime
 net stop JSON_SCADA_telegraf_listener
 net stop JSON_SCADA_iec104server
@@ -72,13 +73,14 @@ REM net start JSON_SCADA_mongofw
 REM net start JSON_SCADA_mongowr
 net start JSON_SCADA_iec104client
 rem net start JSON_SCADA_iec101client
-rem net start JSON_SCADA_iccpclient
 net start JSON_SCADA_mqttsparkplugclient
 rem net start JSON_SCADA_plc4xclient
+rem net start JSON_SCADA_plc4jclient
 net start JSON_SCADA_telegraf_listener
 net start JSON_SCADA_telegraf_runtime
 REM net start JSON_SCADA_iec104server
 REM net start JSON_SCADA_iec101server
+rem net start JSON_SCADA_iccpclient
 REM net start JSON_SCADA_iccpserver
 REM net start JSON_SCADA_iec101client
 REM net start JSON_SCADA_dnp3client

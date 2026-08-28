@@ -7,64 +7,63 @@ echo - Node.js 20+
 set JSPATH=\json-scada
 set SRCPATH=%JSPATH%\src
 set BINPATH=%JSPATH%\bin
-set BINWINPATH=%JSPATH%\demo-docker\bin_win
-set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm
-set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx
-rem _set NPM="%programfiles%\nodejs\npm"
+set BINALTPATH=%JSPATH%\bin_alt
+set NPM=%JSPATH%\platform-windows\nodejs-runtime\npm.cmd
+set NPX=%JSPATH%\platform-windows\nodejs-runtime\npx.cmd
+if not exist %NPM% set NPM=npm
+if not exist %NPX% set NPX=npx
 
 cd %JSPATH%
 mkdir bin
+mkdir bin_alt
 
 copy %SRCPATH%\dnp3\Dnp3Client\Dependencies\OpenSSL\*.dll %BINPATH% /y
 
 set DOTNET_CLI_TELEMETRY_OPTOUT=1
 
 cd %SRCPATH%\libiec61850
-rem mkdir build
-cd build	
-rem Run the line below to create solution file for Visual Studio 2022
-rem cmake -G "Visual Studio 17 2022" .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON
+rmdir build /S /Q
+mkdir build
+cd build
+rem Run the line below to create solution file for Visual Studio 2022/2026
+cmake .. -A x64 -DCMAKE_SUPPRESS_REGENERATION=ON -DBUILD_EXAMPLES=OFF
 msbuild libiec61850.sln /p:Configuration=Release
+msbuild libiec61850.slnx /p:Configuration=Release
 
-rem cd %SRCPATH%\libiec61850\build
-rem set VCTargetsPath=C:\ProgramFiles\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\
-rem set VCTargetsPath=D:\ProgramFiles\Microsoft Visual Studio\2022\Community\MSBuild\Microsoft\VC\v170\
-rem set VCTargetsPath=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\MSBuild\Microsoft\VC\v170\
-rem set VCToolsInstallDir=D:\ProgramFiles\Microsoft Visual Studio\2022\Community\VC\Tools\MSVC\14.40.33807\
-rem set VCToolsInstallDir=C:\Program Files (x86)\Microsoft Visual Studio\2022\BuildTools\VC\Tools\MSVC\14.41.34120\
-rem dotnet clean -c Release libiec61850.sln
-rem dotnet publish --no-self-contained --runtime win-x64 -c Release libiec61850.sln
-
-copy %SRCPATH%\libiec61850\build\src\Release\iec61850.dll %BINPATH%
+copy %SRCPATH%\libiec61850\build\src\Release\iec61850.dll %BINALTPATH%
 
 cd %SRCPATH%\libiec61850\dotnet\core\2.0\
-dotnet publish --no-self-contained --runtime win-x64 -c Release -o %BINPATH% IEC61850.NET.core.2.0 
+dotnet publish --no-self-contained --runtime win-x64 -c Release -o %BINALTPATH% IEC61850.NET.core.2.0 
 
 cd %SRCPATH%\iec61850_client
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINALTPATH%
 
+cd %SRCPATH%\iec61850_server
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -p:Platform="Any CPU" -c Release -o %BINALTPATH%
+
+rem IEC 60870-5-101/104 drivers are now built in Go (src\iec60870-5), see the Go section below.
 cd %SRCPATH%\lib60870.netcore\lib60870.netcore\lib60870\
 dotnet build --no-self-contained --runtime win-x64 -c Release
-dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
+dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINALTPATH%
 cd %SRCPATH%\lib60870.netcore\iec101client\
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
 cd %SRCPATH%\lib60870.netcore\iec101server\
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
 cd %SRCPATH%\lib60870.netcore\iec104client\ 
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
 cd %SRCPATH%\lib60870.netcore\iec104server\ 
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH%
-cd %SRCPATH%\dnp3\Dnp3Client\ 
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% Dnp3Client.csproj
-dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINWINPATH% Dnp3Client.csproj
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH%
+
+cd %SRCPATH%\dnp3\Dnp3Client\
+dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINALTPATH% Dnp3Client.csproj
 
 rem cd %SRCPATH%\libplctag\libplctag.NET\src\libplctag
 rem dotnet build --no-self-contained --runtime win-x64 -c Release -o %BINPATH%
 cd %SRCPATH%\libplctag\PLCTagsClient
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% PLCTagsClient.csproj
 
-cd %SRCPATH%\logrotate\  
-dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% logrotate.csproj
+rem cd %SRCPATH%\logrotate\  
+rem dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o %BINPATH% logrotate.csproj
 
 cd %SRCPATH%\opcdaaehda-client-solution-net\
 dotnet build -f net8.0-windows DaAeHdaNetStandard.sln -p:Platform="Any CPU"
@@ -73,7 +72,6 @@ cd %SRCPATH%\OPC-DA-Client\
 rmdir obj /S /Q
 rmdir bin /S /Q
 dotnet publish --no-self-contained -p:PublishReadyToRun=true -f net8.0-windows -c Release -o %BINPATH% OPC-DA-Client.csproj
-dotnet publish --no-self-contained -p:PublishReadyToRun=true -f net8.0-windows -c Release -o %BINWINPATH% OPC-DA-Client.csproj
 
 cd %SRCPATH%\OPC-DA-Server\
 rmdir bin /S /Q
@@ -87,18 +85,19 @@ rmdir bin /S /Q
 dotnet restore -p:Platform="Any CPU"
 dotnet publish --no-self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -p:Platform="Any CPU" -o %BINPATH% OPC-UA-Client.csproj
 
-rem cd %SRCPATH%\dnp3\opendnp3
-rem mkdir build
-rem cd build
-rem cmake -DDNP3_EXAMPLES=OFF -DDNP3_TLS=ON -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE ..
-rem msbuild opendnp3.sln /p:Configuration=Release
-
-rem cd %SRCPATH%\dnp3\Dnp3Server
-rem mkdir build
-rem cd build
-rem cmake -DOPENSSL_ROOT_DIR="C:\Program Files\OpenSSL-Win64" -DOPENSSL_USE_STATIC_LIBS=TRUE -DOPENSSL_MSVC_STATIC_RT=TRUE ..
-rem msbuild Dnp3Server.sln /p:Configuration=Release
-rem copy /Y %SRCPATH%\dnp3\Dnp3Server\build\Release\Dnp3Server.exe %BINPATH%
+rem C++ DNP3 client driver. Its native dependencies - OpenSSL, opendnp3 and
+rem mongo-cxx-driver - are a one-time build: run src\dnp3\build-windows-deps.bat
+rem once. This section is skipped while those dependencies are absent, so
+rem build.bat keeps working on machines that have not set them up.
+rem Pass "server" to build-windows.bat below to build Dnp3Server as well.
+cd %SRCPATH%\dnp3
+if exist opendnp3\build\cpp\lib\Release\opendnp3.lib (
+  call build-windows.bat
+) else (
+  echo run src\dnp3\build-windows-deps.bat first.
+   call build-windows-deps.bat
+   call build-windows.bat
+)
 
 go env -w GO111MODULE=auto
 set GOBIN=c:\json-scada\bin
@@ -116,9 +115,48 @@ copy /Y i104m.exe %BINPATH%
 
 cd %SRCPATH%\plc4x-client
 go get -u ./...
-go mod tidy 
+go mod tidy
 go build -ldflags="-s -w"
 copy /Y plc4x-client.exe %BINPATH%
+
+cd %SRCPATH%\iec60870-5
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec104client.exe .\cmd\iec104client
+go build -ldflags="-s -w" -o %BINPATH%\iec104server.exe .\cmd\iec104server
+go build -ldflags="-s -w" -o %BINPATH%\iec101client.exe .\cmd\iec101client
+go build -ldflags="-s -w" -o %BINPATH%\iec101server.exe .\cmd\iec101server
+go build -ldflags="-s -w" -o %BINPATH%\iec103client.exe .\cmd\iec103client
+
+cd %SRCPATH%\iec61850\iec61850_client
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec61850_client.exe 
+
+cd %SRCPATH%\iec61850\iec61850_server
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\iec61850_server.exe 
+
+rem Go implementation of cs_data_processor, a drop-in replacement for the
+rem Node.js one (run only one of them per instance number)
+cd %SRCPATH%\cs_data_processor-go
+go get -u ./...
+go mod tidy
+go build -ldflags="-s -w" -o %BINPATH%\cs_data_processor-go.exe
+
+rem PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
+where mvn >nul 2>nul
+if %ERRORLEVEL% neq 0 goto skip_plc4j
+cd %SRCPATH%\plc4j-client
+call mvn -B -ntp -DskipTests package
+copy /Y target\plc4j-client.jar %BINPATH%
+copy /Y plc4j-client.bat %BINPATH%
+:skip_plc4j
+
+rem ICCP client/server
+copy /Y  %SRCPATH%\iccp\iccp-server\iccp-server.exe %BINPATH%
+copy /Y  %SRCPATH%\iccp\iccp-client\iccp-client.exe %BINPATH%
 
 cd %SRCPATH%\cs_data_processor
 call %NPM% i --package-lock-only
@@ -168,6 +206,14 @@ call %NPM% update
 cd %SRCPATH%\OPC-UA-Server
 call %NPM% i --package-lock-only
 call %NPM% update
+cd %SRCPATH%\modbus
+call %NPM% i --package-lock-only
+call %NPM% update
+call %NPM% run build
+cd %SRCPATH%\node-red-driver
+call %NPM% i --package-lock-only
+call %NPM% update
+call %NPM% run build
 cd %SRCPATH%\carbone-reports
 call %NPM% i --package-lock-only
 call %NPM% update

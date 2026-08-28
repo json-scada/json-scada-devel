@@ -2,9 +2,8 @@ const express = require('express')
 const httpProxy = require('express-http-proxy')
 const fs = require('fs')
 const path = require('path')
-const {
-  legacyCreateProxyMiddleware: createProxyMiddleware,
-} = require('http-proxy-middleware')
+const { createProxyMiddleware } = require('http-proxy-middleware')
+const { withMountedUrl } = require('../../proxy-utils')
 const { authJwt } = require('../middlewares')
 const controller = require('../controllers/user.controller')
 const authController = require('../controllers/auth.controller')
@@ -20,7 +19,8 @@ module.exports = function (
   customJsonQueryAP,
   customJsonQuery,
   logioServer,
-  metabaseServer
+  metabaseServer,
+  noderedProxy
 ) {
   app.use(function (req, res, next) {
     res.header(
@@ -65,8 +65,23 @@ module.exports = function (
     httpProxy(metabaseServer)
   )
 
+  // reverse proxy for the node-red editor
+  // websocket upgrades are proxied on the http server (see attachNoderedUpgrade)
+  app.use(
+    '/nodered',
+    [authJwt.verifyToken],
+    function (req, _, next) {
+      authController.addXWebAuthUser(req)
+      next()
+    },
+    noderedProxy
+  )
+
   // reverse proxy for log.io on Windows
   // for docker it will be used Dozzle
+  // this handles the http requests (including the socket.io polling transport), the
+  // websocket upgrades of /log-io/socket.io never reach these middlewares and are proxied
+  // on the http server instead (see attachLogioUpgrade)
   app.use(
     '/log-io',
     [authJwt.verifyToken],
@@ -74,35 +89,24 @@ module.exports = function (
       authController.addXWebAuthUser(req)
       next()
     },
-    logioServer.indexOf('//dozzle') === -1
-      ? httpProxy(logioServer)
-      : createProxyMiddleware({
+    logioServer.indexOf('//dozzle') === -1 ?
+      httpProxy(logioServer)
+      // dozzle serves itself under /log-io (DOZZLE_BASE), so the mount path that
+      // express strips from req.url has to be restored before proxying
+    : withMountedUrl(
+        createProxyMiddleware({
           target: logioServer,
           changeOrigin: true,
         })
+      )
   )
-  const wsProxy = createProxyMiddleware({
-    target: logioServer,
-    changeOrigin: true,
-    ws: true, // enable websocket proxy
-  })
-  app.use(
-    '/socket.io',
-    [authJwt.verifyToken],
-    function (req, _, next) {
-      authController.addXWebAuthUser(req)
-      next()
-    },
-    wsProxy
-  )
-  app.on('upgrade', wsProxy.upgrade)
   app.use('/static', express.static('../log-io/ui/build/static'))
 
-  app.post(accessPoint, opcApi) // realtime data API
+  app.post(accessPoint, [authJwt.verifyToken], opcApi) // realtime data API
 
-  app.get(customJsonQueryAP, customJsonQuery) // custom queries returning JSON
+  app.get(customJsonQueryAP, [authJwt.verifyToken], customJsonQuery) // custom queries returning JSON
 
-  app.get(accessPointGetFile, getFileApi) // get file from mongo API
+  app.get(accessPointGetFile, [authJwt.verifyToken], getFileApi) // get file from mongo API
 
   app.get(
     accessPoint + 'test/user',
@@ -113,8 +117,12 @@ module.exports = function (
   app.get(accessPoint + 'test/admin', [authJwt.isAdmin], controller.adminBoard)
 
   app.use('/svg', [authJwt.verifyToken], express.static('../../svg'))
-  
-  app.use('/svgedit', [authJwt.verifyToken], express.static('../svgedit/dist/editor'))
+
+  app.use(
+    '/svgedit',
+    [authJwt.verifyToken],
+    express.static('../svgedit/dist/editor')
+  )
 
   // production
   app.use('/', express.static('../AdminUI/dist'))
@@ -124,7 +132,13 @@ module.exports = function (
 
   // Dynamically create routes for custom developments
   try {
-    const customDevPath = path.join(__dirname, '..', '..', '..', 'custom-developments')
+    const customDevPath = path.join(
+      __dirname,
+      '..',
+      '..',
+      '..',
+      'custom-developments'
+    )
     const folders = fs
       .readdirSync(customDevPath)
       .filter((file) =>
@@ -144,16 +158,24 @@ module.exports = function (
     console.error('Error setting up custom development routes:', error)
   }
 
-  app.use("/custom-developments", (req, res) => {
+  app.use('/custom-developments', (req, res) => {
     try {
-        const customDevPath = path.join(__dirname, '..', '..', '..', 'custom-developments');
-        
-        // Read directory contents
-        const items = fs.readdirSync(customDevPath, { withFileTypes: true });
-        const folders = items.filter(item => item.isDirectory()).map(item => item.name);
+      const customDevPath = path.join(
+        __dirname,
+        '..',
+        '..',
+        '..',
+        'custom-developments'
+      )
 
-        // Generate HTML response
-        const html = `
+      // Read directory contents
+      const items = fs.readdirSync(customDevPath, { withFileTypes: true })
+      const folders = items
+        .filter((item) => item.isDirectory())
+        .map((item) => item.name)
+
+      // Generate HTML response
+      const html = `
             <!DOCTYPE html>
             <html>
             <head>
@@ -193,22 +215,26 @@ module.exports = function (
             <body>
                 <h1>Custom Developments</h1>
                 <ul class="folder-list">
-                    ${folders.map(folder => `
+                    ${folders
+                      .map(
+                        (folder) => `
                         <li>
                             <a href="/custom-developments/${folder}">${folder}</a>
                         </li>
-                    `).join('')}
+                    `
+                      )
+                      .join('')}
                 </ul>
             </body>
             </html>
-        `;
+        `
 
-        res.send(html);
+      res.send(html)
     } catch (error) {
-        console.error('Error reading custom developments directory:', error);
-        res.status(500).send('Error reading custom developments directory');
+      console.error('Error reading custom developments directory:', error)
+      res.status(500).send('Error reading custom developments directory')
     }
-});
+  })
 
   // app.use('/test', httpProxy('localhost:4321/'))
 

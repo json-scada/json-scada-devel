@@ -18,13 +18,14 @@
 
 'use strict'
 
-let AUTHENTICATION = process.env.JS_AUTHENTICATION === 'NOAUTH' ? false : true
 const IP_BIND = process.env.JS_IP_BIND || '127.0.0.1'
 const HTTP_PORT = process.env.JS_HTTP_PORT || 8080
 const GRAFANA_SERVER = process.env.JS_GRAFANA_SERVER || 'http://127.0.0.1:3000'
 const LOGIO_SERVER = process.env.JS_LOGIO_SERVER || 'http://127.0.0.1:6688'
 const METABASE_SERVER =
   process.env.JS_METABASE_SERVER || 'http://127.0.0.1:3001'
+const NODERED_SERVER =
+  process.env.NODERED_SERVER || 'http://127.0.0.1:1880/nodered/'
 const OPCAPI_AP = '/Invoke/' // mimic of webhmi from OPC reference app https://github.com/OPCFoundation/UA-.NETStandard/tree/demo/webapi/SampleApplications/Workshop/Reference
 const GETFILE_AP = '/GetFile' // API Access point for requesting mongodb files (gridfs)
 const QUERYJSON_AP = '/queryJSON' // API Access point for special custom queries returning JSON
@@ -36,10 +37,6 @@ const LoadConfig = require('./load-config')
 const Log = require('./simple-logger')
 const express = require('express')
 const fileUpload = require('express-fileupload')
-const httpProxy = require('express-http-proxy')
-const {
-  legacyCreateProxyMiddleware: createProxyMiddleware,
-} = require('http-proxy-middleware')
 const path = require('path')
 const cors = require('cors')
 const app = express()
@@ -48,6 +45,12 @@ const { MongoClient, ObjectId, Double, GridFSBucket } = require('mongodb')
 const opc = require('./opc_codes.js')
 const { Pool } = require('pg')
 const UserActionsQueue = require('./userActionsQueue')
+const {
+  createNoderedProxy,
+  attachNoderedUpgrade,
+  createLogioProxy,
+  attachLogioUpgrade,
+} = require('./proxy-utils')
 const GetQueryPostgresql = require('./customJsonQueries')
 const initGQLServer = require('./graphql-server.js')
 
@@ -127,16 +130,12 @@ process.on('uncaughtException', (err) =>
   Log.log('Uncaught Exception:' + err.message + ' ' + err.stack)
 )
 
-// Argument NOAUTH disables user authentication
-var args = process.argv.slice(2)
-if (args.length > 0) if (args[0] === 'NOAUTH') AUTHENTICATION = false
-
 const DoInsertCommandAsSOE = true
 const CommandSentAsSOESymbol = '⚙️➡️'
 const opcIdTypeNumber = 0
 const opcIdTypeString = 1
 const beepPointKey = -1
-const EventsRemoveGuardSeconds = 20
+const EventsRemoveGuardSeconds = 20 // guard not to remove events recently added
 
 const jsConfig = LoadConfig()
 let HintMongoIsConnected = true
@@ -146,88 +145,54 @@ let clientMongo = null
 let pool = null
 
 ;(async () => {
-  if (AUTHENTICATION) {
-    // JWT Auth Mongo Express https://bezkoder.com/node-js-mongodb-auth-jwt/
-    dbAuth.mongoose
-      .connect(jsConfig.mongoConnectionString, jsConfig.MongoConnectionOptions)
-      .then(() => {
-        Log.log('Successfully connect to MongoDB (via mongoose).')
-        // initial();
-      })
-      .catch((err) => {
-        console.error('Connection error', err)
-        process.exit()
-      })
+  // reverse proxy for the node-red editor (mounted on /nodered, ws upgrade below)
+  const noderedProxy = createNoderedProxy(NODERED_SERVER)
 
-    app.use(cookieParser())
-    app.options(OPCAPI_AP, cors()) // enable pre-flight request
-    // enable files upload
-    app.use(
-      fileUpload({
-        createParentPath: true,
-        limits: {
-          fileSize: 100 * 1024 * 1024,
-          fieldSize: 100 * 1024 * 1024,
-        },
-      })
-    )
-    app.use(express.json({ limit: '100mb' }))
-    app.use(
-      express.urlencoded({
-        limit: '100mb',
-        extended: true,
-      })
-    )
-    initGQLServer(app, dbAuth)
-  } else {
-    Log.log('******* DISABLED AUTHENTICATION! ********')
+  // reverse proxy for the log.io ui socket.io (mounted on /socket.io, ws upgrade below)
+  const logioProxy = createLogioProxy(LOGIO_SERVER)
 
-    // reverse proxy for grafana
-    app.use('/grafana', httpProxy(GRAFANA_SERVER))
-    // reverse proxy for grafana
-    app.use('/metabase', httpProxy(METABASE_SERVER))
-    // reverse proxy for log.io
-    app.use('/log-io', httpProxy(LOGIO_SERVER))
-    const wsProxy = createProxyMiddleware({
-      target: LOGIO_SERVER,
-      changeOrigin: true,
-      ws: true, // enable websocket proxy
+  // JWT Auth Mongo Express https://bezkoder.com/node-js-mongodb-auth-jwt/
+  dbAuth.mongoose
+    .connect(jsConfig.mongoConnectionString, jsConfig.MongoConnectionOptions)
+    .then(() => {
+      Log.log('Successfully connect to MongoDB (via mongoose).')
+      // initial();
     })
-    app.use('/socket.io', wsProxy)
-    app.on('upgrade', wsProxy.upgrade)
+    .catch((err) => {
+      console.error('Connection error', err)
+      process.exit()
+    })
 
-    app.use('/svg', [authJwt.verifyToken], express.static('../../svg'))
+  app.use(cookieParser())
+  app.options(OPCAPI_AP, cors()) // enable pre-flight request
+  // enable files upload
+  app.use(
+    fileUpload({
+      createParentPath: true,
+      limits: {
+        fileSize: 100 * 1024 * 1024,
+        fieldSize: 100 * 1024 * 1024,
+      },
+    })
+  )
+  app.use(express.json({ limit: '100mb' }))
+  app.use(
+    express.urlencoded({
+      limit: '100mb',
+      extended: true,
+    })
+  )
+  initGQLServer(app, dbAuth, true).catch((err) =>
+    Log.log('Error starting GraphQL server: ' + err.message)
+  )
 
-    // production
-    app.use('/', express.static('../AdminUI/dist'))
-    app.use('/login', express.static('../AdminUI/dist'))
-    app.use('/dashboard', express.static('../AdminUI/dist'))
-    app.use('/admin', express.static('../AdminUI/dist'))
-
-    // add charset for special sage displays
-    app.use(
-      '/sage-cepel-displays/',
-      express.static('../AdminUI/dist/sage-cepel-displays', {
-        setHeaders: function (res, path) {
-          if (/.*\.html/.test(path)) {
-            res.set({ 'content-type': 'text/html; charset=iso-8859-1' })
-          }
-        },
-      })
-    )
-    app.options(OPCAPI_AP, cors()) // enable pre-flight request
-    app.use(express.json({ limit: '50mb' }))
-    app.use(
-      express.urlencoded({
-        limit: '50mb',
-        extended: true,
-      })
-    )
-  }
-
-  app.listen(HTTP_PORT, IP_BIND, () => {
+  const httpServer = app.listen(HTTP_PORT, IP_BIND, () => {
     Log.log('listening on ' + HTTP_PORT)
   })
+
+  // websocket upgrades do not pass through the express middlewares, proxy them here
+  attachNoderedUpgrade(httpServer, noderedProxy)
+  attachLogioUpgrade(httpServer, logioProxy)
 
   // if env variables defined use them, if not set local defaults
   let pgopt = {}
@@ -262,25 +227,20 @@ let pool = null
     })
   }
 
-  if (AUTHENTICATION) {
-    require('./app/routes/auth.routes')(app, OPCAPI_AP)
-    require('./app/routes/user.routes')(
-      app,
-      OPCAPI_AP,
-      opcApi,
-      GETFILE_AP,
-      getFileApi,
-      GRAFANA_SERVER,
-      QUERYJSON_AP,
-      queryJSON,
-      LOGIO_SERVER,
-      METABASE_SERVER
-    )
-  } else {
-    app.post(OPCAPI_AP, opcApi)
-    app.get(GETFILE_AP, getFileApi)
-    app.get(QUERYJSON_AP, queryJSON)
-  }
+  require('./app/routes/auth.routes')(app, OPCAPI_AP)
+  require('./app/routes/user.routes')(
+    app,
+    OPCAPI_AP,
+    opcApi,
+    GETFILE_AP,
+    getFileApi,
+    GRAFANA_SERVER,
+    QUERYJSON_AP,
+    queryJSON,
+    LOGIO_SERVER,
+    METABASE_SERVER,
+    noderedProxy
+  )
 
   async function queryJSON(req, res) {
     let queryname = req.query?.query || ''
@@ -392,25 +352,23 @@ let pool = null
     let userRights = {}
 
     // handle auth here
-    if (AUTHENTICATION) {
-      let rslt = authJwt.checkToken(req)
-      // Log.log(rslt)
-      if (rslt === false) {
-        // fail if not connected to database server
-        OpcResp.ServiceId = opc.ServiceCode.ServiceFault
-        OpcResp.Body.ResponseHeader.ServiceResult =
-          opc.StatusCode.BadIdentityTokenRejected
-        OpcResp.Body.ResponseHeader.StringTable = [
-          opc.getStatusCodeName(opc.StatusCode.BadIdentityTokenRejected),
-          opc.getStatusCodeText(opc.StatusCode.BadIdentityTokenRejected),
-          'Access denied (absent or invalid access token)!',
-        ]
-        res.send(OpcResp)
-        return
-      } else {
-        if ('username' in rslt) username = rslt.username
-        if ('rights' in rslt) userRights = rslt.rights
-      }
+    let rslt = authJwt.checkToken(req)
+    // Log.log(rslt)
+    if (rslt === false) {
+      // fail if not connected to database server
+      OpcResp.ServiceId = opc.ServiceCode.ServiceFault
+      OpcResp.Body.ResponseHeader.ServiceResult =
+        opc.StatusCode.BadIdentityTokenRejected
+      OpcResp.Body.ResponseHeader.StringTable = [
+        opc.getStatusCodeName(opc.StatusCode.BadIdentityTokenRejected),
+        opc.getStatusCodeText(opc.StatusCode.BadIdentityTokenRejected),
+        'Access denied (absent or invalid access token)!',
+      ]
+      res.send(OpcResp)
+      return
+    } else {
+      if ('username' in rslt) username = rslt.username
+      if ('rights' in rslt) userRights = rslt.rights
     }
 
     if (!clientMongo || !HintMongoIsConnected) {
@@ -479,65 +437,61 @@ let pool = null
               if (node.AttributeId == opc.AttributeId.ExtendedAlarmEventsAck) {
                 // alarm / event ack
 
-                if (AUTHENTICATION) {
-                  // test for user rights
-                  if (
-                    !userRights?.ackEvents &&
-                    (node.Value.Body & opc.Acknowledge.RemoveAllEvents ||
-                      node.Value.Body & opc.Acknowledge.RemoveOneEvent ||
-                      node.Value.Body & opc.Acknowledge.RemovePointEvents ||
-                      node.Value.Body & opc.Acknowledge.AckAllEvents ||
-                      node.Value.Body & opc.Acknowledge.AckOneEvent ||
-                      node.Value.Body & opc.Acknowledge.AckPointEvents)
-                  ) {
-                    // ACTION DENIED
-                    Log.log(
-                      `User has no right to ack/remove events! [${username}]`
-                    )
-                    OpcResp.Body.ResponseHeader.ServiceResult =
-                      opc.StatusCode.BadUserAccessDenied
-                    OpcResp.Body.ResponseHeader.StringTable = [
-                      opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
-                      opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
-                      'User has no right to ack/remove events!',
-                    ]
-                    res.send(OpcResp)
-                    return
-                  }
-                  if (
-                    !userRights?.ackAlarms &&
-                    (node.Value.Body & opc.Acknowledge.AckOneAlarm ||
-                      node.Value.Body & opc.Acknowledge.AckAllAlarms ||
-                      node.Value.Body & opc.Acknowledge.SilenceBeep)
-                  ) {
-                    // ACTION DENIED
-                    Log.log(
-                      `User has no right to ack or silence alarms! [${username}]`
-                    )
-                    OpcResp.Body.ResponseHeader.ServiceResult =
-                      opc.StatusCode.BadUserAccessDenied
-                    OpcResp.Body.ResponseHeader.StringTable = [
-                      opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
-                      opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
-                      'User has no right to ack or silence alarms!',
-                    ]
-                    res.send(OpcResp)
-                    return
-                  }
+                // test for user rights
+                if (
+                  !userRights?.ackEvents &&
+                  (node.Value.Body & opc.Acknowledge.RemoveAllEvents ||
+                    node.Value.Body & opc.Acknowledge.RemoveOneEvent ||
+                    node.Value.Body & opc.Acknowledge.RemovePointEvents ||
+                    node.Value.Body & opc.Acknowledge.AckAllEvents ||
+                    node.Value.Body & opc.Acknowledge.AckOneEvent ||
+                    node.Value.Body & opc.Acknowledge.AckPointEvents)
+                ) {
+                  // ACTION DENIED
+                  Log.log(`User has no right to ack/remove events! [${username}]`)
+                  OpcResp.Body.ResponseHeader.ServiceResult =
+                    opc.StatusCode.BadUserAccessDenied
+                  OpcResp.Body.ResponseHeader.StringTable = [
+                    opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
+                    opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
+                    'User has no right to ack/remove events!',
+                  ]
+                  res.send(OpcResp)
+                  return
+                }
+                if (
+                  !userRights?.ackAlarms &&
+                  (node.Value.Body & opc.Acknowledge.AckOneAlarm ||
+                    node.Value.Body & opc.Acknowledge.AckAllAlarms ||
+                    node.Value.Body & opc.Acknowledge.SilenceBeep)
+                ) {
+                  // ACTION DENIED
+                  Log.log(
+                    `User has no right to ack or silence alarms! [${username}]`
+                  )
+                  OpcResp.Body.ResponseHeader.ServiceResult =
+                    opc.StatusCode.BadUserAccessDenied
+                  OpcResp.Body.ResponseHeader.StringTable = [
+                    opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
+                    opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
+                    'User has no right to ack or silence alarms!',
+                  ]
+                  res.send(OpcResp)
+                  return
                 }
 
                 let findPoint = null
                 if (node.NodeId.IdType === opcIdTypeNumber) {
                   findPoint = {
                     _id: parseInt(node.NodeId.Id),
-                    ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                    ...(userRights?.group1List?.length == 0
                       ? {}
                       : { group1: { $in: userRights.group1List } }),
                   }
                 } else if (node.NodeId.IdType === opcIdTypeString) {
                   findPoint = {
                     tag: node.NodeId.Id,
-                    ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                    ...(userRights?.group1List?.length == 0
                       ? {}
                       : { group1: { $in: userRights.group1List } }),
                   }
@@ -548,11 +502,17 @@ let pool = null
                   let fromDate = new Date(
                     Date.now() - EventsRemoveGuardSeconds * 1000
                   )
+                  let afterDate = new Date(
+                    Date.now() + EventsRemoveGuardSeconds * 1000
+                  )
                   let result = await db.collection(COLL_SOE).updateMany(
                     {
                       ack: { $lte: 1 },
-                      timeTag: { $lte: fromDate },
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      $or: [
+                        { timeTag: { $gte: afterDate } },
+                        { timeTag: { $lte: fromDate } },
+                      ],
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -572,7 +532,7 @@ let pool = null
                   let result = await db.collection(COLL_SOE).updateMany(
                     {
                       ack: 0,
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -594,12 +554,18 @@ let pool = null
                   let fromDate = new Date(
                     Date.now() - EventsRemoveGuardSeconds * 1000
                   )
+                  let afterDate = new Date(
+                    Date.now() + EventsRemoveGuardSeconds * 1000
+                  )
                   let result = await db.collection(COLL_SOE).updateMany(
                     {
                       tag: node.NodeId.Id,
                       ack: { $lte: 1 },
-                      timeTag: { $lte: fromDate },
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      $or: [
+                        { timeTag: { $gte: afterDate } },
+                        { timeTag: { $lte: fromDate } },
+                      ],
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -621,7 +587,7 @@ let pool = null
                     {
                       tag: node.NodeId.Id,
                       ack: 0,
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -643,7 +609,7 @@ let pool = null
                     {
                       _id: new ObjectId(node._Properties.event_id),
                       ack: { $lte: 1 },
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -666,7 +632,7 @@ let pool = null
                     {
                       _id: new ObjectId(node._Properties.event_id),
                       ack: 0,
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -689,7 +655,7 @@ let pool = null
                   Log.log('Ack All Alarms')
                   let result = await db.collection(COLL_REALTIME).updateMany(
                     {
-                      ...(!AUTHENTICATION || userRights?.group1List?.length == 0
+                      ...(userRights?.group1List?.length == 0
                         ? {}
                         : { group1: { $in: userRights.group1List } }),
                     },
@@ -704,8 +670,7 @@ let pool = null
                     {
                       $and: [
                         {
-                          ...(!AUTHENTICATION ||
-                          userRights?.group1List?.length == 0
+                          ...(userRights?.group1List?.length == 0
                             ? {}
                             : { group1: { $in: userRights.group1List } }),
                         },
@@ -781,7 +746,7 @@ let pool = null
                 }
                 if (node.Value.Body & opc.Acknowledge.SilenceBeep) {
                   Log.log('Silence Beep')
-                  if (AUTHENTICATION && userRights.group1List.length > 0) {
+                  if (userRights.group1List.length > 0) {
                     // just remove groups from beep list
                     await db.collection(COLL_REALTIME).updateOne(
                       { _id: beepPointKey },
@@ -847,25 +812,21 @@ let pool = null
               if (node.AttributeId == opc.AttributeId.Value) {
                 // Write a Value: Command
 
-                if (AUTHENTICATION) {
-                  // go check user right for command in mongodb (not just in the token for better security)
-                  if (!(await canSendCommands(req))) {
-                    // ACTION DENIED
-                    Log.log(
-                      `User has no right to issue commands! [${username}]`
-                    )
-                    OpcResp.Body.ResponseHeader.ServiceResult =
-                      opc.StatusCode.BadUserAccessDenied
-                    OpcResp.Body.ResponseHeader.StringTable = [
-                      opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
-                      opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
-                      'User has no right to issue commands!',
-                    ]
-                    res.send(OpcResp)
-                    return
-                  } else {
-                    Log.log(`User authorized to issue commands! [${username}]`)
-                  }
+                // go check user right for command in mongodb (not just in the token for better security)
+                if (!(await canSendCommands(req))) {
+                  // ACTION DENIED
+                  Log.log(`User has no right to issue commands! [${username}]`)
+                  OpcResp.Body.ResponseHeader.ServiceResult =
+                    opc.StatusCode.BadUserAccessDenied
+                  OpcResp.Body.ResponseHeader.StringTable = [
+                    opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
+                    opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
+                    'User has no right to issue commands!',
+                  ]
+                  res.send(OpcResp)
+                  return
+                } else {
+                  Log.log(`User authorized to issue commands! [${username}]`)
                 }
 
                 if ('NodeId' in node)
@@ -973,31 +934,25 @@ let pool = null
                       return
                     }
 
-                    if (AUTHENTICATION) {
-                      // check if user has group1 list it can command
-                      if (!(await canSendCommandTo(req, data.group1))) {
-                        // ACTION DENIED
-                        Log.log(
-                          `User has no right to issue commands to the group1 destination! [${username}] [${data.group1}]`
-                        )
-                        OpcResp.Body.ResponseHeader.ServiceResult =
-                          opc.StatusCode.BadUserAccessDenied
-                        OpcResp.Body.ResponseHeader.StringTable = [
-                          opc.getStatusCodeName(
-                            opc.StatusCode.BadUserAccessDenied
-                          ),
-                          opc.getStatusCodeText(
-                            opc.StatusCode.BadUserAccessDenied
-                          ),
-                          'User has no right to issue commands to the group1 destination!',
-                        ]
-                        res.send(OpcResp)
-                        return
-                      } else {
-                        Log.log(
-                          `User authorized to issue commands to the group1 destination! [${username}]`
-                        )
-                      }
+                    // check if user has group1 list it can command
+                    if (!(await canSendCommandTo(req, data.group1))) {
+                      // ACTION DENIED
+                      Log.log(
+                        `User has no right to issue commands to the group1 destination! [${username}] [${data.group1}]`
+                      )
+                      OpcResp.Body.ResponseHeader.ServiceResult =
+                        opc.StatusCode.BadUserAccessDenied
+                      OpcResp.Body.ResponseHeader.StringTable = [
+                        opc.getStatusCodeName(opc.StatusCode.BadUserAccessDenied),
+                        opc.getStatusCodeText(opc.StatusCode.BadUserAccessDenied),
+                        'User has no right to issue commands to the group1 destination!',
+                      ]
+                      res.send(OpcResp)
+                      return
+                    } else {
+                      Log.log(
+                        `User authorized to issue commands to the group1 destination! [${username}]`
+                      )
                     }
 
                     let addressing = {}
@@ -1134,7 +1089,7 @@ let pool = null
                         .findOne(findPoint)
 
                       let alarmDisableNew = {}
-                      if (!AUTHENTICATION || userRights?.disableAlarms)
+                      if (userRights?.disableAlarms)
                         if (
                           prevData?.alarmDisabled !==
                           node.Value._Properties?.alarmDisabled
@@ -1145,7 +1100,7 @@ let pool = null
                           }
 
                       let annotationNew = {}
-                      if (!AUTHENTICATION || userRights?.enterAnnotations)
+                      if (userRights?.enterAnnotations)
                         if (
                           prevData?.annotation !==
                           node.Value._Properties?.annotation
@@ -1155,7 +1110,7 @@ let pool = null
                           }
 
                       let loLimitNew = {}
-                      if (!AUTHENTICATION || userRights?.enterLimits)
+                      if (userRights?.enterLimits)
                         if (
                           prevData?.loLimit !== node.Value._Properties?.loLimit
                         )
@@ -1164,7 +1119,7 @@ let pool = null
                           }
 
                       let hiLimitNew = {}
-                      if (!AUTHENTICATION || userRights?.enterLimits)
+                      if (userRights?.enterLimits)
                         if (
                           prevData?.hiLimit !== node.Value._Properties?.hiLimit
                         )
@@ -1173,7 +1128,7 @@ let pool = null
                           }
 
                       let hysteresisNew = {}
-                      if (!AUTHENTICATION || userRights?.enterLimits)
+                      if (userRights?.enterLimits)
                         if (
                           prevData?.hysteresis !==
                           node.Value._Properties?.hysteresis
@@ -1190,7 +1145,7 @@ let pool = null
                       // hihihiLimit: node.Value._Properties.hiLimit,
 
                       let notesNew = {}
-                      if (!AUTHENTICATION || userRights?.enterNotes)
+                      if (userRights?.enterNotes)
                         if (prevData?.notes !== node.Value._Properties?.notes)
                           notesNew = {
                             notes: node.Value._Properties.notes,
@@ -1201,7 +1156,7 @@ let pool = null
                         'substituted' in node.Value._Properties &&
                         'newValue' in node.Value._Properties
                       )
-                        if (!AUTHENTICATION || userRights?.substituteValues)
+                        if (userRights?.substituteValues)
                           if (
                             prevData?.value !== node.Value._Properties.newValue
                           )
@@ -1617,7 +1572,7 @@ let pool = null
                       node.NodeId.Id === pointInfo._id
                     ) {
                       // check for group1 list in user rights (from token)
-                      if (AUTHENTICATION && userRights.group1List.length > 0) {
+                      if (userRights.group1List.length > 0) {
                         if (
                           ![-1, -2].includes(pointInfo._id) &&
                           !userRights.group1List.includes(pointInfo.group1)
@@ -1801,7 +1756,7 @@ let pool = null
                       : null
 
                   // check for group1 list in user rights (from token)
-                  if (AUTHENTICATION && userRights.group1List.length > 0) {
+                  if (userRights.group1List.length > 0) {
                     if (!userRights.group1List.includes(node.group1)) {
                       // Access to data denied!
                       return node
@@ -2150,7 +2105,7 @@ let pool = null
                 let Results = []
                 results.map((node) => {
                   // check for group1 list in user rights (from token)
-                  if (AUTHENTICATION && userRights.group1List.length > 0) {
+                  if (userRights.group1List.length > 0) {
                     if (!userRights.group1List.includes(node.group1)) {
                       // Access to data denied!
                       return node
@@ -2391,7 +2346,7 @@ let pool = null
           let Results = []
           await results.map((node) => {
             // check for group1 list in user rights (from token)
-            if (AUTHENTICATION && userRights.group1List.length > 0) {
+            if (userRights.group1List.length > 0) {
               if (!userRights.group1List.includes(node.group1)) {
                 // Access to data denied!
                 return node

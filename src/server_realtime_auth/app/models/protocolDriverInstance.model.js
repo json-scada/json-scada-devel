@@ -14,6 +14,14 @@ const ProtocolDriverInstance = mongoose.model(
     activeNodeKeepAliveTimeTag: {type: Date, default: null},
     softwareVersion: {type: String, default: ""},
     stats: {type: Object, default: null},
+    // OS service (process) management options (optional, backward compatible)
+    processManagement: {
+      managed: { type: Boolean, default: true },
+      startMode: { type: String, default: 'auto' }, // auto | manual
+      autoRestartOnConfigChange: { type: Boolean, default: true },
+    },
+    // PLC4X only: 'plc4x' (Go, default) or 'plc4j' (Java) executable variant
+    processExecutableVariant: { type: String, default: '' },
   }),
   'protocolDriverInstances'
 )

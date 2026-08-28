@@ -38,7 +38,7 @@ To create a new _TELEGRAF-LISTENER_ instance, use the Admin UI or insert a new d
 - _**activeNodeName**_ [String] - Name of the protocol driver that is currently active. This is updated by the drivers for redundancy control.**Optional**.
 - _**activeNodeKeepAliveTimeTag**_ [Date] - This is updated regularly by the active driver. **Optional**.
 
-## Configure client connections to DNP3 servers
+## Configure client connections to Telegraf sources
 
 Each instance for this driver can have just one connection defined that must be described in the _protocolConnections_ collection.
 
@@ -51,12 +51,11 @@ Each instance for this driver can have just one connection defined that must be 
         description: "TELEGRAF Demo",
         enabled: true,
         autoCreateTags: true,
-        commandsEnabled: true,
         ipAddressLocalBind: "0.0.0.0:51920",
         ipAddresses: ["127.0.0.1"],
     });
 
-- _**protocolDriver**_ [String] - Name of the protocol driver, must be "DNP3". **Mandatory parameter**.
+- _**protocolDriver**_ [String] - Name of the protocol driver, must be "TELEGRAF-LISTENER". **Mandatory parameter**.
 - _**protocolDriverInstanceNumber**_ [Double] - Number of the instance. Use 1 to N to number instances. For the same driver instance numbers should be unique. The instance number makes possible to run use multiple processes of the driver, each one with a distinct configuration. **Mandatory parameter**.
 - _**protocolConnectionNumber**_ [Double] - Number code for the protocol connection. This must be unique for all connections over all drivers on a system. This number is be used to define the connection that can update a tag. **Mandatory parameter**.
 - _**name**_ [String] - Name for a connection. Will be used for logging. **Mandatory parameter**.
@@ -64,7 +63,9 @@ Each instance for this driver can have just one connection defined that must be 
 - _**enabled**_ [Boolean] - Controls the enabling of the connection. Use false here to disable the connection. **Mandatory parameter**.
 - _**autoCreateTags**_ [Boolean] - Enables automatic creation of all discovered tags. **Mandatory parameter**.
 - _**ipAddressLocalBind**_ [String] - Address and port to bind for listening UDP messages. **Mandatory parameter**.
-- _**ipAddresses**_ [Array of Strings] - Restrict IP address sources of data allowed. **Mandatory parameter**.
+- _**ipAddresses**_ [Array of Strings] - Restrict IP address sources of data allowed. Leave the array empty to accept messages from any source. **Mandatory parameter**.
+
+Notice: the _ipAddresses_ filter is based on the UDP source address, which can be spoofed. It is a convenience filter only; for real isolation, restrict access to the UDP port with a firewall and prefer binding to a specific interface instead of "0.0.0.0".
 
 ## Example of JSON-SCADA Protocol Driver Instances and Connections Numbering
 

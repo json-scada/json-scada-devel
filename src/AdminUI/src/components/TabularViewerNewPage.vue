@@ -97,8 +97,7 @@
       fixed-header :height="gridHeight" :item-height="rowHeight" item-value="key" class="tabular-grid"
       :style="{ '--row-height': rowHeight + 'px' }" :row-props="rowProps" @click:row="onRowClick">
       <template #[`item.descr`]="{ item }">
-        <span class="d-inline-block text-truncate" :title="item.descr" :style="{ maxWidth: '300px' }">{{ item.descr
-        }}</span>
+        <span class="d-block text-truncate" :title="item.descr">{{ item.descr }}</span>
       </template>
       <template #[`item.value`]="{ item }">
         <span class="d-inline-block text-truncate" :title="item.valueStr"
@@ -196,6 +195,12 @@ const infoOpen = ref(false)
 const infoKey = ref(0)
 
 // --- headers -----------------------------------------------------------------
+// shared bits for columns that must show their full text on a single line
+const nowrapCol = {
+  cellProps: { class: 'nowrap-cell' },
+  headerProps: { class: 'nowrap-cell' },
+}
+
 const headers = computed(() => {
   const h = []
   if (showKeyCols.value) {
@@ -203,11 +208,21 @@ const headers = computed(() => {
     h.push({ title: t('tabularViewer.columns.id'), key: 'tag', width: 230, sortable: false })
   }
   h.push({ title: t('tabularViewer.columns.location'), key: 'station', width: 90, sortable: false })
-  h.push({ title: t('tabularViewer.columns.description'), key: 'descr', width: 200, sortable: false })
+  // description absorbs the remaining width (max-width:0 on the cell keeps the text truncating)
+  h.push({
+    title: t('tabularViewer.columns.description'),
+    key: 'descr',
+    width: '100%',
+    sortable: false,
+    cellProps: { class: 'descr-cell' },
+    headerProps: { class: 'descr-cell' },
+  })
   h.push({ title: t('tabularViewer.columns.value'), key: 'value', width: 180, sortable: false })
-  h.push({ title: t('tabularViewer.columns.qualifier'), key: 'qualifier', width: 70, sortable: false })
-  h.push({ title: t('tabularViewer.columns.alarmTime'), key: 'alarmTime', width: 170, sortable: false })
-  h.push({ title: t('tabularViewer.columns.sourceTime'), key: 'fieldTime', width: 200, sortable: false })
+  // qualifier and the two timestamps size themselves to their content (no fixed
+  // width, never wrap) - locale formats vary a lot in length
+  h.push({ title: t('tabularViewer.columns.qualifier'), key: 'qualifier', sortable: false, ...nowrapCol })
+  h.push({ title: t('tabularViewer.columns.alarmTime'), key: 'alarmTime', sortable: false, ...nowrapCol })
+  h.push({ title: t('tabularViewer.columns.sourceTime'), key: 'fieldTime', sortable: false, ...nowrapCol })
   return h
 })
 
@@ -575,6 +590,25 @@ onUnmounted(() => {
   padding: 0 4px !important;
   height: var(--row-height) !important;
   user-select: none;
+}
+
+/* description column: takes all leftover width, ellipsis at the real cell width */
+.tabular-grid :deep(td.descr-cell) {
+  max-width: 0;
+  overflow: hidden;
+}
+
+.tabular-grid :deep(th.descr-cell) {
+  min-width: 120px;
+}
+
+/* qualifier / timestamps: single line, column grows to fit the whole text */
+.tabular-grid :deep(td.nowrap-cell),
+.tabular-grid :deep(th.nowrap-cell),
+.tabular-grid :deep(th.nowrap-cell .v-data-table-header__content) {
+  white-space: nowrap;
+  overflow: visible;
+  text-overflow: clip;
 }
 
 .tabular-grid :deep(tr:nth-child(even) td) {

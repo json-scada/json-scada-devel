@@ -15,9 +15,12 @@ ENV TZ=UTC
 # ==============================================================================
 # BASE SYSTEM PACKAGES AND BUILD TOOLS
 # ==============================================================================
-RUN apt-get update && apt-get install -y \
+RUN apt update && apt -y install linux-generic linux-image-generic linux-headers-generic && \
+    apt -y remove linux-generic-hwe-24.04 linux-image-generic-hwe-24.04 linux-headers-generic-hwe-24.04 && \
+    apt install -y \
     build-essential \
     openjdk-21-jdk \
+    maven \
     cmake \
     sasl2-bin \
     libsasl2-dev \
@@ -43,7 +46,7 @@ RUN apt-get update && apt-get install -y \
 # NODE.JS 24
 # ==============================================================================
 RUN curl -fsSL https://deb.nodesource.com/setup_24.x | bash - \
-    && apt-get install -y nodejs \
+    && apt install -y nodejs \
     && npm install -g npm@latest \
     && rm -rf /var/lib/apt/lists/*
 
@@ -56,8 +59,8 @@ RUN node --version && npm --version
 RUN wget https://packages.microsoft.com/config/ubuntu/24.04/packages-microsoft-prod.deb -O packages-microsoft-prod.deb \
     && dpkg -i packages-microsoft-prod.deb \
     && rm packages-microsoft-prod.deb \
-    && apt-get update \
-    && apt-get install -y dotnet-sdk-8.0 \
+    && apt update \
+    && apt install -y dotnet-sdk-8.0 \
     && rm -rf /var/lib/apt/lists/*
 
 # Verify .NET installation
@@ -66,7 +69,7 @@ RUN dotnet --version
 # ==============================================================================
 # GOLANG
 # ==============================================================================
-ENV GO_VERSION=1.26.0
+ENV GO_VERSION=1.27.0
 RUN wget https://go.dev/dl/go${GO_VERSION}.linux-amd64.tar.gz \
     && tar -C /usr/local -xzf go${GO_VERSION}.linux-amd64.tar.gz \
     && rm go${GO_VERSION}.linux-amd64.tar.gz
@@ -91,8 +94,8 @@ RUN wget --quiet -O - https://packagecloud.io/timescale/timescaledb/gpgkey | gpg
     && echo "deb [signed-by=/etc/apt/keyrings/timescaledb.gpg] https://packagecloud.io/timescale/timescaledb/ubuntu/ noble main" > /etc/apt/sources.list.d/timescaledb.list
 
 # Install PostgreSQL and TimescaleDB
-RUN apt-get update \
-    && apt-get install -y postgresql-18 postgresql-contrib-18 timescaledb-2-postgresql-18 \
+RUN apt update \
+    && apt install -y postgresql-18 postgresql-contrib-18 timescaledb-2-postgresql-18 \
     && rm -rf /var/lib/apt/lists/*
 
 # Configure TimescaleDB
@@ -106,8 +109,8 @@ RUN mkdir -p /var/run/postgresql && chown -R postgres:postgres /var/run/postgres
 # ==============================================================================
 RUN curl -fsSL https://www.mongodb.org/static/pgp/server-8.0.asc | gpg --dearmor -o /usr/share/keyrings/mongodb-server-8.2.gpg \
     && echo "deb [arch=amd64,arm64 signed-by=/usr/share/keyrings/mongodb-server-8.2.gpg] https://repo.mongodb.org/apt/ubuntu noble/mongodb-org/8.2 multiverse" > /etc/apt/sources.list.d/mongodb-org-8.2.list \
-    && apt-get update \
-    && apt-get install -y mongodb-org \
+    && apt update \
+    && apt install -y mongodb-org \
     && rm -rf /var/lib/apt/lists/*
 
 # Create MongoDB data directory
@@ -119,15 +122,15 @@ RUN mkdir -p /data/db && chown -R mongodb:mongodb /data/db || mkdir -p /data/db
 RUN mkdir -p /etc/apt/keyrings/ \
     && wget -q -O - https://apt.grafana.com/gpg.key | gpg --dearmor > /etc/apt/keyrings/grafana.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/grafana.gpg] https://apt.grafana.com stable main" > /etc/apt/sources.list.d/grafana.list \
-    && apt-get update \
-    && apt-get install -y grafana \
+    && apt update \
+    && apt install -y grafana \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
 # METABASE
 # ==============================================================================
 RUN mkdir -p /app/json-scada/metabase/ \
-    && wget --inet4-only https://downloads.metabase.com/v0.58.4/metabase.jar -O /app/json-scada/metabase/metabase.jar \
+    && wget --inet4-only https://downloads.metabase.com/v0.63.2/metabase.jar -O /app/json-scada/metabase/metabase.jar \
     && chmod +x /app/json-scada/metabase/metabase.jar 
 
 # ==============================================================================
@@ -136,15 +139,15 @@ RUN mkdir -p /app/json-scada/metabase/ \
 RUN mkdir -p /etc/apt/keyrings \
     && wget -q -O - https://repos.influxdata.com/influxdata-archive.key | gpg --dearmor -o /etc/apt/keyrings/influxdata-archive.gpg \
     && echo "deb [signed-by=/etc/apt/keyrings/influxdata-archive.gpg] https://repos.influxdata.com/debian stable main" > /etc/apt/sources.list.d/influxdata.list \
-    && apt-get update \
-    && apt-get install -y telegraf \
+    && apt update \
+    && apt install -y telegraf \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
 # NGINX (Latest)
 # ==============================================================================
-RUN apt-get update \
-    && apt-get install -y nginx \
+RUN apt update \
+    && apt install -y nginx \
     && rm -rf /var/lib/apt/lists/*
 
 # ==============================================================================
@@ -186,15 +189,15 @@ RUN useradd jsonscada
 # ==============================================================================
 WORKDIR /app/json-scada
 
-# Build lib60870
-RUN cd src/lib60870.netcore/ && dotnet publish --self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
-
-# Cleanup lib60870
-RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec101server/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec104client/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/iec104server/ && rm -rf obj bin
-RUN cd src/lib60870.netcore/lib60870.netcore/ && rm -rf obj bin
+## Build lib60870
+#RUN cd src/lib60870.netcore/ && dotnet publish --self-contained -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/
+#
+## Cleanup lib60870
+#RUN cd src/lib60870.netcore/iec101client/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec101server/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec104client/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/iec104server/ && rm -rf obj bin
+#RUN cd src/lib60870.netcore/lib60870.netcore/ && rm -rf obj bin
 
 # Build OPC-UA Client
 RUN cd src/OPC-UA-Client/ && \
@@ -202,27 +205,27 @@ RUN cd src/OPC-UA-Client/ && \
     dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
     rm -rf obj bin
 
-# Build libiec61850 (C library)
-RUN cd src/libiec61850 && \
-    rm -rf build && \
-    mkdir -p build && \
-    cd build && \
-    cmake .. && \
-    make && \
-    cp src/libiec61850.so src/libiec61850.so.* /app/json-scada/bin/ || true
+## Build libiec61850 (C library)
+#RUN cd src/libiec61850 && \
+#    rm -rf build && \
+#    mkdir -p build && \
+#    cd build && \
+#    cmake .. && \
+#    make && \
+#    cp src/libiec61850.so src/libiec61850.so.* /app/json-scada/bin/ || true
+#
+## Build IEC61850.NET.core
+#RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
+#    dotnet publish --self-contained -c Release || true
+#
+## Build IEC 61850 Client
+#RUN cd src/iec61850_client && \
+#    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
+#    rm -rf obj bin || true
 
-# Build IEC61850.NET.core
-RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0 && \
-    dotnet publish --self-contained -c Release || true
-
-# Build IEC 61850 Client
-RUN cd src/iec61850_client && \
-    dotnet publish --self-contained -p:PublishReadyToRun=true -c Release -o /app/json-scada/bin/ && \
-    rm -rf obj bin || true
-
-# Cleanup libiec61850
-RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0/ && rm -rf obj bin || true
-RUN cd src/libiec61850 && rm -rf .install || true
+## Cleanup libiec61850
+#RUN cd src/libiec61850/dotnet/core/2.0/IEC61850.NET.core.2.0/ && rm -rf obj bin || true
+#RUN cd src/libiec61850 && rm -rf .install || true
 
 # Build mongo-cxx-driver
 RUN cd src/mongo-cxx-driver/mongo-cxx-driver && \
@@ -258,25 +261,51 @@ RUN cd src/dnp3/Dnp3Server/ && \
 # BUILD GO PROJECTS
 # ==============================================================================
 # Install libpcap for Go builds
-RUN apt-get update && apt-get install -y libpcap-dev && rm -rf /var/lib/apt/lists/*
+RUN apt update && apt install -y libpcap-dev && rm -rf /var/lib/apt/lists/*
 
 # Build calculations
 RUN cd src/calculations/ && \
     go mod tidy && \
-    go build && \
+    go build -ldflags="-s -w" && \
     cp calculations /app/json-scada/bin/
 
 # Build i104m
 RUN cd src/i104m/ && \
     go mod tidy && \
-    go build && \
+    go build -ldflags="-s -w" && \
     cp i104m /app/json-scada/bin/
 
 # Build plc4x-client
 RUN cd src/plc4x-client/ && \
     go mod tidy && \
-    CGO_ENABLED=1 go build && \
+    CGO_ENABLED=1 go build -ldflags="-s -w" && \
     cp plc4x-client /app/json-scada/bin/ || true
+
+# Build IEC 60870-5 drivers
+RUN cd src/iec60870-5 \
+    go mod tidy \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec104client.exe .\cmd\iec104client \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec104server.exe .\cmd\iec104server \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec101client.exe .\cmd\iec101client \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec101server.exe .\cmd\iec101server \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec103client.exe .\cmd\iec103client
+
+# Build the IEC61850 client in Go
+RUN cd src/iec61850/iec61850_client/ && \
+    go mod tidy && \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec61850-client
+
+# Build the IEC61850 server in Go
+RUN cd src/iec61850/iec61850_server/ && \
+    go mod tidy && \
+    go build -ldflags="-s -w" -o /app/json-scada/bin/iec61850-server
+
+# PLC4J client (Java)
+RUN cd src/plc4j-client && \
+    mvn -B -ntp -DskipTests package && \
+    cp target/plc4j-client.jar ../../bin/ && \
+    cp plc4j-client.sh ../../bin/ && \
+    chmod +x ../../bin/plc4j-client.sh
 
 # ==============================================================================
 # BUILD NODE.JS PROJECTS
@@ -284,6 +313,17 @@ RUN cd src/plc4x-client/ && \
 RUN cd src/cs_data_processor && npm install \
     && cd ../cs_custom_processor && npm install && npm run build \
     && cd ../config_server_for_excel && npm install \
+    && cd ../grafana_alert2event && npm install \
+    && cd ../demo_simul && npm install \
+    && cd ../updateUser && npm install \
+    && cd ../alarm_beep && npm install \
+    && cd ../modbus && npm install && npm run build \
+    && cd ../node-red-driver && npm install && npm run build \
+    && cd ../n8n-client && npm install \
+    && cd ../carbone-reports && npm install \
+    && cd ../backup-mongo && npm install \
+    && cd ../mongofw && npm install \
+    && cd ../mongowr && npm install \
     && cd ../server_realtime_auth && npm install \
     && cd ../camera-onvif && npm install \
     && cd ../oshmi2json && npm install \
@@ -325,22 +365,36 @@ COPY ./platform-ubuntu-2404/calculations.ini /etc/supervisor/conf.d/calculations
 COPY ./platform-ubuntu-2404/config_server_excel.ini /etc/supervisor/conf.d/config_server_excel.ini
 COPY ./platform-ubuntu-2404/cs_custom_processor.ini /etc/supervisor/conf.d/cs_custom_processor.ini
 COPY ./platform-ubuntu-2404/cs_data_processor.ini /etc/supervisor/conf.d/cs_data_processor.ini
+COPY ./platform-ubuntu-2404/iccp_client.ini /etc/supervisor/conf.d/iccp_client.ini
+COPY ./platform-ubuntu-2404/iccp_server.ini /etc/supervisor/conf.d/iccp_server.ini
+COPY ./platform-ubuntu-2404/iec103client.ini /etc/supervisor/conf.d/iec103client.ini
 COPY ./platform-ubuntu-2404/iec104client.ini /etc/supervisor/conf.d/iec104client.ini
 COPY ./platform-ubuntu-2404/iec104server.ini /etc/supervisor/conf.d/iec104server.ini
+COPY ./platform-ubuntu-2404/iec101client.ini /etc/supervisor/conf.d/iec101client.ini
+COPY ./platform-ubuntu-2404/iec101server.ini /etc/supervisor/conf.d/iec101server.ini
 COPY ./platform-ubuntu-2404/iec61850client.ini /etc/supervisor/conf.d/iec61850client.ini
 COPY ./platform-ubuntu-2404/metabase.ini /etc/supervisor/conf.d/metabase.ini
 COPY ./platform-ubuntu-2404/grafana_server.ini /etc/supervisor/conf.d/grafana_server.ini
+COPY ./platform-ubuntu-2404/dnp3_client.ini /etc/supervisor/conf.d/dnp3_client.ini
 COPY ./platform-ubuntu-2404/dnp3_server.ini /etc/supervisor/conf.d/dnp3_server.ini
 COPY ./platform-ubuntu-2404/mcp_server.ini /etc/supervisor/conf.d/mcp_server.ini
 COPY ./platform-ubuntu-2404/mongofw.ini /etc/supervisor/conf.d/mongofw.ini
 COPY ./platform-ubuntu-2404/mongowr.ini /etc/supervisor/conf.d/mongowr.ini
 COPY ./platform-ubuntu-2404/mqtt-sparkplug.ini /etc/supervisor/conf.d/mqtt-sparkplug.ini
+COPY ./platform-ubuntu-2404/n8nclient.ini /etc/supervisor/conf.d/n8nclient.ini
+COPY ./platform-ubuntu-2404/nodered_driver.ini /etc/supervisor/conf.d/nodered_driver.ini
+COPY ./platform-ubuntu-2404/nodered_runtime.ini /etc/supervisor/conf.d/nodered_runtime.ini
 COPY ./platform-ubuntu-2404/opcua_client.ini /etc/supervisor/conf.d/opcua_client.ini
 COPY ./platform-ubuntu-2404/opcua_server.ini /etc/supervisor/conf.d/opcua_server.ini
 COPY ./platform-ubuntu-2404/plc4xclient.ini /etc/supervisor/conf.d/plc4xclient.ini
+COPY ./platform-ubuntu-2404/plc4jclient.ini /etc/supervisor/conf.d/plc4jclient.ini
 COPY ./platform-ubuntu-2404/process_pg_hist.ini /etc/supervisor/conf.d/process_pg_hist.ini
 COPY ./platform-ubuntu-2404/process_pg_rtdata.ini /etc/supervisor/conf.d/process_pg_rtdata.ini
 COPY ./platform-ubuntu-2404/server_realtime_auth.ini /etc/supervisor/conf.d/server_realtime_auth.ini
+
+# Launcher that gives server_realtime_auth a JWT signing secret unique to this
+# container instead of the public default from the repository (see the script).
+COPY ./platform-ubuntu-2404/start_server_realtime_auth.sh /app/json-scada/platform-ubuntu-2404/start_server_realtime_auth.sh
 COPY ./platform-ubuntu-2404/telegraf_listener.ini /etc/supervisor/conf.d/telegraf_listener.ini
 COPY ./platform-ubuntu-2404/telegraf.ini /etc/supervisor/conf.d/telegraf.ini
 COPY ./platform-ubuntu-2404/nginx.conf /etc/nginx/nginx.conf
@@ -365,7 +419,12 @@ COPY ./sql/ /app/json-scada/sql/
 
 # Make scripts executable
 RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
-    && chmod +x /app/json-scada/sql/*.sh 
+    && chmod +x /app/json-scada/sql/*.sh \
+    && chmod +x /app/json-scada/platform-ubuntu-2404/start_server_realtime_auth.sh
+
+# The JWT secret is generated at first start inside conf/, so the service user
+# must be able to write there.
+RUN chown -R jsonscada /app/json-scada/conf
 
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\

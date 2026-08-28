@@ -106,8 +106,6 @@ namespace Iec10XDriver
             public int maxQueueSize { get; set; }
             [BsonDefaultValue(false)]
             public bool autoCreateTags { get; set; }
-            [BsonDefaultValue(1)]
-            public int autoCreateTagsCommonAddress { get; set; }
             [BsonDefaultValue(new string[] { })]
             public string[] topics { get; set; }
             public CS101Slave server;
@@ -118,11 +116,15 @@ namespace Iec10XDriver
         public class rtData
         {
             [BsonSerializer(typeof(BsonIntSerializer))]
-            public BsonInt32 _id { get; set; }
+            public BsonInt64 _id { get; set; }
             [BsonDefaultValue("")]
             public BsonString tag { get; set; }
             [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0)]
             public BsonDouble value { get; set; }
+            [BsonDefaultValue("")]
+            public BsonString origin { get; set; }
+            [BsonDefaultValue("")]
+            public BsonString type { get; set; }
             [BsonDefaultValue("")]
             public BsonString valueString { get; set; }
             [BsonDefaultValue(false)]
@@ -163,7 +165,7 @@ namespace Iec10XDriver
 
         static void Main(string[] args)
         {
-            Log("{json:scada} IEC60870-5-101 Server Driver - Copyright 2020-2024 RLO");
+            Log("{json:scada} IEC60870-5-101 Server Driver - Copyright 2020-present RLO");
             Log("Driver version " + DriverVersion);
             Log("Using lib60870.NET version " +
             LibraryCommon.GetLibraryVersionString());

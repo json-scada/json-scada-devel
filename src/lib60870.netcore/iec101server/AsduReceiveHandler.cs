@@ -65,6 +65,7 @@ namespace Iec10XDriver
                     String srctag = "";
                     Double srckconv1 = 1;
                     Double srckconv2 = 0;
+                    String srctype = "";
 
                     switch (asdu.TypeId)
                     {
@@ -436,6 +437,7 @@ namespace Iec10XDriver
                                 srckconv2 = list[0].kconv2.ToDouble();
                                 srcpointkey = list[0]._id.ToInt32();
                                 srctag = list[0].tag.ToString();
+                                srctype = list[0].type.ToString();
                                 break;
                             }
                         }
@@ -447,14 +449,6 @@ namespace Iec10XDriver
                             Log(conNameStr + "  Request to read object not found, address: " + objaddr, LogLevelBasic);
                         else
                             Log(conNameStr + "  Command not found!", LogLevelBasic);
-                        LastPointKeySelectedOk = 0;
-                        return true;
-                    }
-
-                    if (srcasdu == 0)
-                    {
-                        Log(conNameStr + "  Command rejected!", LogLevelBasic);
-                        connection.SendACT_CON(asdu, true); // activation confirm negative
                         LastPointKeySelectedOk = 0;
                         return true;
                     }
@@ -557,6 +551,16 @@ namespace Iec10XDriver
                                 srcval = System.Convert.ToInt32(val);
                             break;
                         default:
+                            if (srctype == "digital") 
+                            {
+                                if (srckconv1 == -1) // invert
+                                    srcval =  val == 0 ? 1 : 0;
+                                else
+                                   srcval = val;
+                                
+                            }
+                            if (srctype == "analog")
+                               srcval = val * srckconv1 + srckconv2;
                             break;
                     }
 

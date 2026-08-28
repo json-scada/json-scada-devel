@@ -5,36 +5,49 @@
 # Golang 1.21+
 # Node.js 20+
 
-# call with argument linux-arm64 for ARM architecture
-
 ARG1=${1:-linux-x64}
+case $(uname -m) in
+    x86_64) ARG1="linux-x64" ;;
+    arm)    ARG1="linux-arm64";;
+esac
+
+ARCHITECTURE="amd64"
+case $(uname -m) in
+    x86_64) ARCHITECTURE="amd64" ;;
+    arm)    ARCHITECTURE="arm64";;
+esac
 
 cd ..
 mkdir bin
+mkdir bin_alt
 mkdir bin-wine
 
 export DOTNET_CLI_TELEMETRY_OPTOUT=1
 
-# Dnp3Client is Windows-only (must run under Wine on Linux)
-cp src/dnp3/Dnp3Client/Dependencies/OpenSSL/*.dll bin-wine/ 
-cd src/dnp3/Dnp3Client
-dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o ../../../bin-wine/ Dnp3Client.csproj
+#cp src/dnp3/Dnp3Client/Dependencies/OpenSSL/*.dll bin-wine/ 
+#cd src/dnp3/Dnp3Client
+#dotnet publish --self-contained --runtime win-x64 -p:PublishReadyToRun=true -c Release -o ../../../bin-wine/ Dnp3Client.csproj
 
-cd ../../libiec61850
+# IEC 61850 main drivers are now built in Go (src/iec61850), see the Go section below.
+cd src/libiec61850
 mkdir build
 cd build
 cmake ..
 make
-cp src/libiec61850.so src/libiec61850.so.* ../../../bin/
+cp src/libiec61850.so src/libiec61850.so.* ../../../bin_alt/
 cd ../dotnet/core/2.0/IEC61850.NET.core.2.0
 dotnet publish --self-contained --runtime $ARG1 -c Release
 cd ../../../../../iec61850_client
-dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin/ 
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
+
+cd ../iec61850_server
+dotnet publish --self-contained --runtime $ARG1 -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
 
 sleep 1
+# IEC 60870-5-101/104 main drivers are now built in Go (src/iec60870-5), see the Go section below.
 cd ../lib60870.netcore
 dotnet restore
-dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin/
+dotnet publish --self-contained --runtime $ARG1 -p:IsPackable=false -p:GeneratePackageOnBuild=false -p:PublishReadyToRun=true -c Release -o ../../bin_alt/
 
 cd ../OPC-UA-Client
 dotnet restore
@@ -90,29 +103,65 @@ cp i104m ../../bin/
 
 # you may need a lot of memory to build this step, the build may be killed by the system, if necessary add swap, e.g. 8GB RAM + 4GB Swap
 cd ../plc4x-client
-go mod tidy 
+go mod tidy
 go build
 cp plc4x-client ../../bin/
+
+cd ../iec60870-5
+go mod tidy
+go build -o ../../bin/iec104client ./cmd/iec104client
+go build -o ../../bin/iec104server ./cmd/iec104server
+go build -o ../../bin/iec101client ./cmd/iec101client
+go build -o ../../bin/iec101server ./cmd/iec101server
+go build -o ../../bin/iec103client ./cmd/iec103client
+
+cd ../iec61850/iec61850_client
+go mod tidy
+go build -ldflags="-s -w" -o ../../../bin/iec61850_client 
+
+cd ../iec61850_server
+go mod tidy
+go build -ldflags="-s -w" -o ../../../bin/iec61850_server 
+cd ..
+
+# PLC4J client (Java alternative for the PLC4X driver) - built only when JDK 17+ and Maven are available
+if command -v mvn >/dev/null 2>&1; then
+  cd ../plc4j-client
+  mvn -B -ntp -DskipTests package
+  cp target/plc4j-client.jar ../../bin/
+  cp plc4j-client.sh ../../bin/
+  chmod +x ../../bin/plc4j-client.sh
+  cd ../plc4x-client
+fi
 
 cd ../iccp/iccp-server
 #go mod tidy 
 #go build
-cp iccp-server-linux-amd64 ../../../bin/iccp-server
+cp iccp-server-linux-$ARCHITECTURE ../../../bin/iccp-server
 chmod +x ../../../bin/iccp-server
 cd ..
 
-#cd ../iccp/iccp-client
+cd ../iccp/iccp-client
 #go mod tidy 
 #go build
-#cp iccp-client-linux-amd64 ../../../bin/iccp-client
-#chmod +x ../../../bin/iccp-client
-#cd ..
+cp iccp-client-linux-$ARCHITECTURE ../../../bin/iccp-client
+chmod +x ../../../bin/iccp-client
+cd ..
 
 # release some disk space
 rm -rf ~/.cache
 
+cd ../config_server_for_excel
+npm install
 cd ../cs_data_processor
 npm install
+
+# Go implementation of cs_data_processor, a drop-in replacement for the
+# Node.js one (run only one of them per instance number)
+cd ../cs_data_processor-go
+go mod tidy
+go build -ldflags="-s -w" -o ../../bin/cs_data_processor-go
+
 cd ../cs_custom_processor
 npm install
 npm run build
@@ -140,6 +189,14 @@ npm install
 cd ../mqtt-sparkplug
 npm install
 cd ../OPC-UA-Server
+npm install
+cd ../modbus
+npm install
+npm run build
+cd ../node-red-driver
+npm install
+npm run build
+cd ../n8n-client
 npm install
 cd ../carbone-reports
 npm install

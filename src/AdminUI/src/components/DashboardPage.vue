@@ -9,7 +9,7 @@
         md="4"
       >
         <v-card
-          v-if="!(shortcut.titleKey === 'dashboard.admin' && !isAdmin()) && !(shortcut.titleKey === 'dashboard.logViewer' && !isAdmin()) && !(shortcut.titleKey === 'dashboard.svgedit' && !isAdmin())"
+          v-if="!(shortcut.titleKey === 'dashboard.admin' && !isAdmin()) && !(shortcut.titleKey === 'dashboard.logViewer' && !isAdmin()) && !(shortcut.titleKey === 'dashboard.svgedit' && !isAdmin() && !(shortcut.titleKey === 'dashboard.nodered' && !isAdmin()))"
           density="compact"
           :color="shortcut.color"
           hover
@@ -53,6 +53,7 @@
     Database,
     PenTool,
     Code,
+    Workflow,
   } from 'lucide-vue-next'
 
   // Lifecycle hooks
@@ -121,6 +122,22 @@
       color: 'warning',
       route: '/admin',
       page: '/#/admin',
+      target: '_blank',
+    },
+    {
+      titleKey: 'dashboard.nodered',
+      icon: Workflow,
+      color: 'warning',
+      route: '/nodered',
+      page: '/#/nodered',
+      target: '_blank',
+    },
+    {
+      titleKey: 'dashboard.apollo',
+      icon: Workflow,
+      color: 'warning',
+      route: '/apollo',
+      page: '/#/apollo',
       target: '_blank',
     },
     {

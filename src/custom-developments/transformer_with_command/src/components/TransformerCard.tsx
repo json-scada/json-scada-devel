@@ -1,538 +1,554 @@
-import React, { useState, useEffect } from 'react'
+import { useCallback, useEffect, useRef, useState } from 'react'
+import { ArrowDown, ArrowUp, Loader2, RefreshCw } from 'lucide-react'
 import { Button } from '@/components/ui/button'
-import { Card } from '@/components/ui/card'
-import * as scadaOpcApi from '../lib/scadaOpcApi'
+import { Stat, StatGrid } from '@/components/ui/stat'
+import * as scadaOpcApi from '@/lib/scadaOpcApi'
+import {
+  formatClock,
+  formatValue,
+  qualityInfo,
+  status,
+  viz,
+  worstQuality,
+  type Tone,
+} from '@/lib/viz'
+import { TransformerDiagram, type SideState } from './TransformerDiagram'
 import { EventsGrid } from './EventsGrid'
 
-interface Measurements {
-  hvMw: number
-  hvMvar: number
-  lvMw: number
-  lvMvar: number
+/**
+ * KAW2 TR1 — 230/69 kV transformer bay: live one-line, derived quantities and
+ * on-load tap changer control.
+ */
+
+const TAGS = {
+  hvMw: 'KAW2TR1-2MTWT',
+  hvMvar: 'KAW2TR1-2MTVR',
+  hvAmps: 'KAW2TR1-2MAPH--B',
+  hvWinding: 'KAW2TR1-2YHPT',
+  hvBreaker: 'KAW2TR1-2XCBR5202',
+  lvMw: 'KAW2TR1-0MTWT',
+  lvMvar: 'KAW2TR1-0MTVR',
+  lvAmps: 'KAW2TR1-0MAPH--B',
+  lvWinding: 'KAW2TR1-0YHPT',
+  lvBreaker: 'KAW2TR1-0XCBR5207',
+  oilTemp: 'KAW2TR1--YIMT',
+  tap: 'KAW2TR1--YTAP',
+  buchholz: 'KAW2TR1--YPBH----Alrm',
+} as const
+
+/** Protection and supervision digitals shown as a state list under the tiles. */
+const DEVICE_ALARMS = [
+  { tag: TAGS.buchholz, label: 'Buchholz 63T' },
+  { tag: 'KAW2TR1--PTTR----Alrm', label: 'Winding therm. 49' },
+  { tag: 'KAW2TR1--PTTI----Alrm', label: 'Oil therm. 26' },
+  { tag: 'KAW2TR1--YDTP', label: 'Tap discordance' },
+] as const
+
+const READ_TAGS = [
+  ...Object.values(TAGS),
+  ...DEVICE_ALARMS.map((alarm) => alarm.tag),
+].filter((tag, index, all) => all.indexOf(tag) === index)
+
+const TAP_COMMAND = 'KAW2TR1--YTAP--------K'
+
+/** Raise/lower command values, as defined by the command tag in the demo data. */
+const TAP_RAISE = 1
+const TAP_LOWER = 0
+
+const POLL_MS = 3000
+/** A reading older than this is called out as stale rather than shown as live. */
+const STALE_MS = 3 * POLL_MS
+
+/**
+ * Nameplate rating, MVA. Taken from the high alarm limit of the demo's
+ * calculated apparent-power tag (KAW2TR1-2MTVA--------C). Display only — it
+ * scales the loading meter and nothing else.
+ */
+const RATED_MVA = 75
+
+/** OLTC travel, used for the diagram scale. The demo tap sits mid-range. */
+const TAP_MIN = 1
+const TAP_MAX = 17
+
+/** Temperature alarm thresholds, °C. */
+const OIL_WARN = 75
+const OIL_ALARM = 90
+const WINDING_WARN = 95
+const WINDING_ALARM = 105
+
+type Link = 'connecting' | 'live' | 'stale' | 'down'
+
+type CommandPhase = 'idle' | 'sending' | 'waiting' | 'done' | 'failed'
+
+interface CommandState {
+  phase: CommandPhase
+  direction: 'raise' | 'lower' | null
+  message: string
 }
 
+const IDLE_COMMAND: CommandState = {
+  phase: 'idle',
+  direction: null,
+  message: '',
+}
+
+type Points = Record<string, scadaOpcApi.DataPoint>
+
 export function TransformerCard() {
-  const [tapPosition, setTapPosition] = useState<number>(0)
-  const [measurements, setMeasurements] = useState<Measurements>({
-    hvMw: 0,
-    hvMvar: 0,
-    lvMw: 0,
-    lvMvar: 0,
-  })
-  const [isLoading, setIsLoading] = useState<{
-    up: boolean
-    down: boolean
-  }>({ up: false, down: false })
-  const [dataStatus, setDataStatus] = useState<
-    'idle' | 'fetching' | 'success' | 'error'
-  >('idle')
-  const [lastUpdateTime, setLastUpdateTime] = useState<Date | null>(null)
-
-  const formatTime = (date: Date) => {
-    return date.toLocaleTimeString('en-US', {
-      hour: '2-digit',
-      minute: '2-digit',
-      second: '2-digit',
-      hour12: false,
-    })
-  }
-
-  const fetchRealtimeData = async () => {
-    try {
-      setDataStatus('fetching')
-      const data = await scadaOpcApi.getRealTimeData([
-        'KAW2TR1-2MTWT', // HV MW
-        'KAW2TR1-2MTVR', // HV Mvar
-        'KAW2TR1-0MTWT', // LV MW
-        'KAW2TR1-0MTVR', // LV Mvar
-        'KAW2TR1--YTAP', // Tap Position
-      ])
-
-      data.forEach((item) => {
-        switch (item.name) {
-          case 'KAW2TR1-2MTWT':
-            setMeasurements((prev) => ({ ...prev, hvMw: item.value }))
-            break
-          case 'KAW2TR1-2MTVR':
-            setMeasurements((prev) => ({ ...prev, hvMvar: item.value }))
-            break
-          case 'KAW2TR1-0MTWT':
-            setMeasurements((prev) => ({ ...prev, lvMw: item.value }))
-            break
-          case 'KAW2TR1-0MTVR':
-            setMeasurements((prev) => ({ ...prev, lvMvar: item.value }))
-            break
-          case 'KAW2TR1--YTAP':
-            setTapPosition(item.value)
-            break
-        }
-      })
-      setLastUpdateTime(new Date())
-      setDataStatus('success')
-    } catch (error) {
-      console.error('Error fetching realtime data:', error)
-      setDataStatus('error')
-    }
-  }
-
-  const handleTapChange = async (direction: 'up' | 'down') => {
-    setIsLoading((prev) => ({ ...prev, [direction]: true }))
-    try {
-      await scadaOpcApi.issueCommand(
-        'KAW2TR1--YTAP--------K',
-        direction === 'up' ? 1 : 0
-      )
-
-      // Refresh data after command
-      await fetchRealtimeData()
-    } catch (error) {
-      console.error('Error issuing tap command:', error)
-      setDataStatus('error')
-    } finally {
-      setIsLoading((prev) => ({ ...prev, [direction]: false }))
-    }
-  }
+  const [points, setPoints] = useState<Points>({})
+  const [link, setLink] = useState<Link>('connecting')
+  const [lastUpdate, setLastUpdate] = useState<Date | null>(null)
+  const [command, setCommand] = useState<CommandState>(IDLE_COMMAND)
+  const mounted = useRef(true)
 
   useEffect(() => {
-    // Initial fetch
-    fetchRealtimeData()
-
-    // Set up polling interval (e.g., every 5 seconds)
-    const interval = setInterval(fetchRealtimeData, 5000)
-
-    return () => clearInterval(interval)
+    mounted.current = true
+    return () => {
+      mounted.current = false
+    }
   }, [])
 
+  const refresh = useCallback(async () => {
+    const data = await scadaOpcApi.getRealTimeData(READ_TAGS)
+    if (!mounted.current) return
+    // getRealTimeData swallows transport errors and returns an empty array, and
+    // drops individual points that came back with a bad service status.
+    const received = data.filter((point): point is scadaOpcApi.DataPoint =>
+      Boolean(point?.name)
+    )
+    if (received.length === 0) {
+      setLink('down')
+      return
+    }
+    setPoints((previous) => {
+      const next: Points = { ...previous }
+      for (const point of received) next[point.name] = point
+      return next
+    })
+    setLastUpdate(new Date())
+    setLink('live')
+  }, [])
+
+  useEffect(() => {
+    refresh()
+    const interval = setInterval(refresh, POLL_MS)
+    return () => clearInterval(interval)
+  }, [refresh])
+
+  // Age the link indicator between polls, so a hung server does not keep
+  // showing the last good reading as if it were current.
+  useEffect(() => {
+    const timer = setInterval(() => {
+      if (!lastUpdate) return
+      if (Date.now() - lastUpdate.getTime() > STALE_MS) {
+        setLink((current) => (current === 'live' ? 'stale' : current))
+      }
+    }, 1000)
+    return () => clearInterval(timer)
+  }, [lastUpdate])
+
+  const value = (tag: string): number | null => {
+    const point = points[tag]
+    if (!point || !Number.isFinite(point.value)) return null
+    return point.value
+  }
+  const quality = (tag: string): number | undefined => points[tag]?.quality
+  const boolean = (tag: string): boolean | null => {
+    const point = points[tag]
+    if (!point || !Number.isFinite(point.value)) return null
+    return point.value !== 0
+  }
+
+  const hv: SideState = {
+    mw: value(TAGS.hvMw),
+    mvar: value(TAGS.hvMvar),
+    amps: value(TAGS.hvAmps),
+    breakerClosed: boolean(TAGS.hvBreaker),
+    quality: worstQuality([
+      quality(TAGS.hvMw),
+      quality(TAGS.hvMvar),
+      quality(TAGS.hvBreaker),
+    ]),
+  }
+  const lv: SideState = {
+    mw: value(TAGS.lvMw),
+    mvar: value(TAGS.lvMvar),
+    amps: value(TAGS.lvAmps),
+    breakerClosed: boolean(TAGS.lvBreaker),
+    quality: worstQuality([
+      quality(TAGS.lvMw),
+      quality(TAGS.lvMvar),
+      quality(TAGS.lvBreaker),
+    ]),
+  }
+
+  const tap = value(TAGS.tap)
+  const oilTemp = value(TAGS.oilTemp)
+  const hvWinding = value(TAGS.hvWinding)
+  const lvWinding = value(TAGS.lvWinding)
+
+  // Derived from the HV side, which is the metered infeed of the bank.
+  const mva =
+    hv.mw !== null && hv.mvar !== null ? Math.hypot(hv.mw, hv.mvar) : null
+  const powerFactor = mva && mva > 0.01 ? Math.abs((hv.mw as number) / mva) : null
+  // Sign conventions differ per side in the demo data, so compare magnitudes.
+  const losses =
+    hv.mw !== null && lv.mw !== null ?
+      Math.abs(hv.mw) - Math.abs(lv.mw)
+    : null
+  const loading = mva !== null ? (mva / RATED_MVA) * 100 : null
+
+  const busy = command.phase === 'sending' || command.phase === 'waiting'
+
+  const sendTap = async (direction: 'raise' | 'lower') => {
+    setCommand({
+      phase: 'sending',
+      direction,
+      message: 'Sending command…',
+    })
+    const result = await scadaOpcApi.issueCommand(
+      TAP_COMMAND,
+      direction === 'raise' ? TAP_RAISE : TAP_LOWER
+    )
+    if (!mounted.current) return
+    if (!result.ok) {
+      setCommand({
+        phase: 'failed',
+        direction,
+        message:
+          result.error ?
+            `Command not accepted — ${result.error}`
+          : 'Command rejected by the server.',
+      })
+      return
+    }
+    setCommand({
+      phase: 'waiting',
+      direction,
+      message: 'Waiting for protocol acknowledgement…',
+    })
+
+    // Track delivery through the driver, the same way the standard viewers do:
+    // poll the command tag with the handle returned by the write.
+    const deadline = Date.now() + 15000
+    while (mounted.current && Date.now() < deadline) {
+      await delay(1000)
+      if (!mounted.current) return
+      const ack = await scadaOpcApi.getCommandAckStatus(
+        TAP_COMMAND,
+        result.commandHandle
+      )
+      if (!mounted.current) return
+      if (ack === scadaOpcApi.OpcStatusCodes.Good) {
+        setCommand({
+          phase: 'done',
+          direction,
+          message: `Tap ${direction} acknowledged at ${formatClock(new Date())}.`,
+        })
+        refresh()
+        return
+      }
+      if (ack === scadaOpcApi.OpcStatusCodes.Bad) {
+        setCommand({
+          phase: 'failed',
+          direction,
+          message: 'Command not acknowledged by the field device.',
+        })
+        refresh()
+        return
+      }
+    }
+    if (!mounted.current) return
+    setCommand({
+      phase: 'failed',
+      direction,
+      message: 'Timed out waiting for acknowledgement.',
+    })
+    refresh()
+  }
+
   return (
-    <>
-      <Card className="p-4">
-        <div className="flex flex-col items-center space-y-4">
-          {/* Status Indicator */}
-          <div className="absolute top-6 right-6 flex items-center space-x-2">
-            <div
-              className={`h-3 w-3 rounded-full ${
-                dataStatus === 'idle' ? 'bg-gray-400'
-                : dataStatus === 'fetching' ? 'bg-blue-400 animate-pulse'
-                : dataStatus === 'success' ? 'bg-green-400'
-                : 'bg-red-400'
-              }`}
+    <div className="space-y-4">
+      <section className="rounded-lg border border-hairline bg-surface-1">
+        <header className="flex flex-wrap items-start justify-between gap-3 border-b border-hairline px-5 py-4">
+          <div className="min-w-0">
+            <h2 className="text-sm font-semibold tracking-wide text-ink-1">
+              KAW2 · TR1 — 230/69 kV transformer
+            </h2>
+            <p className="mt-1 text-xs text-ink-3">
+              Bay one-line, derived quantities and on-load tap changer control.
+            </p>
+          </div>
+          <div className="flex items-center gap-3">
+            <LinkBadge link={link} lastUpdate={lastUpdate} />
+            <Button
+              variant="outline"
+              size="sm"
+              onClick={refresh}
+              aria-label="Refresh now"
+              title="Refresh now"
+            >
+              <RefreshCw className="h-3.5 w-3.5" />
+            </Button>
+          </div>
+        </header>
+
+        <div className="grid gap-5 p-5 lg:grid-cols-[minmax(0,1fr)_260px]">
+          <div>
+            <TransformerDiagram
+              className="h-auto w-full"
+              hv={hv}
+              lv={lv}
+              oilTempC={oilTemp}
+              buchholzAlarm={boolean(TAGS.buchholz)}
+              tap={tap}
+              tapMin={TAP_MIN}
+              tapMax={TAP_MAX}
+              tapMoving={busy ? (command.direction ?? 'raise') : null}
             />
-            <span className="text-xs text-gray-500">
-              {dataStatus === 'fetching' ?
-                'Updating...'
-              : dataStatus === 'error' ?
-                'Error'
-              : dataStatus === 'success' && lastUpdateTime ?
-                `Updated at ${formatTime(lastUpdateTime)}`
-              : 'Idle'}
-            </span>
+            <p className="mt-3 text-[11px] leading-relaxed text-ink-3">
+              Filled breaker square = closed, hollow = open. Moving dashes show
+              the direction of active power flow. Conductors go grey when the
+              branch is de-energised or the data behind it is not good.
+            </p>
           </div>
 
-          {/* Transformer SVG Drawing */}
-          <div className="relative w-[400px] h-[300px]">
-            <svg
-              width="100%"
-              height="100%"
-              viewBox="0 0 400 300"
-              fill="none"
-              xmlns="http://www.w3.org/2000/svg"
-              className="transform scale-100"
-            >
-              {/* Background Structure */}
-              <rect
-                x="30"
-                y="20"
-                width="340"
-                height="280"
-                rx="5"
-                fill="#f8fafc"
-                stroke="#94a3b8"
-                strokeWidth="1"
+          <div className="space-y-3">
+            <StatGrid>
+              <Stat
+                label="Apparent"
+                value={formatValue(mva)}
+                unit="MVA"
+                quality={hv.quality}
               />
+              <Stat
+                label="Power factor"
+                value={powerFactor === null ? '—' : powerFactor.toFixed(3)}
+                hint={
+                  hv.mvar === null ? undefined
+                  : hv.mvar >= 0 ? 'lagging'
+                  : 'leading'
+                }
+                quality={hv.quality}
+              />
+              <Stat
+                label="Losses"
+                value={formatValue(losses, 2)}
+                unit="MW"
+                hint="P(HV) − P(LV)"
+                quality={worstQuality([hv.quality, lv.quality])}
+              />
+              <Stat
+                label="Tap"
+                value={formatValue(tap)}
+                unit="pos"
+                quality={quality(TAGS.tap)}
+              />
+              <Stat
+                label="Top oil"
+                value={formatValue(oilTemp, 0)}
+                unit="°C"
+                tone={temperatureTone(oilTemp, OIL_WARN, OIL_ALARM)}
+                quality={quality(TAGS.oilTemp)}
+              />
+              <Stat
+                label="HV winding"
+                value={formatValue(hvWinding, 0)}
+                unit="°C"
+                tone={temperatureTone(hvWinding, WINDING_WARN, WINDING_ALARM)}
+                quality={quality(TAGS.hvWinding)}
+              />
+              <Stat
+                label="LV winding"
+                value={formatValue(lvWinding, 0)}
+                unit="°C"
+                tone={temperatureTone(lvWinding, WINDING_WARN, WINDING_ALARM)}
+                quality={quality(TAGS.lvWinding)}
+              />
+              <Stat
+                label="Loading"
+                value={formatValue(loading, 0)}
+                unit="%"
+                hint={`of ${RATED_MVA} MVA`}
+                tone={temperatureTone(loading, 90, 100)}
+                quality={hv.quality}
+              />
+            </StatGrid>
 
-              {/* Substation and Transformer Labels */}
-              <text
-                x="35"
-                y="35"
-                className="text-[12px] font-bold"
-                fill="#1e293b"
+            <LoadingMeter percent={loading} />
+
+            <div className="rounded-md border border-hairline bg-surface-2 p-3">
+              <div className="text-[10px] uppercase tracking-[0.1em] text-ink-3">
+                Device alarms
+              </div>
+              <ul className="mt-2 space-y-1">
+                {DEVICE_ALARMS.map(({ tag, label }) => {
+                  const point = points[tag]
+                  const alarmed = boolean(tag)
+                  return (
+                    <li
+                      key={tag}
+                      className="flex items-center justify-between gap-2 text-[11px]"
+                    >
+                      <span className="flex items-center gap-2 text-ink-3">
+                        <span
+                          className="inline-block h-1.5 w-1.5 shrink-0 rounded-full"
+                          style={{
+                            backgroundColor:
+                              alarmed === null ? viz.ink3
+                              : alarmed ? status.critical
+                              : status.good,
+                          }}
+                          aria-hidden
+                        />
+                        {label}
+                      </span>
+                      <span
+                        className={
+                          alarmed ? 'font-medium text-status-critical' : (
+                            'text-ink-2'
+                          )
+                        }
+                      >
+                        {point?.valueString ??
+                          (alarmed === null ? 'no data'
+                          : alarmed ? 'ALARMED'
+                          : 'NORMAL')}
+                      </span>
+                    </li>
+                  )
+                })}
+              </ul>
+            </div>
+
+            <div className="rounded-md border border-hairline bg-surface-2 p-3">
+              <div className="text-[10px] uppercase tracking-[0.1em] text-ink-3">
+                Tap changer control
+              </div>
+              <div className="mt-2 grid grid-cols-2 gap-2">
+                <Button
+                  variant="outline"
+                  onClick={() => sendTap('lower')}
+                  disabled={busy}
+                  className="border-hairline bg-surface-1 text-ink-2 hover:bg-surface-2 hover:text-ink-1"
+                >
+                  {busy && command.direction === 'lower' ?
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ArrowDown className="h-4 w-4" />}
+                  Lower
+                </Button>
+                <Button
+                  variant="outline"
+                  onClick={() => sendTap('raise')}
+                  disabled={busy}
+                  className="border-hairline bg-surface-1 text-ink-2 hover:bg-surface-2 hover:text-ink-1"
+                >
+                  {busy && command.direction === 'raise' ?
+                    <Loader2 className="h-4 w-4 animate-spin" />
+                  : <ArrowUp className="h-4 w-4" />}
+                  Raise
+                </Button>
+              </div>
+              <p
+                role="status"
+                aria-live="polite"
+                className={`mt-2 min-h-[2.25rem] text-[11px] leading-snug ${commandTextClass(command.phase)}`}
               >
-                KAW2
-              </text>
-              <text
-                x="340"
-                y="35"
-                className="text-[12px] font-bold text-right"
-                fill="#1e293b"
-                textAnchor="end"
-              >
-                TR1
-              </text>
-
-              {/* HV Line with Insulators and Label */}
-              <line
-                x1="50"
-                y1="40"
-                x2="350"
-                y2="40"
-                stroke="black"
-                strokeWidth="3"
-              />
-              <text
-                x="35"
-                y="50"
-                className="text-[10px] font-semibold"
-                fill="#1e293b"
-              >
-                230kV
-              </text>
-              {[120, 200, 280].map((x) => (
-                <React.Fragment key={x}>
-                  <circle cx={x} cy="40" r="4" fill="#e2e8f0" />
-                  <circle cx={x} cy="40" r="2" fill="#94a3b8" />
-                </React.Fragment>
-              ))}
-
-              {/* HV Bushings with Insulators */}
-              {[120, 200, 280].map((x) => (
-                <React.Fragment key={x}>
-                  <line
-                    x1={x}
-                    y1="40"
-                    x2={x}
-                    y2="80"
-                    stroke="black"
-                    strokeWidth="3"
-                  />
-                  {[50, 60, 70].map((y) => (
-                    <React.Fragment key={y}>
-                      <line
-                        x1={x - 8}
-                        y1={y}
-                        x2={x + 8}
-                        y2={y}
-                        stroke="#64748b"
-                        strokeWidth="2"
-                      />
-                      <circle cx={x} cy={y} r="2" fill="#94a3b8" />
-                    </React.Fragment>
-                  ))}
-                </React.Fragment>
-              ))}
-
-              {/* Transformer Body with Gradient */}
-              <path
-                d="M80 80 L320 80 L300 240 L100 240 Z"
-                fill="url(#transformerGradient)"
-                stroke="black"
-                strokeWidth="2"
-              />
-
-              {/* Gradient Definition */}
-              <defs>
-                <linearGradient
-                  id="transformerGradient"
-                  x1="0%"
-                  y1="0%"
-                  x2="100%"
-                  y2="0%"
-                >
-                  <stop
-                    offset="0%"
-                    style={{ stopColor: '#cbd5e1', stopOpacity: 1 }}
-                  />
-                  <stop
-                    offset="50%"
-                    style={{ stopColor: '#e2e8f0', stopOpacity: 1 }}
-                  />
-                  <stop
-                    offset="100%"
-                    style={{ stopColor: '#cbd5e1', stopOpacity: 1 }}
-                  />
-                </linearGradient>
-              </defs>
-
-              {/* Cooling Fins with Detail */}
-              {[90, 105, 120, 280, 295, 310].map((x) => (
-                <React.Fragment key={x}>
-                  <path
-                    d={`M${x} 100 L${x} 220`}
-                    stroke="black"
-                    strokeWidth="2"
-                  />
-                  {Array.from({ length: 12 }).map((_, i) => (
-                    <line
-                      key={i}
-                      x1={x - 3}
-                      y1={100 + i * 10}
-                      x2={x + 3}
-                      y2={100 + i * 10}
-                      stroke="#94a3b8"
-                      strokeWidth="1"
-                    />
-                  ))}
-                </React.Fragment>
-              ))}
-
-              {/* Tap Changer with Details */}
-              <rect
-                x="320"
-                y="120"
-                width="40"
-                height="80"
-                fill="#e2e8f0"
-                stroke="black"
-                strokeWidth="2"
-              />
-              <rect
-                x="325"
-                y="130"
-                width="30"
-                height="60"
-                fill="#cbd5e1"
-                stroke="#64748b"
-                strokeWidth="1"
-              />
-              <text
-                x="327"
-                y="150"
-                className="text-[10px] font-semibold"
-                fill="black"
-              >
-                TAP
-              </text>
-              <text
-                x="327"
-                y="160"
-                className="text-[10px] font-semibold"
-                fill="black"
-              >
-                CHANGER
-              </text>
-              {/* Control wheel */}
-              <circle cx="340" cy="180" r="8" fill="#94a3b8" stroke="black" />
-              <path
-                d="M340 175 L340 185 M335 180 L345 180"
-                stroke="white"
-                strokeWidth="2"
-              />
-
-              {/* LV Bushings with Insulators */}
-              {[120, 200, 280].map((x) => (
-                <React.Fragment key={x}>
-                  <line
-                    x1={x}
-                    y1="240"
-                    x2={x}
-                    y2="280"
-                    stroke="black"
-                    strokeWidth="3"
-                  />
-                  {[250, 260, 270].map((y) => (
-                    <React.Fragment key={y}>
-                      <line
-                        x1={x - 8}
-                        y1={y}
-                        x2={x + 8}
-                        y2={y}
-                        stroke="#64748b"
-                        strokeWidth="2"
-                      />
-                      <circle cx={x} cy={y} r="2" fill="#94a3b8" />
-                    </React.Fragment>
-                  ))}
-                </React.Fragment>
-              ))}
-
-              {/* LV Line with Insulators and Label */}
-              <line
-                x1="50"
-                y1="280"
-                x2="350"
-                y2="280"
-                stroke="black"
-                strokeWidth="3"
-              />
-              <text
-                x="35"
-                y="290"
-                className="text-[10px] font-semibold"
-                fill="#1e293b"
-              >
-                69kV
-              </text>
-              {[120, 200, 280].map((x) => (
-                <React.Fragment key={x}>
-                  <circle cx={x} cy="280" r="4" fill="#e2e8f0" />
-                  <circle cx={x} cy="280" r="2" fill="#94a3b8" />
-                </React.Fragment>
-              ))}
-
-              {/* HV Measurements Box */}
-              <g transform="translate(0, 80)">
-                <rect
-                  x="0"
-                  y="0"
-                  width="100"
-                  height="70"
-                  rx="5"
-                  fill="white"
-                  stroke="#64748b"
-                  strokeWidth="1.5"
-                />
-                <path d="M0 20 L100 20" stroke="#64748b" strokeWidth="1" />
-                <text
-                  x="5"
-                  y="15"
-                  className="text-[10px] font-semibold"
-                  fill="#1e293b"
-                >
-                  230kV SIDE
-                </text>
-                <text
-                  x="10"
-                  y="35"
-                  className="text-sm font-medium"
-                  fill="black"
-                >
-                  MW: {measurements.hvMw.toFixed(2)}
-                </text>
-                <text
-                  x="10"
-                  y="55"
-                  className="text-sm font-medium"
-                  fill="black"
-                >
-                  Mvar: {measurements.hvMvar.toFixed(2)}
-                </text>
-              </g>
-
-              {/* LV Measurements Box */}
-              <g transform="translate(0, 170)">
-                <rect
-                  x="0"
-                  y="0"
-                  width="100"
-                  height="70"
-                  rx="5"
-                  fill="white"
-                  stroke="#64748b"
-                  strokeWidth="1.5"
-                />
-                <path d="M0 20 L100 20" stroke="#64748b" strokeWidth="1" />
-                <text
-                  x="5"
-                  y="15"
-                  className="text-[10px] font-semibold"
-                  fill="#1e293b"
-                >
-                  69kV SIDE
-                </text>
-                <text
-                  x="10"
-                  y="35"
-                  className="text-sm font-medium"
-                  fill="black"
-                >
-                  MW: {measurements.lvMw.toFixed(2)}
-                </text>
-                <text
-                  x="10"
-                  y="55"
-                  className="text-sm font-medium"
-                  fill="black"
-                >
-                  Mvar: {measurements.lvMvar.toFixed(2)}
-                </text>
-              </g>
-
-              {/* Oil Level Indicator */}
-              <rect
-                x="300"
-                y="100"
-                width="15"
-                height="40"
-                fill="white"
-                stroke="#64748b"
-                strokeWidth="1"
-              />
-              <rect
-                x="303"
-                y="105"
-                width="9"
-                height="30"
-                fill="#fde68a"
-                stroke="#64748b"
-                strokeWidth="1"
-              />
-              <text x="290" y="95" className="text-[8px]" fill="black">
-                OIL
-              </text>
-
-              {/* Radiator Details */}
-              <path
-                d="M135 130 L265 130 L265 190 L135 190 Z"
-                fill="none"
-                stroke="#64748b"
-                strokeWidth="1"
-                strokeDasharray="4 2"
-              />
-              <text x="180" y="165" className="text-[10px]" fill="#64748b">
-                RADIATOR
-              </text>
-
-              {/* Tap Position Box */}
-              <g transform="translate(330, 80)">
-                <rect
-                  x="0"
-                  y="0"
-                  width="60"
-                  height="30"
-                  rx="5"
-                  fill="white"
-                  stroke="#64748b"
-                  strokeWidth="1.5"
-                />
-                <path d="M0 15 L60 15" stroke="#64748b" strokeWidth="1" />
-                <text
-                  x="5"
-                  y="12"
-                  className="text-[10px] font-semibold"
-                  fill="#1e293b"
-                >
-                  TAP POS
-                </text>
-                <text x="5" y="25" className="text-sm font-medium" fill="black">
-                  {Math.round(tapPosition)}
-                </text>
-              </g>
-            </svg>
-          </div>
-
-          {/* Tap Control Buttons */}
-          <div className="flex space-x-4">
-            <Button
-              onClick={() => handleTapChange('down')}
-              variant="outline"
-              disabled={isLoading.down || isLoading.up}
-              className={`min-w-[100px] ${isLoading.down ? 'animate-pulse bg-gray-100' : ''}`}
-            >
-              {isLoading.down ? 'Lowering...' : 'Lower Tap'}
-            </Button>
-            <Button
-              onClick={() => handleTapChange('up')}
-              variant="outline"
-              disabled={isLoading.up || isLoading.down}
-              className={`min-w-[100px] ${isLoading.up ? 'animate-pulse bg-gray-100' : ''}`}
-            >
-              {isLoading.up ? 'Raising...' : 'Raise Tap'}
-            </Button>
+                {command.phase === 'idle' ?
+                  'Writes to KAW2TR1--YTAP--------K and follows the protocol acknowledgement.'
+                : command.message}
+              </p>
+            </div>
           </div>
         </div>
-      </Card>
-      <div className="mt-4">
-        <EventsGrid />
-      </div>
-    </>
+      </section>
+
+      <EventsGrid />
+    </div>
   )
+}
+
+function temperatureTone(
+  value: number | null,
+  warn: number,
+  alarm: number
+): Tone {
+  if (value === null) return 'unknown'
+  if (value >= alarm) return 'critical'
+  if (value >= warn) return 'warning'
+  return 'good'
+}
+
+function commandTextClass(phase: CommandPhase): string {
+  switch (phase) {
+    case 'done':
+      return 'text-status-good'
+    case 'failed':
+      return 'text-status-critical'
+    case 'sending':
+    case 'waiting':
+      return 'text-status-warning'
+    default:
+      return 'text-ink-3'
+  }
+}
+
+function LoadingMeter({ percent }: { percent: number | null }) {
+  const filled = percent === null ? 0 : Math.min(100, Math.max(0, percent))
+  const tone =
+    percent === null ? 'bg-ink-3'
+    : percent >= 100 ? 'bg-status-critical'
+    : percent >= 90 ? 'bg-status-warning'
+    : 'bg-series-1'
+  return (
+    <div
+      className="h-1.5 w-full overflow-hidden rounded-full bg-surface-2"
+      role="img"
+      aria-label={`Loading ${percent === null ? 'unknown' : `${Math.round(percent)} percent`} of rating`}
+    >
+      <div
+        className={`h-full rounded-full transition-[width] duration-500 ${tone}`}
+        style={{ width: `${filled}%` }}
+      />
+    </div>
+  )
+}
+
+const LINK_TEXT: Record<Link, string> = {
+  connecting: 'Connecting',
+  live: 'Live',
+  stale: 'Stale',
+  down: 'No data',
+}
+
+function LinkBadge({
+  link,
+  lastUpdate,
+}: {
+  link: Link
+  lastUpdate: Date | null
+}) {
+  const tone =
+    link === 'live' ? qualityInfo(0)
+    : link === 'down' ? qualityInfo(0x80000000)
+    : qualityInfo(0x40000000)
+  return (
+    <span className="flex items-center gap-2 text-xs text-ink-3">
+      <span
+        className="inline-block h-2 w-2 shrink-0 rounded-full"
+        style={{ backgroundColor: tone.color }}
+        aria-hidden
+      />
+      {LINK_TEXT[link]}
+      {lastUpdate && (
+        <span className="font-mono tabular-nums">
+          {formatClock(lastUpdate)}
+        </span>
+      )}
+    </span>
+  )
+}
+
+function delay(ms: number): Promise<void> {
+  return new Promise((resolve) => setTimeout(resolve, ms))
 }

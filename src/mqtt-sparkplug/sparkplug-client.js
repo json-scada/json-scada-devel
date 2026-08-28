@@ -86,11 +86,11 @@ function SparkplugClient(config) {
     maxVersion = getProperty(config, 'maxVersion', 'TLSv1.3'),
     ciphers = getProperty(config, 'ciphers', ''),
     rejectUnauthorized = getProperty(config, 'rejectUnauthorized', true),
-    bdSeq = getProperty(config, 'bdSeq', -1),
+    bdSeq = getProperty(config, 'bdSeq', 0),
     seq = getProperty(config, 'seq', 0),
     clean = getProperty(config, 'clean', true),
     keepalive = getProperty(config, 'keepalive', 5),
-    connectionTimeout = getProperty(config, 'connectionTimeout', 10 * 1000),
+    connectTimeout = getProperty(config, 'connectTimeout', 30 * 1000),
     devices = [],
     client = null,
     connecting = false,
@@ -110,6 +110,38 @@ function SparkplugClient(config) {
     },
     decodePayload = function (payload) {
       return sparkplugbpayload.decodePayload(payload)
+    },
+    decodeJsonPayload = function (payload) {
+      var parsed, text
+
+      if (!Buffer.isBuffer(payload)) return null
+
+      text = payload.toString('utf8').trim()
+      if (text === '' || (text[0] !== '{' && text[0] !== '[')) return null
+
+      try {
+        parsed = JSON.parse(text)
+      } catch (e) {
+        return null
+      }
+
+      if (Array.isArray(parsed)) {
+        return {
+          timestamp: new Date().getTime(),
+          metrics: parsed,
+        }
+      }
+
+      if (
+        parsed !== null &&
+        typeof parsed === 'object' &&
+        (Array.isArray(parsed.metrics) ||
+          'timestamp' in parsed ||
+          'seq' in parsed)
+      )
+        return parsed
+
+      return null
     },
     addSeqNumber = function (payload) {
       payload.seq = incrementSeqNum()
@@ -229,6 +261,44 @@ function SparkplugClient(config) {
         // The payload is not compressed
         return payload
       }
+    },
+    isSparkplugPayloadMsgType = function (msgType) {
+      return (
+        msgType === 'NBIRTH' ||
+        msgType === 'NDEATH' ||
+        msgType === 'NDATA' ||
+        msgType === 'NCMD' ||
+        msgType === 'DBIRTH' ||
+        msgType === 'DDEATH' ||
+        msgType === 'DDATA' ||
+        msgType === 'DCMD'
+      )
+    },
+    parseSparkplugTopic = function (splitTopic) {
+      var deviceId, msgType, msgTypeIndex
+
+      if (splitTopic[0] !== version || splitTopic.length < 4) return null
+
+      for (msgTypeIndex = 2; msgTypeIndex < splitTopic.length; msgTypeIndex++) {
+        msgType = splitTopic[msgTypeIndex]
+        if (isSparkplugPayloadMsgType(msgType)) break
+      }
+
+      if (!isSparkplugPayloadMsgType(msgType)) return null
+      if (msgTypeIndex + 1 >= splitTopic.length) return null
+
+      if (msgType[0] === 'D') {
+        if (msgTypeIndex + 2 >= splitTopic.length) return null
+        deviceId = splitTopic.slice(msgTypeIndex + 2).join('/')
+      }
+
+      return {
+        namespace: splitTopic[0],
+        groupId: splitTopic.slice(1, msgTypeIndex).join('/'),
+        msgType: msgType,
+        edgeNodeId: splitTopic[msgTypeIndex + 1],
+        deviceId: deviceId,
+      }
     }
 
   events.EventEmitter.call(this)
@@ -273,9 +343,9 @@ function SparkplugClient(config) {
 
   // Publishes Node Command messages for the edge node
   this.publishNodeCmd = function (group, edge, payload, options, callback) {
-    if (typeof opts === 'function') {
-      callback = opts
-      opts = null
+    if (typeof options === 'function') {
+      callback = options
+      options = null
     }
 
     var topic = version + '/' + group + '/NCMD/' + edge
@@ -318,9 +388,9 @@ function SparkplugClient(config) {
     options,
     callback
   ) {
-    if (typeof opts === 'function') {
-      callback = opts
-      opts = null
+    if (typeof options === 'function') {
+      callback = options
+      options = null
     }
 
     var topic = version + '/' + group + '/DCMD/' + edge + '/' + device
@@ -410,7 +480,7 @@ function SparkplugClient(config) {
         clean: clean,
         keepalive: keepalive,
         reschedulePings: false,
-        connectionTimeout: connectionTimeout,
+        connectTimeout: connectTimeout,
         // "protocolVersion": 5,
         username: username,
         password: password,
@@ -442,7 +512,8 @@ function SparkplugClient(config) {
      * 'connect' handler
      */
     client.on('connect', function () {
-      bdSeq++ // increment birth/death sequence at each connect (initialized with)
+      // bdSeq is NOT incremented here: it must match the bdSeq of the NDEATH
+      // will message registered at connection time (Sparkplug B spec)
       logger.info('Client has connected')
       sparkplugClient.connecting = false
       sparkplugClient.connected = true
@@ -502,7 +573,7 @@ function SparkplugClient(config) {
         if (value.length > 10) return 'Array:' + value.length
       }
       if (typeof value === 'string') {
-        if (value.length > 200) return value.substr(200) + '...'
+        if (value.length > 200) return value.substr(0, 200) + '...'
       }
       return value
     }
@@ -526,58 +597,66 @@ function SparkplugClient(config) {
      * 'message' handler
      */
     client.on('message', function (topic, message, packet) {
-      // Split the topic up into tokens
-      splitTopic = topic.split('/')
+      var payload, timestamp, topicInfo
 
-      // discard non-sparkplug B messages
-      if (splitTopic[0] !== 'spBv1.0') {
+      // Split the topic up into tokens
+      var splitTopic = topic.split('/')
+
+      // discard non Sparkplug B payload messages (STATE is not protobuf)
+      topicInfo = parseSparkplugTopic(splitTopic)
+      if (topicInfo === null) {
+        // invalid topics under the Sparkplug B namespace are discarded,
+        // except STATE (host online/offline, plain payload): do not
+        // process them as regular MQTT messages
+        if (splitTopic[0] === version && splitTopic[1] !== 'STATE') {
+          logger.debug('Discarding invalid Sparkplug B topic: ' + topic)
+          return
+        }
         sparkplugClient.emit('nonSparkplugMessage', topic, message, packet)
         return
       }
-
-      var payload, timestamp, splitTopic
 
       try {
         payload = maybeDecompressPayload(decodePayload(message))
         timestamp = payload.timestamp
       } catch (e) {
-        logger.warn('Payload decode error for topic: ' + topic)
-        logger.warn(e.message)
-        return
+        payload = decodeJsonPayload(message)
+        if (payload === null) {
+          logger.debug(
+            'Discarding malformed Sparkplug payload for topic: ' +
+              topic +
+              ' - ' +
+              e.message
+          )
+          return
+        }
+        timestamp = payload.timestamp
       }
 
       if (logger.level === 'debug') messageAlert('arrived', topic, payload)
 
       if (
-        splitTopic[0] === version &&
-        splitTopic[1] === groupId &&
-        splitTopic[2] === 'NCMD' &&
-        splitTopic[3] === edgeNode
+        topicInfo.groupId === groupId &&
+        topicInfo.msgType === 'NCMD' &&
+        topicInfo.edgeNodeId === edgeNode
       ) {
         // Emit the "command" event
         sparkplugClient.emit('ncmd', payload)
       } else if (
-        splitTopic[0] === version &&
-        splitTopic[1] === groupId &&
-        splitTopic[2] === 'DCMD' &&
-        splitTopic[3] === edgeNode
+        topicInfo.groupId === groupId &&
+        topicInfo.msgType === 'DCMD' &&
+        topicInfo.edgeNodeId === edgeNode
       ) {
         // Emit the "command" event for the given deviceId
-        sparkplugClient.emit('dcmd', splitTopic[4], payload)
+        sparkplugClient.emit('dcmd', topicInfo.deviceId, payload)
       } else {
         // exclude messages from itself
         if (
-          splitTopic[0] === version &&
-          (splitTopic[1] !== groupId || splitTopic[3] !== edgeNode)
+          topicInfo.namespace === version &&
+          (topicInfo.groupId !== groupId || topicInfo.edgeNodeId !== edgeNode)
         )
           // emit decoded message
-          sparkplugClient.emit('message', topic, payload, {
-            namespace: splitTopic[0],
-            groupId: splitTopic[1],
-            msgType: splitTopic[2],
-            edgeNodeId: splitTopic[3],
-            deviceId: splitTopic[4],
-          })
+          sparkplugClient.emit('message', topic, payload, topicInfo)
       }
     })
 

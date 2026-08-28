@@ -16,6 +16,7 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
+using libplctag;
 using System;
 using MongoDB.Bson;
 using MongoDB.Driver;
@@ -95,78 +96,18 @@ namespace PLCTagDriver
                                                 )
                                                 {
 
-                                                var tagFound = false;
-                                                foreach (var tag in srv.listBoolTags)
+                                                ScanTag scanTag = null;
+                                                foreach (var st in srv.listTags)
                                                     {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
+                                                        // commands to array element points are not supported
+                                                        if (!st.IsArray && change.FullDocument.protocolSourceObjectAddress == st.Tag.Name)
                                                         {
-                                                            tagFound = true;
-                                                            tag.Value = change.FullDocument.value != 0 ? true : false;
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listSintTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToSByte(change.FullDocument.value);
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listIntTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToInt16(change.FullDocument.value);
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listDintTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToInt32(change.FullDocument.value);
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listLintTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToInt64(change.FullDocument.value);
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listRealTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToSingle(change.FullDocument.value);
-                                                            await tag.WriteAsync();
-                                                        }
-                                                    }
-                                                if (!tagFound)
-                                                    foreach (var tag in srv.listLrealTags)
-                                                    {
-                                                        if (change.FullDocument.protocolSourceObjectAddress == tag.Name)
-                                                        {
-                                                            tagFound = true;
-                                                            tag.Value = System.Convert.ToDouble(change.FullDocument.value);
-                                                            await tag.WriteAsync();
+                                                            scanTag = st;
+                                                            break;
                                                         }
                                                     }
 
-                                                if (tagFound)
+                                                if (scanTag != null)
                                                     {
                                                         if (
                                                             DateTime
@@ -177,34 +118,102 @@ namespace PLCTagDriver
                                                                     .timeTag
                                                                     .ToLocalTime(
                                                                     ))
-                                                                .Seconds <
+                                                                .TotalSeconds <
                                                             10
                                                         )
                                                         {
                                                             // execute
-                                                            Log("MongoDB CMD CS - " +
-                                                            srv.name +
-                                                            " - " +
-                                                            " OA " +
-                                                            change
-                                                                .FullDocument
-                                                                .protocolSourceObjectAddress +
-                                                            " Delivered");
+                                                            var writeOk = true;
+                                                            try
+                                                            {
+                                                                switch (scanTag.Type)
+                                                                {
+                                                                    case PlcDataType.Bool:
+                                                                        scanTag.Tag.SetUInt8(0, change.FullDocument.value != 0 ? (byte)255 : (byte)0);
+                                                                        break;
+                                                                    case PlcDataType.Sint:
+                                                                        scanTag.Tag.SetInt8(0, System.Convert.ToSByte(change.FullDocument.value));
+                                                                        break;
+                                                                    case PlcDataType.Int:
+                                                                        scanTag.Tag.SetInt16(0, System.Convert.ToInt16(change.FullDocument.value));
+                                                                        break;
+                                                                    case PlcDataType.Dint:
+                                                                        scanTag.Tag.SetInt32(0, System.Convert.ToInt32(change.FullDocument.value));
+                                                                        break;
+                                                                    case PlcDataType.Lint:
+                                                                        scanTag.Tag.SetInt64(0, System.Convert.ToInt64(change.FullDocument.value));
+                                                                        break;
+                                                                    case PlcDataType.Real:
+                                                                        scanTag.Tag.SetFloat32(0, System.Convert.ToSingle(change.FullDocument.value));
+                                                                        break;
+                                                                    case PlcDataType.Lreal:
+                                                                        scanTag.Tag.SetFloat64(0, System.Convert.ToDouble(change.FullDocument.value));
+                                                                        break;
+                                                                }
+                                                                await scanTag.Tag.WriteAsync();
+                                                            }
+                                                            catch (LibPlcTagException e)
+                                                            {
+                                                                writeOk = false;
+                                                                Log("MongoDB CMD CS - " +
+                                                                srv.name +
+                                                                " - Error writing tag " +
+                                                                scanTag.Tag.Name +
+                                                                " - Status: " + e.Status);
+                                                            }
+                                                            catch (Exception e)
+                                                            {
+                                                                writeOk = false;
+                                                                Log("MongoDB CMD CS - " +
+                                                                srv.name +
+                                                                " - Error writing tag " +
+                                                                scanTag.Tag.Name);
+                                                                Log(e);
+                                                            }
 
-                                                            // update as delivered
-                                                            var filter =
-                                                                new BsonDocument(new BsonDocument("_id",
-                                                                        change
-                                                                            .FullDocument
-                                                                            .id));
-                                                            var update =
-                                                                new BsonDocument("$set",
-                                                                    new BsonDocument("delivered",
-                                                                        true));
-                                                            var result =
-                                                                await collection
-                                                                    .UpdateOneAsync(filter,
-                                                                    update);
+                                                            if (writeOk)
+                                                            {
+                                                                Log("MongoDB CMD CS - " +
+                                                                srv.name +
+                                                                " - " +
+                                                                " OA " +
+                                                                change
+                                                                    .FullDocument
+                                                                    .protocolSourceObjectAddress +
+                                                                " Delivered");
+
+                                                                // update as delivered
+                                                                var filter =
+                                                                    new BsonDocument(new BsonDocument("_id",
+                                                                            change
+                                                                                .FullDocument
+                                                                                .id));
+                                                                var update =
+                                                                    new BsonDocument("$set",
+                                                                        new BsonDocument("delivered",
+                                                                            true));
+                                                                var result =
+                                                                    await collection
+                                                                        .UpdateOneAsync(filter,
+                                                                        update);
+                                                            }
+                                                            else
+                                                            {
+                                                                // update as canceled (write error)
+                                                                var filter =
+                                                                    new BsonDocument(new BsonDocument("_id",
+                                                                            change
+                                                                                .FullDocument
+                                                                                .id));
+                                                                var update =
+                                                                    new BsonDocument("$set",
+                                                                        new BsonDocument("cancelReason",
+                                                                            "write error"));
+                                                                var result =
+                                                                    await collection
+                                                                        .UpdateOneAsync(filter,
+                                                                        update);
+                                                            }
                                                         }
                                                         else
                                                         {
