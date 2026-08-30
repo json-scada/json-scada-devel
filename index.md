@@ -131,6 +131,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [N8N Integration Driver (bidirectional)](src/n8n-client/README.md)
 - [MQTT Sparkplug-B Client Driver](src/mqtt-sparkplug/README.md)
 - [OPC-UA Client Driver](src/OPC-UA-Client/README.md)
+- [OPC-UA Client Driver in Go (alternative for the OPC-UA driver)](src/OPC-UA-Client-Go/README.md)
 - [OPC-UA Server Driver](src/OPC-UA-Server/README.md)
 - [OPC-DA Client Driver](src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](src/OPC-DA-Server/README.md)

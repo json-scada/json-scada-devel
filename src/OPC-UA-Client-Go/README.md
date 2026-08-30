@@ -114,25 +114,54 @@ Behaviour is matched to `src/OPC-UA-Client` on purpose, including its quirks —
 | **D17** | Transport limits are left at gopcua's defaults, which advertise "no client limit" in the UACP handshake. The C# driver sets `TransportQuotas.MaxMessageSize` to 4 MB, and this driver used to copy that number. | The number is not portable. Advertising a 4 MB cap makes a server whose response exceeds it answer `BadTCPMessageTooLarge` and drop the connection. On Sterfive's demo server this happens while reading the values of a few hundred nodes with large arrays: the C# driver loses one whole batch of 500 tags to it (logged only at level 2, so invisible by default), and this driver used to lose the entire session. |
 | **D18** | Discovery that does not finish is not published. When the session is lost partway through the autotag read pass, the driver reloads the tags from `realtimeData`, rebuilds the connection and browses again. The C# driver skips the failed batch of 500 nodes and carries on, leaving those points without tags until it is restarted. | A partial namespace is worse than a slower start: the missing points never appear, and nothing says so at the default log level. |
 
-## Verified against a real server
+## Verified against real servers
 
-Both drivers were run concurrently against the public demo server
-`opc.tcp://opcuademo.sterfive.com:26543`, each into its own database, with identical instance and
-connection documents and `autoCreateTags: true`. Both browsed the same 5636 references and read
-the same 5035 nodes. Comparing the resulting `realtimeData` documents:
+Both drivers were run **concurrently**, each into its own database, with identical instance and
+connection documents and `autoCreateTags: true`, then the resulting `realtimeData` collections
+were compared.
+
+### Prosys OPC UA Simulation Server
+
+`opc.tcp://<host>:53530/OPCUA/SimulationServer`. A static address space, so this is the cleanest
+comparison. Ignoring the per-session diagnostics subtrees under
+`Server/ServerDiagnostics/SessionsDiagnosticsSummary/<session-guid>/`, which exist only while a
+session does and therefore differ by construction:
 
 | | |
 |---|---|
-| Supervised tags, C# | 4157 |
-| Supervised tags, Go | 4712 |
+| Stable supervised tags | C# **443**, Go **443** |
+| Tags only one driver created | **0 on either side** |
+| Command tags | C# **206**, Go **206** |
+| `asduAtSource` differences | **0** of 443 |
+| `invalidAtSource` (quality) differences | **0** of 443 |
+| Other field differences | 11, all of them D16 |
+
+### Sterfive public demo server
+
+`opc.tcp://opcuademo.sterfive.com:26543`. A large, dynamic address space. Both browsed the same
+5636 references and read the same 5035 nodes:
+
+| | |
+|---|---|
+| Supervised tags | C# **4157**, Go **4712** |
 | Tags only the C# driver created | **0** |
 | Tags in both | 4157 |
-| Field differences over the common tags | 83, all of them the browse-path mangling of D16 |
+| Field differences over the common tags | 83, all of them D16 |
 
-Every tag the C# driver produced, this driver produced too, with `type`, `protocolSourceASDU`,
-`group1`, `origin`, `kconv1`, `alarmState`, `ungroupedDescription` and the sampling parameters
-identical. The 555 extra tags are the ones the C# driver loses to D17 — a dropped batch of 500 —
-plus nodes it excludes on attribute-read errors.
+The 555 extra tags are ones the C# driver loses to D17 — a silently dropped batch of 500 — plus
+nodes it excludes on attribute-read errors.
+
+### Observed on both servers
+
+* `causeOfTransmissionAtSource` is more often `3` here and more often `20` in the C# driver: this
+  driver receives the subscription's initial-value notification for every monitored item, while
+  the C# driver received it for 157 of 558 on the Prosys server, leaving the rest showing the
+  value from the initial read. The stored values are correct either way; this driver's `timeTag`
+  is simply fresher.
+* A `datetime` renders its `valueStringAtSource` as `2026-08-30T07:25:27.073Z` here and
+  `2026-08-30T07:26:06.0950000Z` in the C# driver, which always emits seven fractional digits.
+  Both are valid ISO-8601 for the same instant, and `valueAtSource` — the Unix milliseconds the
+  command path reads back — is identical in form. Part of D6.
 
 ## Known limitations
 

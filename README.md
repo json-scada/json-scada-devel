@@ -129,6 +129,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [N8N Integration Driver (bidirectional)](https://github.com/riclolsen/json-scada/blob/master/src/n8n-client/README.md)
 - [MQTT Sparkplug-B Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/mqtt-sparkplug/README.md)
 - [OPC-UA Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Client/README.md)
+- [OPC-UA Client Driver in Go (alternative for the OPC-UA driver)](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Client-Go/README.md)
 - [OPC-UA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Server/README.md)
 - [OPC-DA Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Server/README.md)
