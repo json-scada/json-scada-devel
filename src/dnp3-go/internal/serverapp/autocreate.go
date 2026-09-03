@@ -26,8 +26,9 @@ import (
 	"strconv"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -45,6 +46,15 @@ type autoCreatePass struct {
 	asdu            float64
 	commandDuration float64
 	whatOverflows   string
+
+	// statusGroup, when set, is the output status group that mirrors this
+	// command group: 10 for a CROB, 40 for an analog output block. The status
+	// destination goes on the command's supervised twin — the tag the schema
+	// calls the one "where the command feedback manifests" — at the same
+	// object address, because that is what the protocol means. A CROB at index
+	// N operates binary output N, and group 10 index N is that output's state.
+	statusGroup int
+	statusASDU  float64
 }
 
 // autoCreateAll runs the four passes of the C++ server, in its order: commands
@@ -53,30 +63,61 @@ func (e *Engine) autoCreateAll(ctx context.Context, db *mongo.Database, conn *Co
 	if !conn.AutoCreateTags {
 		return nil
 	}
-	jscfg.Log(jscfg.LogLevelBasic, "Auto Create Tags is enabled")
+	jslog.Log(jslog.LevelBasic, "Auto Create Tags is enabled")
 
-	passes := []autoCreatePass{}
-	if conn.CommandsEnabled {
-		// Digital commands are distributed as group 12 variation 1, analog
-		// commands as group 41 variation 3.
-		passes = append(passes,
-			autoCreatePass{"digital", "command", dnp3util.GroupCROBCommand, 1.0, 11.0, "crob commands"},
-			autoCreatePass{"analog", "command", dnp3util.GroupAnalogOutputBlock, 3.0, 0.0, "analog outputs"},
-		)
-	}
-	passes = append(passes,
-		// Digital points as group 1 variation 2, analog points as group 30
-		// variation 6 (double precision).
-		autoCreatePass{"digital", "supervised", dnp3util.GroupBinaryInput, 2.0, 0.0, "digitals"},
-		autoCreatePass{"analog", "supervised", dnp3util.GroupAnalogInput, 6.0, 0.0, "analogs"},
-	)
-
-	for _, p := range passes {
+	for _, p := range autoCreatePasses(conn) {
 		if err := e.autoCreatePass(ctx, db, conn, p); err != nil {
 			return err
 		}
 	}
 	return nil
+}
+
+// autoCreatePasses is the order the C++ server uses: commands first when they
+// are enabled, then supervised points.
+func autoCreatePasses(conn *Connection) []autoCreatePass {
+	passes := []autoCreatePass{}
+	if conn.CommandsEnabled {
+		// Digital commands are distributed as group 12 variation 1, analog
+		// commands as group 41 variation 3.
+		passes = append(passes,
+			autoCreatePass{
+				tagType: "digital", origin: "command",
+				group: dnp3util.GroupCROBCommand, asdu: 1.0, commandDuration: 11.0,
+				whatOverflows: "crob commands",
+				// Binary output status, g10v2, so a master can read back what
+				// it operated.
+				statusGroup: dnp3util.GroupBinaryOutputStatus, statusASDU: 2.0,
+			},
+			autoCreatePass{
+				tagType: "analog", origin: "command",
+				group: dnp3util.GroupAnalogOutputBlock, asdu: 3.0, commandDuration: 0.0,
+				whatOverflows: "analog outputs",
+				// Analog output status, g40v3, single precision to match the
+				// family default the outstation configures.
+				statusGroup: dnp3util.GroupAnalogOutputStatus, statusASDU: 3.0,
+			},
+		)
+	}
+	passes = append(passes,
+		// Digital points as group 1 variation 2, analog points as group 30
+		// variation 6 (double precision).
+		//
+		// These run after the command passes, and their candidate query skips
+		// a tag already distributed on this connection. A command's supervised
+		// twin has just been given its output status destination, so it is not
+		// also published as a binary or analog input: a controllable point is
+		// an output, and one representation of it is what a master wants.
+		autoCreatePass{
+			tagType: "digital", origin: "supervised",
+			group: dnp3util.GroupBinaryInput, asdu: 2.0, whatOverflows: "digitals",
+		},
+		autoCreatePass{
+			tagType: "analog", origin: "supervised",
+			group: dnp3util.GroupAnalogInput, asdu: 6.0, whatOverflows: "analogs",
+		},
+	)
+	return passes
 }
 
 // autoCreatePass assigns addresses for one group.
@@ -85,13 +126,13 @@ func (e *Engine) autoCreateAll(ctx context.Context, db *mongo.Database, conn *Co
 // this group*: every group has its own address space, so a tag distributed at
 // group 30 must not push the next group 12 address along.
 func (e *Engine) autoCreatePass(ctx context.Context, db *mongo.Database, conn *Connection, p autoCreatePass) error {
-	rtd := db.Collection(jscfg.RealtimeDataCollectionName)
+	rtd := db.Collection(jsmongo.RealtimeDataCollectionName)
 
 	// The conditions are combined with $elemMatch so they hold for one entry of
 	// the array, and the entry is checked again when walking it: as separate
 	// dotted paths, a destination of another group or another connection would
 	// contribute its address to this group's maximum.
-	assigned, err := mongoutil.FindAll(ctx, rtd, bson.M{
+	assigned, err := jsmongo.FindAll(ctx, rtd, bson.M{
 		"type":   p.tagType,
 		"origin": p.origin,
 		"protocolDestinations": bson.M{"$elemMatch": bson.M{
@@ -114,12 +155,12 @@ func (e *Engine) autoCreatePass(ctx context.Context, db *mongo.Database, conn *C
 			}
 		}
 	}
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Last Group %d Address: %d", conn.Name, p.group, lastAddr)
+	jslog.Log(jslog.LevelBasic, "%s - Last Group %d Address: %d", conn.Name, p.group, lastAddr)
 
 	// Tags of this kind with no destination on this connection yet. $ne on an
 	// array field matches a document when no element of it equals the value,
 	// which is also true of a document with no destinations at all.
-	candidates, err := mongoutil.FindAll(ctx, rtd, bson.M{
+	candidates, err := jsmongo.FindAll(ctx, rtd, bson.M{
 		"type":   p.tagType,
 		"origin": p.origin,
 		"protocolDestinations.protocolDestinationConnectionNumber": bson.M{
@@ -131,42 +172,143 @@ func (e *Engine) autoCreatePass(ctx context.Context, db *mongo.Database, conn *C
 	}
 
 	for _, doc := range candidates {
-		if !conn.MatchesTopic(mongoutil.GetString(doc, "group1", "")) {
+		if !conn.MatchesTopic(jsmongo.GetString(doc, "group1", "")) {
 			continue
 		}
 		lastAddr++
 		if lastAddr > MaxObjectAddress {
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Object address for %s exceeds 65535!",
+			jslog.Log(jslog.LevelBasic, "%s - Object address for %s exceeds 65535!",
 				conn.Name, p.whatOverflows)
 			break
 		}
 
-		id := mongoutil.GetDouble(doc, "_id", 0)
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Creating destination for tag: %s %s Dnp3Address: %s",
-			conn.Name, mongoutil.FormatID(id), mongoutil.GetString(doc, "tag", ""),
+		id := jsmongo.GetDouble(doc, "_id", 0)
+		jslog.Log(jslog.LevelBasic, "%s - Creating destination for tag: %s %s Dnp3Address: %s",
+			conn.Name, jsmongo.FormatID(id), jsmongo.GetString(doc, "tag", ""),
 			strconv.Itoa(lastAddr))
 
+		if err := pushDestination(ctx, rtd, id, destination{
+			connectionNumber: conn.ProtocolConnectionNumber,
+			commonAddress:    p.group,
+			objectAddress:    lastAddr,
+			asdu:             p.asdu,
+			commandDuration:  p.commandDuration,
+		}); err != nil {
+			return err
+		}
+
+		if p.statusGroup != 0 {
+			if err := e.createOutputStatus(ctx, rtd, conn, p, doc, lastAddr); err != nil {
+				return err
+			}
+		}
+	}
+	return nil
+}
+
+// destination is one protocolDestinations entry to append.
+type destination struct {
+	connectionNumber int
+	commonAddress    int
+	objectAddress    int
+	asdu             float64
+	commandDuration  float64
+}
+
+// pushDestination appends a destination to a tag, creating the array first
+// when the tag has none.
+func pushDestination(ctx context.Context, rtd *mongo.Collection, id float64, d destination) error {
+	var doc bson.M
+	if err := rtd.FindOne(ctx, bson.M{"_id": id}).Decode(&doc); err == nil {
 		if v, ok := doc["protocolDestinations"]; !ok || v == nil {
 			if _, err := rtd.UpdateOne(ctx, bson.M{"_id": id},
 				bson.M{"$set": bson.M{"protocolDestinations": bson.A{}}}); err != nil {
 				return err
 			}
 		}
-		if _, err := rtd.UpdateOne(ctx, bson.M{"_id": id},
-			bson.M{"$push": bson.M{"protocolDestinations": bson.M{
-				"protocolDestinationConnectionNumber": float64(conn.ProtocolConnectionNumber),
-				"protocolDestinationCommonAddress":    float64(p.group),
-				"protocolDestinationObjectAddress":    float64(lastAddr),
-				"protocolDestinationASDU":             p.asdu,
-				"protocolDestinationCommandDuration":  p.commandDuration,
-				"protocolDestinationCommandUseSBO":    false,
-				"protocolDestinationKConv1":           1.0,
-				"protocolDestinationKConv2":           0.0,
-				"protocolDestinationGroup":            0.0,
-				"protocolDestinationHoursShift":       0.0,
-			}}}); err != nil {
-			return err
+	}
+	_, err := rtd.UpdateOne(ctx, bson.M{"_id": id},
+		bson.M{"$push": bson.M{"protocolDestinations": bson.M{
+			"protocolDestinationConnectionNumber": float64(d.connectionNumber),
+			"protocolDestinationCommonAddress":    float64(d.commonAddress),
+			"protocolDestinationObjectAddress":    float64(d.objectAddress),
+			"protocolDestinationASDU":             d.asdu,
+			"protocolDestinationCommandDuration":  d.commandDuration,
+			"protocolDestinationCommandUseSBO":    false,
+			"protocolDestinationKConv1":           1.0,
+			"protocolDestinationKConv2":           0.0,
+			"protocolDestinationGroup":            0.0,
+			"protocolDestinationHoursShift":       0.0,
+		}}})
+	return err
+}
+
+// createOutputStatus gives a command's supervised twin the output status
+// destination that mirrors the command, so a master can read back the state of
+// what it operated.
+//
+// The address is the command's own: DNP3 ties them together, a CROB at index N
+// operating binary output N whose state is group 10 index N. That is why this
+// cannot pick a free address of its own, and why a clash is reported rather
+// than worked around.
+func (e *Engine) createOutputStatus(ctx context.Context, rtd *mongo.Collection,
+	conn *Connection, p autoCreatePass, cmdDoc bson.M, address int) error {
+
+	cmdTag := jsmongo.GetString(cmdDoc, "tag", "")
+	twinID := jsmongo.GetDouble(cmdDoc, "supervisedOfCommand", 0)
+	if twinID == 0 {
+		// A command with no feedback point. The schema calls this a blind
+		// command and discourages it, but it is legal and there is simply
+		// nothing whose state could be reported.
+		jslog.Log(jslog.LevelDetailed,
+			"%s - No supervised twin for command %s; no group %d status created.",
+			conn.Name, cmdTag, p.statusGroup)
+		return nil
+	}
+
+	var twin bson.M
+	if err := rtd.FindOne(ctx, bson.M{"_id": twinID}).Decode(&twin); err != nil {
+		jslog.Log(jslog.LevelBasic,
+			"%s - Command %s names supervised tag %s, which does not exist; no group %d status created.",
+			conn.Name, cmdTag, jsmongo.FormatID(twinID), p.statusGroup)
+		return nil
+	}
+
+	// Already published there by an earlier run or by hand.
+	for _, d := range DestinationsOf(twin) {
+		if d.ConnectionNumber == conn.ProtocolConnectionNumber && d.CommonAddress == p.statusGroup {
+			return nil
 		}
 	}
-	return nil
+
+	// The address is fixed by the command, so a tag already sitting on it is a
+	// clash this pass cannot resolve. Report it and leave both alone: the
+	// command still works, and silently moving somebody's configured point
+	// would be worse than an unreported status.
+	var clash bson.M
+	err := rtd.FindOne(ctx, bson.M{
+		"protocolDestinations": bson.M{"$elemMatch": bson.M{
+			"protocolDestinationConnectionNumber": conn.ProtocolConnectionNumber,
+			"protocolDestinationCommonAddress":    p.statusGroup,
+			"protocolDestinationObjectAddress":    address,
+		}},
+	}).Decode(&clash)
+	if err == nil {
+		jslog.Log(jslog.LevelBasic,
+			"%s - Group %d address %d is already taken by tag %s; no status created for command %s.",
+			conn.Name, p.statusGroup, address, jsmongo.GetString(clash, "tag", ""), cmdTag)
+		return nil
+	}
+
+	jslog.Log(jslog.LevelBasic,
+		"%s - Creating group %d status for command %s on tag: %s %s Dnp3Address: %d",
+		conn.Name, p.statusGroup, cmdTag, jsmongo.FormatID(twinID),
+		jsmongo.GetString(twin, "tag", ""), address)
+
+	return pushDestination(ctx, rtd, twinID, destination{
+		connectionNumber: conn.ProtocolConnectionNumber,
+		commonAddress:    p.statusGroup,
+		objectAddress:    address,
+		asdu:             p.statusASDU,
+	})
 }

@@ -29,7 +29,7 @@ import (
 	"strings"
 	"time"
 
-	"dnp3-go/internal/jscfg"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	"github.com/dscsystems/go-dnp3/channel"
 )
@@ -142,11 +142,11 @@ func (s ChannelSpec) tlsConfig() (channel.TLSConfig, error) {
 		return channel.TLSConfig{}, fmt.Errorf("missing privateKeyFilePath parameter")
 	}
 	if s.AllowTLSv10 || s.AllowTLSv11 {
-		jscfg.Log(jscfg.LogLevelBasic,
+		jslog.Log(jslog.LevelBasic,
 			"%s - allowTLSv10/allowTLSv11 are not supported; TLS 1.2 is the lowest version offered", s.Name)
 	}
 	if s.CipherList != "" {
-		jscfg.Log(jscfg.LogLevelBasic,
+		jslog.Log(jslog.LevelBasic,
 			"%s - cipherList is not supported; the Go TLS defaults are used", s.Name)
 	}
 	cfg := channel.TLSConfig{

@@ -26,7 +26,7 @@ import (
 	"context"
 	"time"
 
-	"dnp3-go/internal/jscfg"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/master"
@@ -80,10 +80,10 @@ func registerClassScans(ctx context.Context, conn *Connection, session *master.S
 			return
 		}
 		if err := session.AddPeriodicScan(ctx, time.Duration(seconds)*time.Second, mask); err != nil {
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Cannot schedule the %s scan: %v", conn.Name, what, err)
+			jslog.Log(jslog.LevelBasic, "%s - Cannot schedule the %s scan: %v", conn.Name, what, err)
 			return
 		}
-		jscfg.Log(jscfg.LogLevelDetailed, "%s - %s scan every %d s", conn.Name, what, seconds)
+		jslog.Log(jslog.LevelDetailed, "%s - %s scan every %d s", conn.Name, what, seconds)
 	}
 
 	addClass(conn.GIInterval, dnp3.ClassAll, "integrity")
@@ -108,7 +108,7 @@ func rangeScanLoop(ctx context.Context, conn *Connection, session *master.Sessio
 			if ctx.Err() != nil {
 				return
 			}
-			jscfg.Log(jscfg.LogLevelDetailed, "%s - Range scan g%dv%d %d..%d failed: %v",
+			jslog.Log(jslog.LevelDetailed, "%s - Range scan g%dv%d %d..%d failed: %v",
 				conn.Name, rs.Group, rs.Variation, rs.StartAddress, rs.StopAddress, err)
 		}
 		select {
@@ -174,13 +174,13 @@ func (e *Engine) timeSyncLoop(ctx context.Context, conn *Connection, session *ma
 			if ctx.Err() != nil {
 				return
 			}
-			jscfg.Log(jscfg.LogLevelDetailed, "%s - Time sync failed: %v", conn.Name, err)
+			jslog.Log(jslog.LevelDetailed, "%s - Time sync failed: %v", conn.Name, err)
 			continue
 		}
 		mode := "non-LAN"
 		if lan {
 			mode = "LAN"
 		}
-		jscfg.Log(jscfg.LogLevelDetailed, "%s - Time synchronised (%s).", conn.Name, mode)
+		jslog.Log(jslog.LevelDetailed, "%s - Time synchronised (%s).", conn.Name, mode)
 	}
 }

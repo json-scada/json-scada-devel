@@ -25,31 +25,34 @@ package main
 import (
 	"os"
 
-	"dnp3-go/internal/jscfg"
 	"dnp3-go/internal/serverapp"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 )
 
 // The server's own fallback, as in Dnp3Server.
 const altConfigFilePath = "/json-scada/conf/json-scada.json"
 
 func main() {
-	jscfg.Log(jscfg.LogLevelNoLog, "%s", serverapp.DriverMessage)
-	jscfg.Log(jscfg.LogLevelNoLog, "Driver version: %s", serverapp.DriverVersion)
-	jscfg.Log(jscfg.LogLevelNoLog,
+	jslog.Log(jslog.LevelNoLog, "%s", serverapp.DriverMessage)
+	jslog.Log(jslog.LevelNoLog, "Driver version: %s", serverapp.DriverVersion)
+	jslog.Log(jslog.LevelNoLog,
 		"Usage: %s [ProtocolDriverInstanceNumber] [LogLevel] [ConfigurationFile]", os.Args[0])
 
-	args := jscfg.ParseArgs(os.Args)
-	jscfg.Log(jscfg.LogLevelNoLog, "ProtocolDriverInstanceNumber: %d", args.InstanceNumber)
-	jscfg.Log(jscfg.LogLevelNoLog, "LogLevel: %d", jscfg.GetLogLevel())
+	args := jsconfig.ParseArgs(os.Args)
+	jslog.Log(jslog.LevelNoLog, "ProtocolDriverInstanceNumber: %d", args.InstanceNumber)
+	jslog.Log(jslog.LevelNoLog, "LogLevel: %d", jslog.Level())
 
-	cfg, path, err := jscfg.LoadConfig(args.ConfigFilePath, altConfigFilePath)
+	path := jsconfig.ResolvePath(jsconfig.DefaultConfigFilePath, altConfigFilePath, args.ConfigFilePath)
+	cfg, err := jsconfig.Load(path)
 	if err != nil {
-		jscfg.Fatal("Could not open the configuration file: %s - %v", path, err)
+		jslog.Fatal("Could not open the configuration file: %s - %v", path, err)
 	}
-	jscfg.Log(jscfg.LogLevelNoLog, "ConfigurationFile: %s", path)
+	jslog.Log(jslog.LevelNoLog, "ConfigurationFile: %s", path)
 
 	if cfg.MongoConnectionString == "" || cfg.MongoDatabaseName == "" {
-		jscfg.Fatal("MongoDB connection string or database name is empty in %s", path)
+		jslog.Fatal("MongoDB connection string or database name is empty in %s", path)
 	}
 
 	serverapp.Run(args, cfg)

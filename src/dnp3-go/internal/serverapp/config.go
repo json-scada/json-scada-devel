@@ -26,8 +26,8 @@ import (
 	"strings"
 	"time"
 
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -40,31 +40,31 @@ func loadInstance(ctx context.Context, db *mongo.Database, instanceNumber int, n
 	defer cancel()
 
 	var doc bson.M
-	err := db.Collection(jscfg.ProtocolDriverInstancesCollectionName).FindOne(tctx, bson.M{
+	err := db.Collection(jsmongo.ProtocolDriverInstancesCollectionName).FindOne(tctx, bson.M{
 		"protocolDriver":               ProtocolDriverName,
 		"protocolDriverInstanceNumber": instanceNumber,
 	}).Decode(&doc)
 	if err != nil {
 		return fmt.Errorf("protocol driver instance not found in the database")
 	}
-	if !mongoutil.GetBool(doc, "enabled", false) {
+	if !jsmongo.GetBool(doc, "enabled", false) {
 		return fmt.Errorf("protocol driver instance is disabled in the database")
 	}
 	if applyLogLevel {
 		if _, ok := doc["logLevel"]; ok {
-			jscfg.SetLogLevel(mongoutil.GetInt(doc, "logLevel", jscfg.LogLevelBasic))
+			jslog.SetLevel(jsmongo.GetInt(doc, "logLevel", jslog.LevelBasic))
 		}
 	}
 
 	// An empty or absent nodeNames array means any node may run it, which is
 	// what the C++ server's cnt > 0 test amounts to.
-	names := mongoutil.GetStringArray(doc, "nodeNames")
+	names := jsmongo.GetStringArray(doc, "nodeNames")
 	if len(names) == 0 {
 		return nil
 	}
 	for _, n := range names {
 		if n == nodeName {
-			jscfg.Log(jscfg.LogLevelBasic, "Node Name: %s", n)
+			jslog.Log(jslog.LevelBasic, "Node Name: %s", n)
 			return nil
 		}
 	}
@@ -76,7 +76,7 @@ func loadConnections(ctx context.Context, db *mongo.Database, instanceNumber int
 	tctx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
 
-	docs, err := mongoutil.FindAll(tctx, db.Collection(jscfg.ProtocolConnectionsCollectionName), bson.M{
+	docs, err := jsmongo.FindAll(tctx, db.Collection(jsmongo.ProtocolConnectionsCollectionName), bson.M{
 		"protocolDriver":               ProtocolDriverName,
 		"protocolDriverInstanceNumber": instanceNumber,
 		"enabled":                      true,
@@ -91,7 +91,7 @@ func loadConnections(ctx context.Context, db *mongo.Database, instanceNumber int
 	conns := make([]*Connection, 0, len(docs))
 	for _, doc := range docs {
 		c := connectionFromDoc(doc)
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Connection Number: %d", c.Name, c.ProtocolConnectionNumber)
+		jslog.Log(jslog.LevelBasic, "%s - Connection Number: %d", c.Name, c.ProtocolConnectionNumber)
 		conns = append(conns, c)
 	}
 	return conns, nil
@@ -101,35 +101,36 @@ func loadConnections(ctx context.Context, db *mongo.Database, instanceNumber int
 // the defaults the C++ server applies.
 func connectionFromDoc(doc bson.M) *Connection {
 	return &Connection{
-		ProtocolConnectionNumber: mongoutil.GetInt(doc, "protocolConnectionNumber", 0),
-		Name:                     mongoutil.GetString(doc, "name", ""),
-		Enabled:                  mongoutil.GetBool(doc, "enabled", false),
-		CommandsEnabled:          mongoutil.GetBool(doc, "commandsEnabled", false),
-		AutoCreateTags:           mongoutil.GetBool(doc, "autoCreateTags", false),
-		Topics:                   mongoutil.GetStringArray(doc, "topics"),
-		ConnectionMode:           strings.ToUpper(mongoutil.GetString(doc, "connectionMode", "TCP PASSIVE")),
-		IPAddressLocalBind:       mongoutil.GetString(doc, "ipAddressLocalBind", ""),
-		IPAddresses:              mongoutil.GetStringArray(doc, "ipAddresses"),
-		PortName:                 mongoutil.GetString(doc, "portName", ""),
-		BaudRate:                 mongoutil.GetInt(doc, "baudRate", 9600),
-		Parity:                   strings.ToUpper(mongoutil.GetString(doc, "parity", "None")),
-		StopBits:                 strings.ToUpper(mongoutil.GetString(doc, "stopBits", "One")),
-		Handshake:                strings.ToUpper(mongoutil.GetString(doc, "handshake", "None")),
-		AsyncOpenDelay:           mongoutil.GetInt(doc, "asyncOpenDelay", 0),
-		LocalLinkAddress:         mongoutil.GetInt(doc, "localLinkAddress", 1),
-		RemoteLinkAddress:        mongoutil.GetInt(doc, "remoteLinkAddress", 1),
-		TimeSyncInterval:         mongoutil.GetInt(doc, "timeSyncInterval", 0),
-		TimeSyncMode:             mongoutil.GetInt(doc, "timeSyncMode", 0),
-		HoursShift:               mongoutil.GetDouble(doc, "hoursShift", 0),
-		EnableUnsolicited:        mongoutil.GetBool(doc, "enableUnsolicited", true),
-		ServerQueueSize:          mongoutil.GetInt(doc, "serverQueueSize", 1000),
-		LocalCertFilePath:        mongoutil.GetString(doc, "localCertFilePath", ""),
-		PrivateKeyFilePath:       mongoutil.GetString(doc, "privateKeyFilePath", ""),
-		PeerCertFilePath:         mongoutil.GetString(doc, "peerCertFilePath", ""),
-		CipherList:               mongoutil.GetString(doc, "cipherList", ""),
-		AllowTLSv10:              mongoutil.GetBool(doc, "allowTLSv10", false),
-		AllowTLSv11:              mongoutil.GetBool(doc, "allowTLSv11", false),
-		AllowTLSv12:              mongoutil.GetBool(doc, "allowTLSv12", true),
-		AllowTLSv13:              mongoutil.GetBool(doc, "allowTLSv13", true),
+		ProtocolConnectionNumber: jsmongo.GetInt(doc, "protocolConnectionNumber", 0),
+		Name:                     jsmongo.GetString(doc, "name", ""),
+		Description:              jsmongo.GetString(doc, "description", ""),
+		Enabled:                  jsmongo.GetBool(doc, "enabled", false),
+		CommandsEnabled:          jsmongo.GetBool(doc, "commandsEnabled", false),
+		AutoCreateTags:           jsmongo.GetBool(doc, "autoCreateTags", false),
+		Topics:                   jsmongo.GetStringArray(doc, "topics"),
+		ConnectionMode:           strings.ToUpper(jsmongo.GetString(doc, "connectionMode", "TCP PASSIVE")),
+		IPAddressLocalBind:       jsmongo.GetString(doc, "ipAddressLocalBind", ""),
+		IPAddresses:              jsmongo.GetStringArray(doc, "ipAddresses"),
+		PortName:                 jsmongo.GetString(doc, "portName", ""),
+		BaudRate:                 jsmongo.GetInt(doc, "baudRate", 9600),
+		Parity:                   strings.ToUpper(jsmongo.GetString(doc, "parity", "None")),
+		StopBits:                 strings.ToUpper(jsmongo.GetString(doc, "stopBits", "One")),
+		Handshake:                strings.ToUpper(jsmongo.GetString(doc, "handshake", "None")),
+		AsyncOpenDelay:           jsmongo.GetInt(doc, "asyncOpenDelay", 0),
+		LocalLinkAddress:         jsmongo.GetInt(doc, "localLinkAddress", 1),
+		RemoteLinkAddress:        jsmongo.GetInt(doc, "remoteLinkAddress", 1),
+		TimeSyncInterval:         jsmongo.GetInt(doc, "timeSyncInterval", 0),
+		TimeSyncMode:             jsmongo.GetInt(doc, "timeSyncMode", 0),
+		HoursShift:               jsmongo.GetDouble(doc, "hoursShift", 0),
+		EnableUnsolicited:        jsmongo.GetBool(doc, "enableUnsolicited", true),
+		ServerQueueSize:          jsmongo.GetInt(doc, "serverQueueSize", 1000),
+		LocalCertFilePath:        jsmongo.GetString(doc, "localCertFilePath", ""),
+		PrivateKeyFilePath:       jsmongo.GetString(doc, "privateKeyFilePath", ""),
+		PeerCertFilePath:         jsmongo.GetString(doc, "peerCertFilePath", ""),
+		CipherList:               jsmongo.GetString(doc, "cipherList", ""),
+		AllowTLSv10:              jsmongo.GetBool(doc, "allowTLSv10", false),
+		AllowTLSv11:              jsmongo.GetBool(doc, "allowTLSv11", false),
+		AllowTLSv12:              jsmongo.GetBool(doc, "allowTLSv12", true),
+		AllowTLSv13:              jsmongo.GetBool(doc, "allowTLSv13", true),
 	}
 }

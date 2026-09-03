@@ -87,10 +87,81 @@ Intentional differences. Everything not listed here is meant to behave identical
 | D21 | Two connections sharing an endpoint that cannot be told apart by link address — two masters on one `remoteLinkAddress`, two outstations on one `localLinkAddress` — fail startup with a configuration error. The C++ drivers start and let the two sessions steal each other's frames. |
 | D22 | `stopBits: "One5"` is honoured as one-and-a-half stop bits. The C++ drivers fold it onto two, because opendnp3's `SerialSettings` has no other value for it. |
 | D23 | A CROB carrying no trip/close code is executed, with the operation type deciding on or off. The C++ server reads the value from the trip/close field alone and rejects anything else as a format error — which means a plain `LATCH_ON` never reaches the field, and since the client driver's auto-created command tags use duration 3 (`LATCH 1=ON 0=OFF`), the two halves of the product could not operate a point through each other on their default settings. |
+| D24 | The server answers device attribute reads (group 0) with the driver's identity and the point counts of the connection. opendnp3 has no group 0 support, so the C++ server answers none of it. Read-only, and nothing else in JSON-SCADA is affected. |
+| D25 | Auto-created command destinations get a matching output status destination: a CROB at group 12 index N is mirrored by group 10 index N on the command's supervised twin, and an analog output block at group 41 index N by group 40 index N. The C++ server creates the command alone, leaving a master able to operate a point but not read it back. |
+
 
 D13, D14, D17, D18 and D19 were opened against the C++ server and then **withdrawn**: the defects
 they described were fixed in `Dnp3Server` v0.1.1 instead, so both implementations now agree. See
 [`DNP3_GO_DRIVERS_PLAN.md`](DNP3_GO_DRIVERS_PLAN.md).
+
+## Auto-created destinations
+
+With `autoCreateTags` set, the connection publishes tags it is not already distributing, in the
+order the C++ server uses: CROB commands, analog output commands, then supervised digitals and
+analogs.
+
+Each command also gets its **output status**, so a master can read back the state of what it
+operated:
+
+| Command | Distributed as | Readback | On which tag |
+| --- | --- | --- | --- |
+| digital command | group 12 index N, variation 1 | group 10 index N, variation 2 | the command's `supervisedOfCommand` twin |
+| analog command | group 41 index N, variation 3 | group 40 index N, variation 3 | the command's `supervisedOfCommand` twin |
+
+The status carries the **same object address as the command**, because that is what the protocol
+means: a CROB at index N operates binary output N, and group 10 index N is that output's state.
+The address is therefore not this driver's to choose. If something already occupies it, the clash
+is logged and no status is created — the command still works, and silently moving a configured
+point would be worse than a missing readback.
+
+Two consequences worth knowing:
+
+- **A command with no supervised twin gets no status.** `supervisedOfCommand` is what the schema
+  calls the tag "where the command feedback manifests"; a command without one is what the schema
+  calls a blind command, and there is nothing whose state could be reported.
+- **A twin is published as an output status rather than as an input.** The supervised passes run
+  after the command passes and skip tags already distributed on the connection, so a controllable
+  point appears once, as group 10 or 40, rather than also as group 1 or 30. A controllable point
+  is an output.
+
+Re-running auto-create adds nothing: a command already distributed is not a candidate, and a twin
+already carrying its status destination is left alone.
+
+## Device attributes
+
+The server answers a read of group 0, which is how a master asks an outstation what it is. A
+commissioning engineer facing several identical-looking gateways reads this instead of trusting a
+drawing.
+
+| Variation | Attribute | Value |
+| --- | --- | --- |
+| 252 | manufacturer name | `{json:scada}` |
+| 250 | product name and model | `JSON-SCADA DNP3 Outstation Server (Go)` |
+| 242 | software version | the driver version |
+| 243 | hardware version | the host platform, e.g. `linux/amd64` — the nearest honest thing to hardware for a software outstation, and what you want when a gateway misbehaves on one machine and not another |
+| 247 | device name | the connection's `name`, which is what the tag names and every log line already use |
+| 245 | location | the connection's `description`, omitted when it is empty |
+| 246 | ID code | the `protocolConnectionNumber`, unique across every driver of an installation |
+
+The library adds the point counts and the fragment sizes from the session it built — number of
+binary inputs, analog inputs, counters and so on — so those cannot drift from the database they
+describe. A point type the connection does not carry is left unreported rather than reported as
+zero: "none" and "I did not say" are different answers.
+
+Two standard attributes are deliberately **not** answered:
+
+- **Subset level and conformance (249).** Nothing here has been through certified conformance
+  testing, and go-dnp3's own device profile says the same. Answering it would be a claim, not a
+  fact.
+- **Serial number (248).** A software gateway has no serial number, and inventing one from a
+  connection number invites somebody to key an asset register off it.
+
+A master reading an attribute the outstation does not report learns that it does not report it,
+which is true. A plausible wrong value propagates.
+
+Nothing is configurable from MongoDB: no schema change was needed, and every value is either
+fixed or already in the connection document.
 
 ## Quirks reproduced on purpose
 
@@ -123,6 +194,84 @@ time. Two things follow that are worth knowing:
   its own TCP, TLS or UDP endpoint needs no turn taking; a serial line always does, and so does
   any endpoint carrying more than one connection, because that is what a terminal server fronting
   a real serial line looks like.
+
+## Large outstations
+
+Two things had to change before a client could scan a device with thousands of points and create a
+tag for every one of them. Both were silent losses, which is the worst kind: the driver kept
+running and the database was simply short.
+
+**The multi-drop bus queues 16 link frames per session by default.** That is sized for a serial
+line, where frames arrive a few per second and a full queue really does mean a wedged session. On
+a socket, the response to an integrity poll of a large outstation arrives as hundreds of link
+frames back to back — a 12000-point database is well over a hundred — and sixteen frames of slack
+is consumed almost at once. A dropped link frame is not a dropped measurement: it is a hole in a
+transport segment, so the whole application fragment is lost and the poll ends in a response
+timeout. With `autoCreateTags` on, every point in that fragment is a tag that never gets created.
+The driver now asks for 4096 (`dnp3util.StationQueue`), about 1.2 MB per session in the worst
+case and only while a session is behind.
+
+**The value queue dropped its oldest entry once its limit was reached**, which is what the C++
+driver does at 10000. On a large device the points that arrive first in every integrity poll are then the
+ones discarded in every integrity poll, so the same tags are missing every time. The queue now
+bounds itself by coalescing instead:
+
+- a **static** value is a snapshot, so a newer one replaces the older one for the same point;
+- an **event** is a discrete occurrence — a point that went on, off and on again produced three of
+  them — so events are kept in sequence;
+- past the threshold — `DataBufferLimit`, 50000 values — events coalesce too, and the writer
+  reports how many were folded. Losing the intermediate values of a chattering point is a fair
+  degradation; losing the point is not.
+
+Because the threshold no longer decides what is discarded, only when event sequences stop being
+kept whole, raising it buys sequence-of-events fidelity through a longer burst and costs memory
+only while the writer is behind: roughly 150 bytes per waiting value, about 8 MB at this figure.
+
+The queue is then bounded by the number of distinct points rather than by the arrival rate, and no
+point is ever lost.
+
+### The index matters
+
+`realtimeData` must carry the standard index on
+`(protocolSourceConnectionNumber, protocolSourceCommonAddress, protocolSourceObjectAddress)`,
+which `mongo_seed/b_create-db.js` creates. It is what the driver's `sourceDataUpdate` filter is
+served by. Without it every update in a batch is a collection scan, a large batch cannot finish
+inside its timeout, and updates stop while tag creation carries on — 12000 tags created and 2608
+of them ever updated, in the run that found this. The driver now says so when a large bulk write
+times out rather than leaving it to be discovered.
+
+Measured, 12000 points on a freshly seeded database: 12000 tags created and all 12000 updated
+within 15 seconds of the first poll, with no dropped frames, no timeouts and no coalescing.
+
+## A browsing tool showing a family as missing
+
+If a DNP3 browser reports fewer points than the outstation declares — or a whole family, commonly
+the binary output statuses, as absent — check its **dropped** counter before suspecting the
+server.
+
+`master.ChannelHandler`, which browsing tools use to get updates onto a screen, does a
+non-blocking send and **discards updates when the consumer falls behind**, counting them in
+`Dropped()`. That is the right trade for the protocol — a stalled display must not stall the
+session — and it is lossy for the display.
+
+An integrity poll of a large database sends static data grouped by object group, so a contiguous
+run of one family arrives together. A consumer that falls behind partway through the binary
+inputs drops the whole of the group-10 block that follows, and picks up only a trickle of the
+later groups. The result looks exactly like an outstation that does not serve binary outputs.
+
+Measured against this driver, at 3306 binary inputs, 1552 analog inputs, 298 binary output
+statuses and 351 analog output statuses:
+
+| Consumer | BI | AI | BOS | AOS | dropped |
+| --- | --- | --- | --- | --- | --- |
+| a handler that never drops | 3306 | 1552 | 298 | 351 | — |
+| a `ChannelHandler` behind a slow reader | 257 | 1 | 0 | 0 | 5249 |
+
+Same server, same poll, 2 ms and 8 fragments in both cases. `TestIntegrityPollAtFieldScale` pins
+the first row.
+
+To see a family a busy browser is losing, read it on its own — a range scan of group 10 returns
+the binary output statuses without the rest of the database competing for the buffer.
 
 ## Statistics
 

@@ -27,7 +27,8 @@ import (
 	"sync"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	"github.com/dscsystems/go-dnp3/channel"
 	"github.com/dscsystems/go-dnp3/outstation"
@@ -58,22 +59,22 @@ type Destination struct {
 // DestinationFromDoc reads one protocolDestinations entry.
 func DestinationFromDoc(d bson.M) Destination {
 	return Destination{
-		ConnectionNumber: mongoutil.GetInt(d, "protocolDestinationConnectionNumber", 0),
-		CommonAddress:    mongoutil.GetInt(d, "protocolDestinationCommonAddress", 0),
-		ObjectAddress:    mongoutil.GetInt(d, "protocolDestinationObjectAddress", 0),
-		ASDU:             mongoutil.GetInt(d, "protocolDestinationASDU", 0),
-		CommandDuration:  mongoutil.GetDouble(d, "protocolDestinationCommandDuration", 0),
-		CommandUseSBO:    mongoutil.GetBool(d, "protocolDestinationCommandUseSBO", false),
-		KConv1:           mongoutil.GetDouble(d, "protocolDestinationKConv1", 1),
-		KConv2:           mongoutil.GetDouble(d, "protocolDestinationKConv2", 0),
-		Group:            mongoutil.GetInt(d, "protocolDestinationGroup", 0),
-		HoursShift:       mongoutil.GetDouble(d, "protocolDestinationHoursShift", 0),
+		ConnectionNumber: jsmongo.GetInt(d, "protocolDestinationConnectionNumber", 0),
+		CommonAddress:    jsmongo.GetInt(d, "protocolDestinationCommonAddress", 0),
+		ObjectAddress:    jsmongo.GetInt(d, "protocolDestinationObjectAddress", 0),
+		ASDU:             jsmongo.GetInt(d, "protocolDestinationASDU", 0),
+		CommandDuration:  jsmongo.GetDouble(d, "protocolDestinationCommandDuration", 0),
+		CommandUseSBO:    jsmongo.GetBool(d, "protocolDestinationCommandUseSBO", false),
+		KConv1:           jsmongo.GetDouble(d, "protocolDestinationKConv1", 1),
+		KConv2:           jsmongo.GetDouble(d, "protocolDestinationKConv2", 0),
+		Group:            jsmongo.GetInt(d, "protocolDestinationGroup", 0),
+		HoursShift:       jsmongo.GetDouble(d, "protocolDestinationHoursShift", 0),
 	}
 }
 
 // DestinationsOf reads the whole protocolDestinations array of a tag.
 func DestinationsOf(doc bson.M) []Destination {
-	entries := mongoutil.GetDocArray(doc, "protocolDestinations")
+	entries := jsmongo.GetDocArray(doc, "protocolDestinations")
 	out := make([]Destination, 0, len(entries))
 	for _, e := range entries {
 		out = append(out, DestinationFromDoc(e))
@@ -85,6 +86,7 @@ func DestinationsOf(doc bson.M) []Destination {
 type Connection struct {
 	ProtocolConnectionNumber int
 	Name                     string
+	Description              string
 	Enabled                  bool
 	CommandsEnabled          bool
 	AutoCreateTags           bool

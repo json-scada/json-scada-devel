@@ -25,8 +25,9 @@ import (
 	"context"
 	"time"
 
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+	"github.com/riclolsen/json-scada/src/go-common/jsstats"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -34,8 +35,8 @@ import (
 
 // writeStats refreshes the statistics of every connection.
 func (e *Engine) writeStats(ctx context.Context, db *mongo.Database) {
-	coll := db.Collection(jscfg.ProtocolConnectionsCollectionName)
-	now := mongoutil.Now()
+	coll := db.Collection(jsmongo.ProtocolConnectionsCollectionName)
+	var entries []jsstats.Entry
 
 	for _, conn := range e.conns {
 		if conn.Group == nil {
@@ -61,8 +62,6 @@ func (e *Engine) writeStats(ctx context.Context, db *mongo.Database) {
 		}
 
 		stats := bson.M{
-			"nodeName":          e.cfg.NodeName,
-			"timeTag":           now,
 			"isConnected":       connected,
 			"numBytesRx":        int64(counters.BytesRx),
 			"numBytesTx":        int64(counters.BytesTx),
@@ -77,13 +76,18 @@ func (e *Engine) writeStats(ctx context.Context, db *mongo.Database) {
 			"eventsQueued":      int64(eventsQueued),
 		}
 
-		tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		_, err := coll.UpdateOne(tctx,
-			bson.M{"protocolConnectionNumber": conn.ProtocolConnectionNumber},
-			bson.M{"$set": bson.M{"stats": stats}})
-		cancel()
-		if err != nil {
-			jscfg.Log(jscfg.LogLevelDetailed, "%s - Failed to write statistics: %v", conn.Name, err)
-		}
+		entries = append(entries, jsstats.Entry{
+			ConnectionNumber: conn.ProtocolConnectionNumber,
+			Stats:            stats,
+			Label:            conn.Name,
+		})
 	}
+
+	jsstats.Writer{
+		NodeName: e.cfg.NodeName,
+		Timeout:  10 * time.Second,
+		OnError: func(en jsstats.Entry, err error) {
+			jslog.Log(jslog.LevelDetailed, "%s - Failed to write statistics: %v", en.Label, err)
+		},
+	}.Write(ctx, coll, entries)
 }

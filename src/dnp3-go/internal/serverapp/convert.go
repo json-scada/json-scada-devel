@@ -25,8 +25,9 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/outstation"
@@ -43,15 +44,15 @@ import (
 func timestampFor(doc bson.M, dest Destination, connHoursShift float64) dnp3.Timestamp {
 	shift := time.Duration((dest.HoursShift + connHoursShift) * float64(time.Hour))
 
-	if ms := mongoutil.GetDateMs(doc, "timeTagAtSource", 0); ms != 0 {
+	if ms := jsmongo.GetDateMs(doc, "timeTagAtSource", 0); ms != 0 {
 		t := time.UnixMilli(ms).Add(shift)
-		if mongoutil.GetBool(doc, "timeTagAtSourceOk", false) {
+		if jsmongo.GetBool(doc, "timeTagAtSourceOk", false) {
 			return dnp3.Now(t)
 		}
 		return dnp3.Unsynchronized(t)
 	}
 
-	ms := mongoutil.GetDateMs(doc, "timeTag", 0)
+	ms := jsmongo.GetDateMs(doc, "timeTag", 0)
 	if ms == 0 {
 		ms = time.Now().UnixMilli()
 	}
@@ -61,10 +62,10 @@ func timestampFor(doc bson.M, dest Destination, connHoursShift float64) dnp3.Tim
 // tagQuality reads the quality flags of a tag.
 func tagQuality(doc bson.M) dnp3util.TagQuality {
 	return dnp3util.TagQuality{
-		Invalid:     mongoutil.GetBool(doc, "invalid", false),
-		Transient:   mongoutil.GetBool(doc, "transient", false),
-		Substituted: mongoutil.GetBool(doc, "substituted", false),
-		Overflow:    mongoutil.GetBool(doc, "overflow", false),
+		Invalid:     jsmongo.GetBool(doc, "invalid", false),
+		Transient:   jsmongo.GetBool(doc, "transient", false),
+		Substituted: jsmongo.GetBool(doc, "substituted", false),
+		Overflow:    jsmongo.GetBool(doc, "overflow", false),
 	}
 }
 
@@ -88,9 +89,9 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 	fam := familyOf(dest.CommonAddress)
 
 	logIt := func(value any) {
-		jscfg.Log(jscfg.LogLevelBasic, "Updating tag: %s %s Address: %d Group: %d Value: %v",
-			mongoutil.FormatID(mongoutil.GetDouble(doc, "_id", 0)),
-			mongoutil.GetString(doc, "tag", ""),
+		jslog.Log(jslog.LevelBasic, "Updating tag: %s %s Address: %d Group: %d Value: %v",
+			jsmongo.FormatID(jsmongo.GetDouble(doc, "_id", 0)),
+			jsmongo.GetString(doc, "tag", ""),
 			dest.ObjectAddress, dest.CommonAddress, value)
 	}
 
@@ -121,7 +122,7 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 		logIt(v)
 
 	case famCounter:
-		v := scaled(mongoutil.GetDouble(doc, "value", 0), dest)
+		v := scaled(jsmongo.GetDouble(doc, "value", 0), dest)
 		db.UpdateCounter(index, dnp3.Counter{
 			Value: uint32(v), Flags: q.Flags(true, dnp3.Rollover), Time: ts,
 		})
@@ -132,7 +133,7 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 		// frozen counter into the counter array. The Go database keeps the two
 		// families apart, so the point is written where it was sized
 		// (deviation D16).
-		v := scaled(mongoutil.GetDouble(doc, "value", 0), dest)
+		v := scaled(jsmongo.GetDouble(doc, "value", 0), dest)
 		db.UpdateFrozenCounter(index, dnp3.FrozenCounter{
 			Value: uint32(v), Flags: q.Flags(true, dnp3.Rollover), Time: ts,
 		})
@@ -146,7 +147,7 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 		logIt(v)
 
 	case famAnalogOutputStatus:
-		v := scaled(mongoutil.GetDouble(doc, "value", 0), dest)
+		v := scaled(jsmongo.GetDouble(doc, "value", 0), dest)
 		db.UpdateAnalogOutputStatus(index, dnp3.AnalogOutputStatus{
 			Value: v, Flags: q.Flags(true, dnp3.OverRange), Time: ts,
 		})
@@ -159,7 +160,7 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 		// so a fast-changing tag cannot flood the log.
 
 	default: // famAnalog
-		v := scaled(mongoutil.GetDouble(doc, "value", 0), dest)
+		v := scaled(jsmongo.GetDouble(doc, "value", 0), dest)
 		db.UpdateAnalog(index, dnp3.Analog{
 			Value: v, Flags: q.Flags(true, dnp3.OverRange), Time: ts,
 		})
@@ -170,7 +171,7 @@ func ApplyValue(db *outstation.Database, doc bson.M, dest Destination, conn *Con
 // boolValue reads a digital tag's value, inverted when the destination asks
 // for it.
 func boolValue(doc bson.M, dest Destination) bool {
-	v := mongoutil.GetBool(doc, "value", false)
+	v := jsmongo.GetBool(doc, "value", false)
 	if dest.KConv1 == -1.0 {
 		return !v
 	}

@@ -26,7 +26,8 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
+
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/master"
@@ -49,18 +50,18 @@ func (h *soeHandler) BeginFragment(info master.ResponseInfo) {
 	if info.Unsolicited {
 		kind = "Unsolicited"
 	}
-	jscfg.Log(jscfg.LogLevelDetailed, "%s - Begin Fragment: %s", h.conn.Name, kind)
+	jslog.Log(jslog.LevelDetailed, "%s - Begin Fragment: %s", h.conn.Name, kind)
 }
 
 func (h *soeHandler) EndFragment(master.ResponseInfo) {
-	jscfg.Log(jscfg.LogLevelDetailed, "%s - End Fragment", h.conn.Name)
+	jslog.Log(jslog.LevelDetailed, "%s - End Fragment", h.conn.Name)
 }
 
 // push builds the queue entry. baseGroup is the common address the tag is
 // configured under; group is what goes into asduAtSource. The C++ driver always
 // writes variation 0 and cause of transmission 20 (quirk Q4), so this does too.
-func (h *soeHandler) push(baseGroup int, index uint16, value float64, valueString string,
-	ts dnp3.Timestamp, q dnp3util.Quality) {
+func (h *soeHandler) push(info master.HeaderInfo, baseGroup int, index uint16, value float64,
+	valueString string, ts dnp3.Timestamp, q dnp3util.Quality) {
 
 	out := Dnp3Value{
 		Address:            int(index),
@@ -75,20 +76,23 @@ func (h *soeHandler) push(baseGroup int, index uint16, value float64, valueStrin
 		TimeTagOk:          ts.Quality == dnp3.TimestampSynchronized,
 		Quality:            q,
 		ConnNumber:         h.conn.ProtocolConnectionNumber,
+		// An event is a discrete occurrence and must not be coalesced away
+		// with the next reading of the same point.
+		IsEvent: info.IsEvent(),
 	}
 	if ts.IsValid() {
 		out.SourceTimestamp = ts.Time.UnixMilli()
 	}
 
-	if jscfg.GetLogLevel() >= jscfg.LogLevelDetailed {
-		jscfg.Log(jscfg.LogLevelDetailed, "%s - Data Recv: addr=%d group=%d val=%s time=%d qual=%d",
+	if jslog.Level() >= jslog.LevelDetailed {
+		jslog.Log(jslog.LevelDetailed, "%s - Data Recv: addr=%d group=%d val=%s time=%d qual=%d",
 			h.conn.Name, out.Address, out.Group, out.ValueString, out.SourceTimestamp, int(ts.Quality))
 	}
 	h.queue.Push(out)
 }
 
 func (h *soeHandler) logHeader(what string, info master.HeaderInfo, n int) {
-	jscfg.Log(jscfg.LogLevelDetailed, "%s - Process %s GV=%s Count=%d",
+	jslog.Log(jslog.LevelDetailed, "%s - Process %s GV=%s Count=%d",
 		h.conn.Name, what, info.GV, n)
 }
 
@@ -99,7 +103,7 @@ func (h *soeHandler) HandleBinary(info master.HeaderInfo, values []dnp3.Indexed[
 		if v.Value.Value {
 			val, str = 1.0, "true"
 		}
-		h.push(dnp3util.GroupBinaryInput, v.Index, val, str, v.Value.Time,
+		h.push(info, dnp3util.GroupBinaryInput, v.Index, val, str, v.Value.Time,
 			dnp3util.CommonQuality(v.Value.Flags))
 	}
 }
@@ -116,7 +120,7 @@ func (h *soeHandler) HandleDoubleBit(info master.HeaderInfo, values []dnp3.Index
 		if v.Value.Value == dnp3.DoubleBitDeterminedOn || v.Value.Value == dnp3.DoubleBitIndeterminate {
 			val = 1.0
 		}
-		h.push(dnp3util.GroupDoubleBinaryInput, v.Index, val,
+		h.push(info, dnp3util.GroupDoubleBinaryInput, v.Index, val,
 			strconv.Itoa(int(v.Value.Value)), v.Value.Time, q)
 	}
 }
@@ -124,7 +128,7 @@ func (h *soeHandler) HandleDoubleBit(info master.HeaderInfo, values []dnp3.Index
 func (h *soeHandler) HandleAnalog(info master.HeaderInfo, values []dnp3.Indexed[dnp3.Analog]) {
 	h.logHeader("Analog", info, len(values))
 	for _, v := range values {
-		h.push(dnp3util.GroupAnalogInput, v.Index, v.Value.Value,
+		h.push(info, dnp3util.GroupAnalogInput, v.Index, v.Value.Value,
 			formatFloat(v.Value.Value), v.Value.Time, dnp3util.AnalogQuality(v.Value.Flags))
 	}
 }
@@ -132,7 +136,7 @@ func (h *soeHandler) HandleAnalog(info master.HeaderInfo, values []dnp3.Indexed[
 func (h *soeHandler) HandleCounter(info master.HeaderInfo, values []dnp3.Indexed[dnp3.Counter]) {
 	h.logHeader("Counter", info, len(values))
 	for _, v := range values {
-		h.push(dnp3util.GroupCounter, v.Index, float64(v.Value.Value),
+		h.push(info, dnp3util.GroupCounter, v.Index, float64(v.Value.Value),
 			strconv.FormatUint(uint64(v.Value.Value), 10), v.Value.Time,
 			dnp3util.CounterQuality(v.Value.Flags))
 	}
@@ -145,7 +149,7 @@ func (h *soeHandler) HandleFrozenCounter(info master.HeaderInfo, values []dnp3.I
 		// the event group, not the 21 the README's table names. Reproduced so
 		// that databases configured against the C++ driver keep working
 		// (quirk Q1).
-		h.push(dnp3util.GroupFrozenCounterEvent, v.Index, float64(v.Value.Value),
+		h.push(info, dnp3util.GroupFrozenCounterEvent, v.Index, float64(v.Value.Value),
 			strconv.FormatUint(uint64(v.Value.Value), 10), v.Value.Time,
 			dnp3util.CounterQuality(v.Value.Flags))
 	}
@@ -158,7 +162,7 @@ func (h *soeHandler) HandleBinaryOutputStatus(info master.HeaderInfo, values []d
 		if v.Value.Value {
 			val, str = 1.0, "true"
 		}
-		h.push(dnp3util.GroupBinaryOutputStatus, v.Index, val, str, v.Value.Time,
+		h.push(info, dnp3util.GroupBinaryOutputStatus, v.Index, val, str, v.Value.Time,
 			dnp3util.CommonQuality(v.Value.Flags))
 	}
 }
@@ -166,7 +170,7 @@ func (h *soeHandler) HandleBinaryOutputStatus(info master.HeaderInfo, values []d
 func (h *soeHandler) HandleAnalogOutputStatus(info master.HeaderInfo, values []dnp3.Indexed[dnp3.AnalogOutputStatus]) {
 	h.logHeader("AnalogOutputStatus", info, len(values))
 	for _, v := range values {
-		h.push(dnp3util.GroupAnalogOutputStatus, v.Index, v.Value.Value,
+		h.push(info, dnp3util.GroupAnalogOutputStatus, v.Index, v.Value.Value,
 			formatFloat(v.Value.Value), v.Value.Time, dnp3util.AnalogQuality(v.Value.Flags))
 	}
 }
@@ -175,7 +179,7 @@ func (h *soeHandler) HandleAnalogOutputStatus(info master.HeaderInfo, values []d
 // is no common address for octet strings on the source side, so there is
 // nowhere to file them (gap F1).
 func (h *soeHandler) HandleOctetString(info master.HeaderInfo, values []dnp3.Indexed[dnp3.OctetString]) {
-	jscfg.Log(jscfg.LogLevelDetailed, "%s - Ignoring %d octet string(s) GV=%s",
+	jslog.Log(jslog.LevelDetailed, "%s - Ignoring %d octet string(s) GV=%s",
 		h.conn.Name, len(values), info.GV)
 }
 

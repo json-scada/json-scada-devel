@@ -25,8 +25,8 @@ import (
 	"context"
 	"time"
 
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/outstation"
@@ -62,14 +62,14 @@ func (a application) WriteAbsoluteTime(t time.Time) bool {
 	if a.conn.TimeSyncMode == 0 {
 		return false
 	}
-	jscfg.Log(jscfg.LogLevelDetailed, "%s - Master set the clock to %s",
+	jslog.Log(jslog.LevelDetailed, "%s - Master set the clock to %s",
 		a.conn.Name, t.Format(time.RFC3339Nano))
 	return true
 }
 
 // tagsFor reads every supervised tag distributed on a connection.
 func tagsFor(ctx context.Context, db *mongo.Database, connNumber int) ([]bson.M, error) {
-	return mongoutil.FindAll(ctx, db.Collection(jscfg.RealtimeDataCollectionName), bson.M{
+	return jsmongo.FindAll(ctx, db.Collection(jsmongo.RealtimeDataCollectionName), bson.M{
 		"origin": "supervised",
 		"protocolDestinations.protocolDestinationConnectionNumber": connNumber,
 	})
@@ -109,7 +109,7 @@ func sizeDatabase(conn *Connection, tags []bson.M) outstation.DatabaseConfig {
 		}
 	}
 	if droppedTimeAndInterval > 0 {
-		jscfg.Log(jscfg.LogLevelBasic,
+		jslog.Log(jslog.LevelBasic,
 			"%s - %d time-and-interval destination(s) ignored: group 50 is not supported.",
 			conn.Name, droppedTimeAndInterval)
 	}
@@ -212,7 +212,7 @@ func pointConfig(db *outstation.Database, pt dnp3.PointType, index uint16) (outs
 
 // buildOutstation sizes, configures and loads the outstation, then starts it.
 func (e *Engine) buildOutstation(ctx context.Context, db *mongo.Database, conn *Connection) error {
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Finding tags distributed for this connection...", conn.Name)
+	jslog.Log(jslog.LevelBasic, "%s - Finding tags distributed for this connection...", conn.Name)
 	tags, err := tagsFor(ctx, db, conn.ProtocolConnectionNumber)
 	if err != nil {
 		return err
@@ -223,10 +223,10 @@ func (e *Engine) buildOutstation(ctx context.Context, db *mongo.Database, conn *
 
 	go func() {
 		if err := station.Run(ctx, conn.Chan); err != nil && ctx.Err() == nil {
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Outstation stopped: %v", conn.Name, err)
+			jslog.Log(jslog.LevelBasic, "%s - Outstation stopped: %v", conn.Name, err)
 		}
 	}()
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Outstation enabled.", conn.Name)
+	jslog.Log(jslog.LevelBasic, "%s - Outstation enabled.", conn.Name)
 	return nil
 }
 
@@ -236,7 +236,7 @@ func (e *Engine) buildOutstation(ctx context.Context, db *mongo.Database, conn *
 func (e *Engine) newOutstation(conn *Connection, tags []bson.M) *outstation.Session {
 	cfg := sizeDatabase(conn, tags)
 	conn.counts = cfg
-	jscfg.Log(jscfg.LogLevelBasic,
+	jslog.Log(jslog.LevelBasic,
 		"%s - Outstation created with %d binary inputs, %d double binary inputs, %d analog inputs, "+
 			"%d counters, %d frozen counters, %d binary output statuses, %d analog output statuses, "+
 			"%d octet strings",
@@ -258,7 +258,10 @@ func (e *Engine) newOutstation(conn *Connection, tags []bson.M) *outstation.Sess
 			ConfirmTimeout: unsolConfirmWait,
 			MaxRetries:     unsolMaxRetries,
 		},
-		Log: jscfg.NewStackLogger(conn.Name),
+		// Group 0 identity. The library derives the point counts and the
+		// fragment sizes from this same config, so they are not repeated here.
+		Attributes: deviceAttributes(conn),
+		Log:        jslog.NewStackLogger(conn.Name),
 	}
 	if conn.ConnectionMode == "SERIAL" {
 		ocfg.UseLinkConfirms = true
@@ -296,10 +299,10 @@ func (e *Engine) newOutstation(conn *Connection, tags []bson.M) *outstation.Sess
 func (e *Engine) reloadIntegrity(ctx context.Context, db *mongo.Database, conn *Connection) {
 	tags, err := tagsFor(ctx, db, conn.ProtocolConnectionNumber)
 	if err != nil {
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Cannot reload integrity data: %v", conn.Name, err)
+		jslog.Log(jslog.LevelBasic, "%s - Cannot reload integrity data: %v", conn.Name, err)
 		return
 	}
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Store integrity data.", conn.Name)
+	jslog.Log(jslog.LevelBasic, "%s - Store integrity data.", conn.Name)
 
 	conn.Update(func(d *outstation.Database) {
 		for _, doc := range tags {

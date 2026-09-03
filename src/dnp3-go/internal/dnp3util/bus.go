@@ -27,7 +27,7 @@ import (
 	"fmt"
 	"time"
 
-	"dnp3-go/internal/jscfg"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	"github.com/dscsystems/go-dnp3/channel"
 	"github.com/dscsystems/go-dnp3/multidrop"
@@ -115,8 +115,9 @@ func BuildGroups(specs []StationSpec, master bool) ([]*Group, error) {
 		}
 
 		cfg := multidrop.Config{
-			Log:        jscfg.NewStackLogger(lead.Channel.Endpoint()),
+			Log:        jslog.NewStackLogger(lead.Channel.Endpoint()),
 			Turnaround: TurnaroundFor(lead.Channel, len(group)),
+			Queue:      StationQueue,
 		}
 
 		bus := multidrop.New(ch, cfg)
@@ -149,7 +150,7 @@ func BuildGroups(specs []StationSpec, master bool) ([]*Group, error) {
 		}
 
 		if len(group) > 1 {
-			jscfg.Log(jscfg.LogLevelBasic, "%s - %d stations share this channel.",
+			jslog.Log(jslog.LevelBasic, "%s - %d stations share this channel.",
 				lead.Channel.Endpoint(), len(group))
 			warnPacing(lead.Channel.Endpoint(), group, cfg.Turnaround)
 		}
@@ -162,6 +163,26 @@ func BuildGroups(specs []StationSpec, master bool) ([]*Group, error) {
 
 // DefaultTurnaround mirrors the library's, for the pacing estimate below.
 const DefaultTurnaround = multidrop.DefaultTurnaround
+
+// StationQueue is how many link frames may be waiting for one session before
+// the bus starts dropping them.
+//
+// The library's default is 16, on the reasoning that a queue only fills when a
+// session has stopped reading. That holds on a serial line, where frames
+// arrive a few per second. It does not hold on a socket: the response to an
+// integrity poll of a large outstation arrives as hundreds of link frames back
+// to back — a 12000-point database is well over a hundred — and the session
+// goroutine decodes them one at a time while the bus pump reads at wire speed.
+// Sixteen frames of slack is consumed almost immediately.
+//
+// A dropped link frame is not a dropped measurement. It is a hole in a
+// transport segment, so the whole application fragment it belonged to is lost,
+// and the poll fails with a response timeout. With autoCreateTags on, every
+// point in that fragment is a tag that never gets created.
+//
+// Frames are at most 292 octets, so this costs about 1.2 MB per session in the
+// worst case, and only while a session is behind.
+const StationQueue = 4096
 
 // TurnaroundFor decides whether the bus arbitrates transmission on a channel.
 //
@@ -204,7 +225,7 @@ func warnPacing(endpoint string, group []StationSpec, turnaround time.Duration) 
 	// One exchange may occupy the line for a whole turnaround when a station
 	// does not answer.
 	if exchanges*turnaround.Seconds() > 1.0 {
-		jscfg.Log(jscfg.LogLevelBasic,
+		jslog.Log(jslog.LevelBasic,
 			"%s - %d stations share this line and their scan periods imply %.2f exchanges per second; "+
 				"the line allows about %.2f. Check the scan intervals.",
 			endpoint, len(group), exchanges, 1.0/turnaround.Seconds())

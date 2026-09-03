@@ -14,9 +14,14 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 ## Local Contracts
 
 - **Language:** Go 1.26, module `dnp3-go`, `cmd/` + `internal/` layout as in `src/iec60870-5`
-- **Library:** `github.com/dscsystems/go-dnp3` v0.2.0 (GPLv3+, pure Go) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-dnp3` v0.4.1 (GPLv3+, pure Go) — **pin the version**,
   the API is pre-1.0 and the SKILL.md in that repo says so explicitly. JSON-SCADA is GPL-3.0, so
   the copyleft is not a problem; note it rather than re-litigating it.
+  - v0.3.0 and v0.4.x added file transfer (group 70) and device attributes (group 0), and are
+    otherwise additive: nothing the drivers use changed signature. Neither feature is used here —
+    the C++ drivers do not support them and JSON-SCADA has no schema for either — so they are
+    available if a need appears, not a gap. Before the next bump, diff the API of the packages
+    this module imports rather than trusting the version number: pre-1.0 minors may break.
 - **Binaries:** `dnp3-client(.exe)` and `dnp3-server(.exe)`. They must **not** collide
   case-insensitively with `Dnp3ClientCpp.exe` / `Dnp3Server.exe`, so both implementations can
   live in `bin/` during migration. Do not rename them to `dnp3client` / `dnp3server`.
@@ -57,6 +62,26 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
   so an idle-looking station is normal.
 - Multi-drop is `multidrop.Bus`, not hand-written framing. Every connection goes on a bus,
   single-station ones included, because the frame and CRC statistics come from it.
+- Auto-created command destinations carry an output status companion (`statusGroup` /
+  `statusASDU` on `autoCreatePass`), placed on the command's `supervisedOfCommand` twin at **the
+  command's own object address**. That address is fixed by the protocol — a CROB at index N
+  operates binary output N — so it cannot be reassigned to dodge a clash; report the clash and
+  skip instead.
+- **The multi-drop bus needs a large station queue on a socket.** Its default is 16 frames, which
+  a large integrity response overruns instantly; a dropped link frame loses the whole application
+  fragment and every tag it would have created. `dnp3util.StationQueue` is 4096. Do not lower it.
+- **The client value queue coalesces, it does not drop.** Statics for one point collapse to the
+  newest; event sequences are kept whole; past the threshold events collapse too and the writer
+  reports it. Never restore the C++ drop-the-oldest behaviour: on a large device it discards the
+  same points on every poll, so their tags are never created.
+- The `sourceDataUpdate` filter relies on the standard realtimeData index on
+  `(protocolSourceConnectionNumber, protocolSourceCommonAddress, protocolSourceObjectAddress)`.
+  Without it a large batch times out and updates stall while creation continues.
+- Device attributes (group 0) live in `serverapp/attributes.go`. The variation numbers are
+  declared there rather than taken from `dnp3.AttributeName`, which is a display table: a number
+  used to answer a request is not a label. Do not add attribute 249 (conformance) or 248 (serial
+  number) — see the reasoning in `README.md`. The library derives the counts and fragment sizes
+  itself; configured attributes win over derived ones, so do not restate them.
 - **The active channels are built with `channel.NoRetry` and the driver retries in `countchan`.**
   Do not put the retry back into the library channel: it loops inside `Connect` and returns only
   a context error at the end, so `numOpenFail` never increments and the reason the port would not
@@ -87,6 +112,8 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 ## Known gaps
 
 - Octet strings (groups 110/111) are decoded and discarded, as in the C++ drivers.
+- Device attributes are served but not writable, and the client driver does not read them; there
+  is nowhere in the JSON-SCADA schema to put what it would learn.
 - Group 50 (time and interval) destinations are unsupported: `outstation.DatabaseConfig` has no
   such family.
 - A passive TCP/TLS connection serves one master connection at a time; the bus multiplexes

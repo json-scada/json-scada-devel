@@ -30,8 +30,10 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	"github.com/dscsystems/go-dnp3/outstation"
 	"go.mongodb.org/mongo-driver/v2/bson"
@@ -44,7 +46,7 @@ const statsPeriod = 5 * time.Second
 
 // Engine is the running driver.
 type Engine struct {
-	cfg            jscfg.Config
+	cfg            jsconfig.Config
 	instanceNumber int
 
 	conns  []*Connection
@@ -73,7 +75,7 @@ func (e *Engine) setCommandDB(db *mongo.Database) {
 }
 
 // Run starts the driver and blocks until it is signalled to stop.
-func Run(args jscfg.Args, cfg jscfg.Config) {
+func Run(args jsconfig.Args, cfg jsconfig.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -83,17 +85,17 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 		byNum:          map[int]*Connection{},
 	}
 
-	cli, db, err := mongoutil.ConnectAndWait(ctx, cfg)
+	cli, db, err := jsmongo.ConnectAndWait(ctx, cfg)
 	if err != nil {
-		jscfg.Fatal("Error connecting to MongoDB - %v", err)
+		jslog.Fatal("Error connecting to MongoDB - %v", err)
 	}
 
 	if err := loadInstance(ctx, db, args.InstanceNumber, cfg.NodeName, !args.LogLevelFromCLI); err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 	conns, err := loadConnections(ctx, db, args.InstanceNumber)
 	if err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 	e.conns = conns
 	for _, c := range conns {
@@ -104,20 +106,20 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 	// sizing reads what this pass has just written.
 	for _, conn := range conns {
 		if err := e.autoCreateAll(ctx, db, conn); err != nil {
-			jscfg.Fatal("%s - Error creating destinations: %v", conn.Name, err)
+			jslog.Fatal("%s - Error creating destinations: %v", conn.Name, err)
 		}
 	}
 
 	if err := e.buildChannels(); err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 	for _, conn := range conns {
 		if conn.Chan == nil {
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Error allocating channel!", conn.Name)
+			jslog.Log(jslog.LevelBasic, "%s - Error allocating channel!", conn.Name)
 			continue
 		}
 		if err := e.buildOutstation(ctx, db, conn); err != nil {
-			jscfg.Fatal("%s - Error building the outstation: %v", conn.Name, err)
+			jslog.Fatal("%s - Error building the outstation: %v", conn.Name, err)
 		}
 	}
 	_ = cli.Disconnect(context.Background())
@@ -129,12 +131,12 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
 	<-sigs
 
-	jscfg.Log(jscfg.LogLevelNoLog, "Exiting application!")
+	jslog.Log(jslog.LevelNoLog, "Exiting application!")
 	cancel()
 	for _, g := range e.groups {
 		g.Close()
 	}
-	jscfg.LogFlush()
+	jslog.Flush()
 }
 
 // buildChannels groups the connections onto shared buses.
@@ -166,7 +168,7 @@ func (e *Engine) buildChannels() error {
 			// line each session connects and reconnects on its own.
 			conn.Chan, conn.link = dnp3util.WrapLinkState(ch)
 			conn.Group = g
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Created %s channel.", conn.Name, conn.ConnectionMode)
+			jslog.Log(jslog.LevelBasic, "%s - Created %s channel.", conn.Name, conn.ConnectionMode)
 		}
 	}
 	return nil
@@ -178,23 +180,23 @@ func (e *Engine) changeStreamLoop(ctx context.Context) {
 	var resumeToken bson.Raw
 
 	for ctx.Err() == nil {
-		cli, db, err := mongoutil.ConnectAndWait(ctx, e.cfg)
+		cli, db, err := jsmongo.ConnectAndWait(ctx, e.cfg)
 		if err != nil {
 			return
 		}
 		e.setCommandDB(db)
 
-		stream, err := db.Collection(jscfg.RealtimeDataCollectionName).
+		stream, err := db.Collection(jsmongo.RealtimeDataCollectionName).
 			Watch(ctx, e.changeStreamPipeline(), e.changeStreamOptions(resumeToken))
 		if err != nil {
-			jscfg.Log(jscfg.LogLevelNoLog, "Mongo change stream - Exception: %v", err)
+			jslog.Log(jslog.LevelNoLog, "Mongo change stream - Exception: %v", err)
 			e.setCommandDB(nil)
 			_ = cli.Disconnect(context.Background())
 			resumeToken = nil
 			sleepCtx(ctx, 5*time.Second)
 			continue
 		}
-		jscfg.Log(jscfg.LogLevelBasic, "Watching for changes on collection: realtimeData...")
+		jslog.Log(jslog.LevelBasic, "Watching for changes on collection: realtimeData...")
 
 		// After a reconnection the picture may be stale, so every distributed
 		// tag is re-read and applied.
@@ -208,7 +210,7 @@ func (e *Engine) changeStreamLoop(ctx context.Context) {
 				FullDocument bson.M `bson:"fullDocument"`
 			}
 			if err := stream.Decode(&change); err != nil {
-				jscfg.Log(jscfg.LogLevelDetailed, "Mongo change stream - cannot decode change: %v", err)
+				jslog.Log(jslog.LevelDetailed, "Mongo change stream - cannot decode change: %v", err)
 				continue
 			}
 			if change.FullDocument != nil {
@@ -216,7 +218,7 @@ func (e *Engine) changeStreamLoop(ctx context.Context) {
 			}
 		}
 		if err := stream.Err(); err != nil && ctx.Err() == nil {
-			jscfg.Log(jscfg.LogLevelNoLog, "Mongo change stream - Exception: %v", err)
+			jslog.Log(jslog.LevelNoLog, "Mongo change stream - Exception: %v", err)
 		}
 
 		_ = stream.Close(context.Background())

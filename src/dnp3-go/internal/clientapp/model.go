@@ -30,6 +30,7 @@ import (
 
 	"github.com/dscsystems/go-dnp3/channel"
 	"github.com/dscsystems/go-dnp3/master"
+	"github.com/riclolsen/json-scada/src/go-common/jstags"
 )
 
 // Driver identity.
@@ -39,9 +40,16 @@ const (
 	DriverMessage      = "{json:scada} DNP3 Client Driver (Go)"
 )
 
-// DataBufferLimit is how many acquired values may wait for the MongoDB writer
-// before the oldest are dropped.
-const DataBufferLimit = 10000
+// DataBufferLimit is how many values may wait for the MongoDB writer before
+// the queue starts folding an event into the entry already held for its point.
+// Nothing is dropped: see ValueQueue.
+//
+// The C++ driver's figure was 10000, and there it was the point at which values
+// were thrown away. Here it only decides when event sequences stop being kept
+// whole, so a larger figure buys sequence-of-events fidelity through a longer
+// burst and costs memory only while the writer is behind — roughly 150 bytes
+// per waiting value, so about 8 MB at this limit.
+const DataBufferLimit = 50000
 
 // AutoKeyMultiplier spaces the _id ranges of auto-created tags per connection.
 const AutoKeyMultiplier = 1000000.0
@@ -109,7 +117,8 @@ type Connection struct {
 	wasConnected bool
 
 	// Touched only by the MongoDB writer goroutine, after the initial preload.
-	lastNewKeyCreated float64
+	// tagKeys allocates _id values inside this connection's partition.
+	tagKeys           jstags.KeyAllocator
 	insertedAddresses map[[2]int]bool
 }
 
@@ -202,46 +211,118 @@ type Dnp3Value struct {
 	TimeTagOk          bool
 	Quality            dnp3util.Quality
 	ConnNumber         int
+	// IsEvent distinguishes an event from a static read.
+	IsEvent bool
 }
 
-// ValueQueue is the bounded queue between the DNP3 sessions and the MongoDB
-// writer. It drops the oldest value when full, as enqueueValue() does.
+// ValueQueue carries acquired values from the DNP3 sessions to the MongoDB
+// writer.
+//
+// It never loses a point. The C++ driver's queue drops its oldest entry once
+// its limit is reached, which on a large outstation means the points that
+// arrive first in every integrity poll are the ones discarded every time — and
+// with autoCreateTags on, a discarded value is a tag that is never created at
+// all. Bounding the queue by coalescing instead of by dropping keeps that from
+// happening, at the cost described below.
+//
+// Statics and events are treated differently because they mean different
+// things. A static read is a snapshot, so a newer one replaces an older one for
+// the same point and nothing is lost. An event is a discrete occurrence — a
+// point that went on, off and on again produced three of them, and that
+// sequence is what a class 1 poll exists to collect — so events are kept
+// whole.
+//
+// Under pressure past DataBufferLimit the events of one point coalesce too.
+// Losing the intermediate values of a chattering point is a fair degradation;
+// losing the point altogether is not.
 type ValueQueue struct {
 	mu     sync.Mutex
 	cond   *sync.Cond
 	values []Dnp3Value
-	closed bool
+	// coalesceAt holds, per point, the index of the entry a newer value may
+	// replace. A point is absent from it while its most recent entry is an
+	// event, so a later static appends after that event rather than jumping
+	// in front of it.
+	coalesceAt map[valueKey]int
+	// squashed counts values folded into an existing entry because the queue
+	// was over the threshold, for the writer to report.
+	squashed int
+	closed   bool
+}
+
+// valueKey identifies the point a value belongs to.
+type valueKey struct {
+	conn      int
+	baseGroup int
+	address   int
+}
+
+func keyOf(v Dnp3Value) valueKey {
+	return valueKey{conn: v.ConnNumber, baseGroup: v.BaseGroup, address: v.Address}
 }
 
 // NewValueQueue returns an empty queue.
 func NewValueQueue() *ValueQueue {
-	q := &ValueQueue{}
+	q := &ValueQueue{coalesceAt: map[valueKey]int{}}
 	q.cond = sync.NewCond(&q.mu)
 	return q
 }
 
-// Push enqueues a value, dropping the oldest when the queue is full.
+// Push enqueues a value.
 func (q *ValueQueue) Push(v Dnp3Value) {
 	q.mu.Lock()
-	if len(q.values) >= DataBufferLimit {
-		q.values = q.values[1:]
+	key := keyOf(v)
+
+	// Past the threshold everything coalesces, events included: the queue then
+	// holds one entry per point and cannot grow with the arrival rate.
+	underPressure := len(q.values) >= DataBufferLimit
+
+	if !v.IsEvent || underPressure {
+		if idx, ok := q.coalesceAt[key]; ok {
+			if v.IsEvent {
+				q.squashed++
+			}
+			q.values[idx] = v
+			q.mu.Unlock()
+			q.cond.Signal()
+			return
+		}
+		q.values = append(q.values, v)
+		q.coalesceAt[key] = len(q.values) - 1
+		q.mu.Unlock()
+		q.cond.Signal()
+		return
 	}
+
+	// An event in normal conditions: keep it, and stop any later static for
+	// this point from being folded into an entry that now sits behind it.
 	q.values = append(q.values, v)
+	delete(q.coalesceAt, key)
 	q.mu.Unlock()
 	q.cond.Signal()
 }
 
 // Drain takes everything queued, blocking until there is something or the
-// queue is closed. It returns nil once closed and empty.
-func (q *ValueQueue) Drain() []Dnp3Value {
+// queue is closed. It returns nil once closed and empty, and the number of
+// values that had to be folded together because the queue was over its
+// threshold.
+func (q *ValueQueue) Drain() ([]Dnp3Value, int) {
 	q.mu.Lock()
 	defer q.mu.Unlock()
 	for len(q.values) == 0 && !q.closed {
 		q.cond.Wait()
 	}
-	batch := q.values
-	q.values = nil
-	return batch
+	batch, squashed := q.values, q.squashed
+	q.values, q.squashed = nil, 0
+	clear(q.coalesceAt)
+	return batch, squashed
+}
+
+// Len reports how many values are waiting.
+func (q *ValueQueue) Len() int {
+	q.mu.Lock()
+	defer q.mu.Unlock()
+	return len(q.values)
 }
 
 // Close wakes a blocked Drain so the writer can exit.

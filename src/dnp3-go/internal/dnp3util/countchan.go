@@ -32,7 +32,7 @@ import (
 	"sync/atomic"
 	"time"
 
-	"dnp3-go/internal/jscfg"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	"github.com/dscsystems/go-dnp3/channel"
 )
@@ -178,11 +178,11 @@ func (c *countChannel) Connect(ctx context.Context) (io.ReadWriteCloser, error) 
 			}
 			// The first failure of a run is worth an operator's attention; the
 			// repeats while a device stays down are not.
-			level := jscfg.LogLevelDetailed
+			level := jslog.LevelDetailed
 			if attempt == 0 {
-				level = jscfg.LogLevelBasic
+				level = jslog.LevelBasic
 			}
-			jscfg.Log(level, "%s - Connection attempt failed: %v", c.opts.Name, err)
+			jslog.Log(level, "%s - Connection attempt failed: %v", c.opts.Name, err)
 
 			if !c.wait(ctx, c.opts.Retry.delay(attempt)) {
 				return nil, ctx.Err()
@@ -242,7 +242,7 @@ func (c *countChannel) permitted(conn io.ReadWriteCloser) bool {
 	if c.allowed[host] {
 		return true
 	}
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Refused connection from %s: not in the allowed address list",
+	jslog.Log(jslog.LevelBasic, "%s - Refused connection from %s: not in the allowed address list",
 		c.opts.Name, host)
 	return false
 }

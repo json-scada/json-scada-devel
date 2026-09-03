@@ -28,8 +28,9 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/outstation"
@@ -60,13 +61,13 @@ func (h *commandHandler) OperateCROB(index uint16, c dnp3.ControlRelayOutputBloc
 		return status
 	}
 	if c.Code.OpType() == dnp3.ControlNUL {
-		jscfg.Log(jscfg.LogLevelBasic, "%s - ControlRelayOutputBlock index: %d - OperationType: NUL",
+		jslog.Log(jslog.LevelBasic, "%s - ControlRelayOutputBlock index: %d - OperationType: NUL",
 			h.conn.Name, index)
 		return dnp3.CommandFormatError
 	}
 	// Both coil bits set is the reserved combination and means nothing.
 	if c.Code&(dnp3.ControlTrip|dnp3.ControlClose) == dnp3.ControlTrip|dnp3.ControlClose {
-		jscfg.Log(jscfg.LogLevelBasic, "%s - ControlRelayOutputBlock index: %d - Invalid TripCloseCode!",
+		jslog.Log(jslog.LevelBasic, "%s - ControlRelayOutputBlock index: %d - Invalid TripCloseCode!",
 			h.conn.Name, index)
 		return dnp3.CommandFormatError
 	}
@@ -158,7 +159,7 @@ func (h *commandHandler) lookup(digital bool, index uint16, what string) (bson.M
 	defer cancel()
 
 	var doc bson.M
-	err := db.Collection(jscfg.RealtimeDataCollectionName).FindOne(ctx, bson.M{
+	err := db.Collection(jsmongo.RealtimeDataCollectionName).FindOne(ctx, bson.M{
 		"origin": "command",
 		"type":   tagType,
 		"protocolDestinations": bson.M{"$elemMatch": bson.M{
@@ -168,12 +169,12 @@ func (h *commandHandler) lookup(digital bool, index uint16, what string) (bson.M
 		}},
 	}).Decode(&doc)
 	if err != nil {
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Tag not found in the database for %s index: %d",
+		jslog.Log(jslog.LevelBasic, "%s - Tag not found in the database for %s index: %d",
 			h.conn.Name, what, index)
 		return nil, dnp3.CommandNotSupported
 	}
-	if !mongoutil.GetBool(doc, "enabled", true) {
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Tag disabled in the database for %s index: %d",
+	if !jsmongo.GetBool(doc, "enabled", true) {
+		jslog.Log(jslog.LevelBasic, "%s - Tag disabled in the database for %s index: %d",
 			h.conn.Name, what, index)
 		return nil, dnp3.CommandBlocked
 	}
@@ -203,28 +204,28 @@ func (h *commandHandler) queue(tag bson.M, value float64, valueString string) bo
 	ctx, cancel := context.WithTimeout(context.Background(), 10*time.Second)
 	defer cancel()
 
-	_, err := db.Collection(jscfg.CommandsQueueCollectionName).InsertOne(ctx, bson.M{
-		"protocolSourceConnectionNumber": mongoutil.GetDouble(tag, "protocolSourceConnectionNumber", 0),
-		"protocolSourceCommonAddress":    mongoutil.GetDouble(tag, "protocolSourceCommonAddress", 0),
-		"protocolSourceObjectAddress":    mongoutil.GetDouble(tag, "protocolSourceObjectAddress", 0),
-		"protocolSourceASDU":             mongoutil.GetDouble(tag, "protocolSourceASDU", 0),
-		"protocolSourceCommandDuration":  mongoutil.GetDouble(tag, "protocolSourceCommandDuration", 0),
-		"protocolSourceCommandUseSBO":    mongoutil.GetBool(tag, "protocolSourceCommandUseSBO", false),
-		"pointKey":                       mongoutil.GetDouble(tag, "_id", 0),
-		"tag":                            mongoutil.GetString(tag, "tag", ""),
+	_, err := db.Collection(jsmongo.CommandsQueueCollectionName).InsertOne(ctx, bson.M{
+		"protocolSourceConnectionNumber": jsmongo.GetDouble(tag, "protocolSourceConnectionNumber", 0),
+		"protocolSourceCommonAddress":    jsmongo.GetDouble(tag, "protocolSourceCommonAddress", 0),
+		"protocolSourceObjectAddress":    jsmongo.GetDouble(tag, "protocolSourceObjectAddress", 0),
+		"protocolSourceASDU":             jsmongo.GetDouble(tag, "protocolSourceASDU", 0),
+		"protocolSourceCommandDuration":  jsmongo.GetDouble(tag, "protocolSourceCommandDuration", 0),
+		"protocolSourceCommandUseSBO":    jsmongo.GetBool(tag, "protocolSourceCommandUseSBO", false),
+		"pointKey":                       jsmongo.GetDouble(tag, "_id", 0),
+		"tag":                            jsmongo.GetString(tag, "tag", ""),
 		"value":                          value,
 		"valueString":                    valueString,
 		"originatorUserName":             "DNP3 Server Driver",
 		"originatorIpAddress":            "",
-		"timeTag":                        mongoutil.Now(),
+		"timeTag":                        jsmongo.Now(),
 	})
 	if err != nil {
-		jscfg.Log(jscfg.LogLevelNoLog, "%s - Error queueing command for tag: %s - %v",
-			h.conn.Name, mongoutil.GetString(tag, "tag", ""), err)
+		jslog.Log(jslog.LevelNoLog, "%s - Error queueing command for tag: %s - %v",
+			h.conn.Name, jsmongo.GetString(tag, "tag", ""), err)
 		return false
 	}
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Command queued for tag: %s Value: %v",
-		h.conn.Name, mongoutil.GetString(tag, "tag", ""), value)
+	jslog.Log(jslog.LevelBasic, "%s - Command queued for tag: %s Value: %v",
+		h.conn.Name, jsmongo.GetString(tag, "tag", ""), value)
 	return true
 }
 

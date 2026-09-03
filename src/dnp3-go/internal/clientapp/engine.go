@@ -29,9 +29,12 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
-	"dnp3-go/internal/redundancy"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsredundancy"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/master"
@@ -58,7 +61,7 @@ const (
 
 // Engine is the running driver.
 type Engine struct {
-	cfg            jscfg.Config
+	cfg            jsconfig.Config
 	instanceNumber int
 
 	conns  []*Connection
@@ -66,11 +69,11 @@ type Engine struct {
 	groups []*dnp3util.Group
 
 	queue      *ValueQueue
-	redundancy *redundancy.Controller
+	redundancy *jsredundancy.Controller
 }
 
 // Run starts the driver and blocks until it is signalled to stop.
-func Run(args jscfg.Args, cfg jscfg.Config) {
+func Run(args jsconfig.Args, cfg jsconfig.Config) {
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
@@ -81,25 +84,25 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 		queue:          NewValueQueue(),
 	}
 
-	cli, db, err := mongoutil.ConnectAndWait(ctx, cfg)
+	cli, db, err := jsmongo.ConnectAndWait(ctx, cfg)
 	if err != nil {
-		jscfg.Fatal("Error connecting to MongoDB - %v", err)
+		jslog.Fatal("Error connecting to MongoDB - %v", err)
 	}
 
 	if err := loadInstance(ctx, db, args.InstanceNumber, !args.LogLevelFromCLI); err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 	if args.LogLevelFromCLI {
-		jscfg.Log(jscfg.LogLevelDetailed,
+		jslog.Log(jslog.LevelDetailed,
 			"Main: Keeping CLI log level override after loading instance configuration.")
 	} else {
-		jscfg.Log(jscfg.LogLevelDetailed,
+		jslog.Log(jslog.LevelDetailed,
 			"Main: Effective log level loaded from instance configuration.")
 	}
 
 	conns, err := loadConnections(ctx, db, args.InstanceNumber)
 	if err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 	_ = cli.Disconnect(context.Background())
 
@@ -109,33 +112,37 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 	}
 
 	if err := e.buildChannels(); err != nil {
-		jscfg.Fatal("%v", err)
+		jslog.Fatal("%v", err)
 	}
 
 	// The sessions are not started here: they start when redundancy makes this
 	// node active, which is the equivalent of the C++ driver creating every
 	// master in the disabled state.
-	jscfg.Log(jscfg.LogLevelDetailed,
+	jslog.Log(jslog.LevelDetailed,
 		"Main: All connections configured; waiting for redundancy activation.")
 
-	e.redundancy = &redundancy.Controller{
+	e.redundancy = &jsredundancy.Controller{
 		Config:         cfg,
 		DriverName:     ProtocolDriverName,
 		InstanceNumber: args.InstanceNumber,
 		OnActivate:     func() { e.startSessions(ctx) },
 		OnDeactivate:   e.stopSessions,
 		OnTick:         func(db *mongo.Database) { e.writeStats(ctx, db) },
+		// parity: the C++ driver defaults to active when there is no instance
+		// document, so a single-node system with an incomplete configuration
+		// still runs. The takeover rule itself is the shared one.
+		MissingInstanceActive: true,
 	}
 
 	go e.mongoUpdateLoop(ctx)
-	jscfg.Log(jscfg.LogLevelBasic, "Main: processMongo thread started.")
+	jslog.Log(jslog.LevelBasic, "Main: processMongo thread started.")
 	go e.commandsLoop(ctx)
-	jscfg.Log(jscfg.LogLevelBasic, "Main: processMongoCmd thread started.")
+	jslog.Log(jslog.LevelBasic, "Main: processMongoCmd thread started.")
 	go e.redundancy.Run(ctx)
-	jscfg.Log(jscfg.LogLevelBasic, "Main: processRedundancy thread started.")
+	jslog.Log(jslog.LevelBasic, "Main: processRedundancy thread started.")
 	go e.linkWatchLoop(ctx)
 
-	jscfg.Log(jscfg.LogLevelBasic, "Main: Entering main loop...")
+	jslog.Log(jslog.LevelBasic, "Main: Entering main loop...")
 
 	sigs := make(chan os.Signal, 1)
 	signal.Notify(sigs, os.Interrupt, syscall.SIGTERM)
@@ -145,17 +152,17 @@ func Run(args jscfg.Args, cfg jscfg.Config) {
 	for {
 		select {
 		case <-sigs:
-			jscfg.Log(jscfg.LogLevelNoLog, "Exiting application!")
+			jslog.Log(jslog.LevelNoLog, "Exiting application!")
 			cancel()
 			e.stopSessions()
 			for _, g := range e.groups {
 				g.Close()
 			}
 			e.queue.Close()
-			jscfg.LogFlush()
+			jslog.Flush()
 			return
 		case <-ticker.C:
-			jscfg.Log(jscfg.LogLevelDetailed, "Main: Still running...")
+			jslog.Log(jslog.LevelDetailed, "Main: Still running...")
 		}
 	}
 }
@@ -187,8 +194,8 @@ func (e *Engine) buildChannels() error {
 			conn := e.byNum[num]
 			conn.Chan = ch
 			conn.Group = g
-			jscfg.Log(jscfg.LogLevelDetailed, "Main: Channel created for %s", conn.Name)
-			jscfg.Log(jscfg.LogLevelBasic, "%s - Connection configured.", conn.Name)
+			jslog.Log(jslog.LevelDetailed, "Main: Channel created for %s", conn.Name)
+			jslog.Log(jslog.LevelBasic, "%s - Connection configured.", conn.Name)
 		}
 	}
 	return nil
@@ -208,7 +215,7 @@ func (e *Engine) startSessions(ctx context.Context) {
 			TaskRetryPeriod:    taskRetryPeriod,
 			KeepAlive:          keepAlivePeriod,
 			IntegrityOnStartup: true,
-			Log:                jscfg.NewStackLogger(conn.Name),
+			Log:                jslog.NewStackLogger(conn.Name),
 		}
 		if conn.EnableUnsolicited {
 			cfg.DisableUnsolOnStartup = false
@@ -227,10 +234,10 @@ func (e *Engine) startSessions(ctx context.Context) {
 		sctx, cancel := context.WithCancel(ctx)
 		conn.setSession(session, cancel)
 
-		jscfg.Log(jscfg.LogLevelDetailed, "%s - Starting master session...", conn.Name)
+		jslog.Log(jslog.LevelDetailed, "%s - Starting master session...", conn.Name)
 		go func(conn *Connection, session *master.Session, sctx context.Context) {
 			if err := session.Run(sctx, conn.Chan); err != nil && sctx.Err() == nil {
-				jscfg.Log(jscfg.LogLevelBasic, "%s - Session stopped: %v", conn.Name, err)
+				jslog.Log(jslog.LevelBasic, "%s - Session stopped: %v", conn.Name, err)
 			}
 		}(conn, session, sctx)
 
@@ -270,11 +277,11 @@ func (e *Engine) linkWatchLoop(ctx context.Context) {
 			now := session != nil && session.Connected()
 			conn.connected.Store(now)
 			if conn.wasConnected && !now {
-				jscfg.Log(jscfg.LogLevelBasic, "%s - Channel state: CLOSED", conn.Name)
+				jslog.Log(jslog.LevelBasic, "%s - Channel state: CLOSED", conn.Name)
 				go e.invalidatePoints(ctx, conn.ProtocolConnectionNumber, conn.Name)
 			}
 			if !conn.wasConnected && now {
-				jscfg.Log(jscfg.LogLevelBasic, "%s - Channel state: OPEN", conn.Name)
+				jslog.Log(jslog.LevelBasic, "%s - Channel state: OPEN", conn.Name)
 			}
 			conn.wasConnected = now
 		}

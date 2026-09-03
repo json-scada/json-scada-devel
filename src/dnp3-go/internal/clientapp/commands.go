@@ -27,8 +27,10 @@ import (
 	"time"
 
 	"dnp3-go/internal/dnp3util"
-	"dnp3-go/internal/jscfg"
-	"dnp3-go/internal/mongoutil"
+
+	"github.com/riclolsen/json-scada/src/go-common/jscommands"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
 	"github.com/dscsystems/go-dnp3/master"
@@ -38,7 +40,7 @@ import (
 )
 
 // CommandExpiry is how old a queued command may be and still be executed.
-const CommandExpiry = 10 * time.Second
+const CommandExpiry = jscommands.DefaultExpiry
 
 // commandsLoop watches commandsQueue for inserts and dispatches each one.
 //
@@ -49,17 +51,15 @@ func (e *Engine) commandsLoop(ctx context.Context) {
 	var resumeToken bson.Raw
 
 	for ctx.Err() == nil {
-		cli, err := mongoutil.Connect(e.cfg)
+		cli, err := jsmongo.Connect(e.cfg)
 		if err != nil {
-			jscfg.Log(jscfg.LogLevelNoLog, "Exception Mongo CMD: %v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception Mongo CMD: %v", err)
 			sleepCtx(ctx, 3*time.Second)
 			continue
 		}
-		coll := cli.Database(e.cfg.MongoDatabaseName).Collection(jscfg.CommandsQueueCollectionName)
+		coll := cli.Database(e.cfg.MongoDatabaseName).Collection(jsmongo.CommandsQueueCollectionName)
 
-		pipeline := mongo.Pipeline{
-			bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "insert"}}}},
-		}
+		pipeline := jscommands.InsertOnlyPipeline()
 		opts := options.ChangeStream()
 		if len(resumeToken) > 0 {
 			opts.SetResumeAfter(resumeToken)
@@ -67,7 +67,7 @@ func (e *Engine) commandsLoop(ctx context.Context) {
 
 		stream, err := coll.Watch(ctx, pipeline, opts)
 		if err != nil {
-			jscfg.Log(jscfg.LogLevelNoLog, "Exception Mongo CMD: %v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception Mongo CMD: %v", err)
 			_ = cli.Disconnect(context.Background())
 			// A resume token can go stale once its oplog entry ages out; drop
 			// it so the next attempt starts fresh rather than failing forever.
@@ -82,7 +82,7 @@ func (e *Engine) commandsLoop(ctx context.Context) {
 				FullDocument bson.M `bson:"fullDocument"`
 			}
 			if err := stream.Decode(&change); err != nil {
-				jscfg.Log(jscfg.LogLevelDetailed, "Mongo CMD: cannot decode change: %v", err)
+				jslog.Log(jslog.LevelDetailed, "Mongo CMD: cannot decode change: %v", err)
 				continue
 			}
 			if change.FullDocument != nil {
@@ -90,7 +90,7 @@ func (e *Engine) commandsLoop(ctx context.Context) {
 			}
 		}
 		if err := stream.Err(); err != nil && ctx.Err() == nil {
-			jscfg.Log(jscfg.LogLevelNoLog, "Exception Mongo CMD: %v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception Mongo CMD: %v", err)
 		}
 		_ = stream.Close(context.Background())
 		_ = cli.Disconnect(context.Background())
@@ -108,7 +108,7 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 		return
 	}
 
-	conn := e.connByNumber(mongoutil.GetInt(cmd, "protocolSourceConnectionNumber", 0))
+	conn := e.connByNumber(jsmongo.GetInt(cmd, "protocolSourceConnectionNumber", 0))
 	session := (*master.Session)(nil)
 	if conn != nil {
 		session = conn.Session()
@@ -124,17 +124,17 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 		cancelCommand(ctx, coll, id, "cmds_disabled")
 		return
 	}
-	if time.Since(time.UnixMilli(mongoutil.GetDateMs(cmd, "timeTag", time.Now().UnixMilli()))) > CommandExpiry {
+	if time.Since(time.UnixMilli(jsmongo.GetDateMs(cmd, "timeTag", time.Now().UnixMilli()))) > CommandExpiry {
 		cancelCommand(ctx, coll, id, "expired")
 		return
 	}
 
-	group := mongoutil.GetInt(cmd, "protocolSourceCommonAddress", 0)
-	variation := mongoutil.GetInt(cmd, "protocolSourceASDU", 0)
-	index := uint16(mongoutil.GetInt(cmd, "protocolSourceObjectAddress", 0))
-	useSBO := mongoutil.GetBool(cmd, "protocolSourceCommandUseSBO", false)
-	value := mongoutil.GetDouble(cmd, "value", 0)
-	duration := mongoutil.GetInt(cmd, "protocolSourceCommandDuration", 0)
+	group := jsmongo.GetInt(cmd, "protocolSourceCommonAddress", 0)
+	variation := jsmongo.GetInt(cmd, "protocolSourceASDU", 0)
+	index := uint16(jsmongo.GetInt(cmd, "protocolSourceObjectAddress", 0))
+	useSBO := jsmongo.GetBool(cmd, "protocolSourceCommandUseSBO", false)
+	value := jsmongo.GetDouble(cmd, "value", 0)
+	duration := jsmongo.GetInt(cmd, "protocolSourceCommandDuration", 0)
 
 	var command master.Command
 	switch group {
@@ -159,7 +159,7 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 	}
 
 	name := conn.Name
-	jscfg.Log(jscfg.LogLevelBasic, "%s - Issuing command %s useSBO=%v", name, command, useSBO)
+	jslog.Log(jslog.LevelBasic, "%s - Issuing command %s useSBO=%v", name, command, useSBO)
 
 	// The request methods block until the outstation answers, so each command
 	// gets its own goroutine and the change stream is never held up.
@@ -178,7 +178,7 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 		}
 
 		ok, description := describeResult(res, err)
-		jscfg.Log(jscfg.LogLevelBasic, "%s - Command result: %s", name, description)
+		jslog.Log(jslog.LevelBasic, "%s - Command result: %s", name, description)
 		ackCommand(context.Background(), e, id, ok, description)
 	}()
 }
@@ -217,11 +217,8 @@ func describeResult(res master.CommandResult, err error) (bool, string) {
 
 // cancelCommand records why a command was not issued.
 func cancelCommand(ctx context.Context, coll *mongo.Collection, id any, reason string) {
-	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	if _, err := coll.UpdateOne(tctx, bson.M{"_id": id},
-		bson.M{"$set": bson.M{"cancelReason": reason}}); err != nil {
-		jscfg.Log(jscfg.LogLevelDetailed, "cancelCommand error: %v", err)
+	if err := jscommands.Cancel(ctx, coll, id, reason); err != nil {
+		jslog.Log(jslog.LevelDetailed, "cancelCommand error: %v", err)
 	}
 }
 
@@ -231,25 +228,16 @@ func cancelCommand(ctx context.Context, coll *mongo.Collection, id any, reason s
 // owns, and a mongo.Client is cheap to create next to the round trip a DNP3
 // command has just taken.
 func ackCommand(ctx context.Context, e *Engine, id any, ok bool, description string) {
-	cli, err := mongoutil.Connect(e.cfg)
+	cli, err := jsmongo.Connect(e.cfg)
 	if err != nil {
-		jscfg.Log(jscfg.LogLevelNoLog, "ackCommand error: %v", err)
+		jslog.Log(jslog.LevelNoLog, "ackCommand error: %v", err)
 		return
 	}
 	defer func() { _ = cli.Disconnect(context.Background()) }()
 
-	tctx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	_, err = cli.Database(e.cfg.MongoDatabaseName).
-		Collection(jscfg.CommandsQueueCollectionName).
-		UpdateOne(tctx, bson.M{"_id": id}, bson.M{"$set": bson.M{
-			"delivered":         true,
-			"ack":               ok,
-			"ackTimeTag":        mongoutil.Now(),
-			"resultDescription": description,
-		}})
-	if err != nil {
-		jscfg.Log(jscfg.LogLevelNoLog, "ackCommand error: %v", err)
+	coll := cli.Database(e.cfg.MongoDatabaseName).
+		Collection(jsmongo.CommandsQueueCollectionName)
+	if err := jscommands.Ack(ctx, coll, id, ok, description); err != nil {
+		jslog.Log(jslog.LevelNoLog, "ackCommand error: %v", err)
 	}
 }
