@@ -89,6 +89,8 @@ Intentional differences. Everything not listed here is meant to behave identical
 | D23 | A CROB carrying no trip/close code is executed, with the operation type deciding on or off. The C++ server reads the value from the trip/close field alone and rejects anything else as a format error — which means a plain `LATCH_ON` never reaches the field, and since the client driver's auto-created command tags use duration 3 (`LATCH 1=ON 0=OFF`), the two halves of the product could not operate a point through each other on their default settings. |
 | D24 | The server answers device attribute reads (group 0) with the driver's identity and the point counts of the connection. opendnp3 has no group 0 support, so the C++ server answers none of it. Read-only, and nothing else in JSON-SCADA is affected. |
 | D25 | Auto-created command destinations get a matching output status destination: a CROB at group 12 index N is mirrored by group 10 index N on the command's supervised twin, and an analog output block at group 41 index N by group 40 index N. The C++ server creates the command alone, leaving a master able to operate a point but not read it back. |
+| D26 | An active connection uses every entry of `ipAddresses` as an alternative address for the same device, trying them in turn until one answers. The C++ drivers use only the first and their documentation says so. |
+
 
 
 D13, D14, D17, D18 and D19 were opened against the C++ server and then **withdrawn**: the defects
@@ -174,7 +176,6 @@ depends on them.
 | Q2 | Timestamps outside 2001-09-09 … 2033-05-18 are zeroed before `sourceDataUpdate` is written. It is a guard against a device reporting a wild time; it will also discard legitimate timestamps from 2033. |
 | Q3 | CROB durations 10, 12, 20 and 22 appear in the driver README's table but were never implemented by the C++ switch. They produce a block that operates nothing. A guess here would operate the wrong coil of a breaker, so they are left as they are and documented instead. |
 | Q4 | `sourceDataUpdate.asduAtSource` always ends in variation 0, and `causeOfTransmissionAtSource` is always 20. |
-| Q5 | Only the first entry of `ipAddresses` is used for an active connection. |
 
 ## Multi-drop
 
@@ -194,6 +195,35 @@ time. Two things follow that are worth knowing:
   its own TCP, TLS or UDP endpoint needs no turn taking; a serial line always does, and so does
   any endpoint carrying more than one connection, because that is what a terminal server fronting
   a real serial line looks like.
+
+## Alternative addresses
+
+For an active connection, `ipAddresses` is a list of ways to reach **one** device — a second NIC,
+a redundant gateway, a standby route — not a list of devices. The driver tries them in order:
+
+- an attempt that fails moves straight to the next address, with no delay, because the whole
+  point of a second address is that failing over should cost one dial rather than a retry
+  interval;
+- the backoff is paid once the entire list has been tried, not once per address, so three dead
+  addresses do not take three backoffs to get through;
+- a connection that succeeds stays where it is and only moves when that address stops answering.
+
+Blank entries are ignored; a list with nothing usable in it is a configuration error.
+
+Failing over across three addresses where only the last answers:
+
+```
+FOCLI - Connection attempt to tcp-client 127.0.0.1:20560 failed: ... actively refused it.
+FOCLI - Connection attempt to tcp-client 127.0.0.1:20561 failed: ... actively refused it.
+FOCLI - Channel state: OPEN
+```
+
+Both refusals and the successful connection land within a millisecond of each other, and
+`numOpenFail` counts each attempt.
+
+This applies to `TCP Active` and `TLS Active`. A passive connection listens on one bind address,
+and for it `ipAddresses` remains the list of clients allowed to connect; UDP and serial each have
+one endpoint.
 
 ## Large outstations
 

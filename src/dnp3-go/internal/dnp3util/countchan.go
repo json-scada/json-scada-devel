@@ -29,6 +29,8 @@ import (
 	"io"
 	"math/rand/v2"
 	"net"
+	"strings"
+	"sync"
 	"sync/atomic"
 	"time"
 
@@ -131,16 +133,50 @@ type CountOptions struct {
 }
 
 type countChannel struct {
-	inner    channel.Channel
+	// inners are the alternative endpoints of one connection, in the order
+	// ipAddresses gives them. Every mode but an active one has exactly one.
+	inners   []channel.Channel
 	opts     CountOptions
 	counters *Counters
 	allowed  map[string]bool
+
+	// idx is the endpoint to try next. It advances on every failed attempt and
+	// stays put on a success, so a connection settles on whichever address is
+	// answering and only moves when that one stops.
+	mu  sync.Mutex
+	idx int
 }
 
-// WrapCounting decorates a channel with the counters, the address filter and
-// the open delay. It returns the wrapper and the counters it feeds.
+// next returns the endpoint to try and advances past it.
+func (c *countChannel) next() (channel.Channel, int) {
+	c.mu.Lock()
+	defer c.mu.Unlock()
+	i := c.idx
+	return c.inners[i], i
+}
+
+// advance moves to the endpoint after a failed attempt.
+func (c *countChannel) advance() {
+	c.mu.Lock()
+	c.idx = (c.idx + 1) % len(c.inners)
+	c.mu.Unlock()
+}
+
+// WrapCounting decorates a single channel. Most modes have exactly one
+// endpoint.
 func WrapCounting(inner channel.Channel, opts CountOptions) (channel.Channel, *Counters) {
-	c := &countChannel{inner: inner, opts: opts, counters: &Counters{}}
+	return WrapCountingAll([]channel.Channel{inner}, opts)
+}
+
+// WrapCountingAll decorates the alternative endpoints of one connection with
+// the counters, the address filter and the open delay.
+//
+// The endpoints are tried in turn: an attempt that fails moves to the next, and
+// the backoff is applied once the whole list has been tried, so a device with a
+// second address fails over in the time one dial takes rather than waiting out
+// a retry delay first. A successful connection stays where it is.
+func WrapCountingAll(inners []channel.Channel, opts CountOptions) (channel.Channel, *Counters) {
+	c := &countChannel{inners: inners, opts: opts, counters: &Counters{}}
 	if len(opts.AllowedRemoteIPs) > 0 {
 		c.allowed = make(map[string]bool, len(opts.AllowedRemoteIPs))
 		for _, a := range opts.AllowedRemoteIPs {
@@ -158,9 +194,12 @@ func WrapCounting(inner channel.Channel, opts CountOptions) (channel.Channel, *C
 }
 
 func (c *countChannel) Connect(ctx context.Context) (io.ReadWriteCloser, error) {
-	attempt := 0
+	// failures counts attempts since the last success, which is what decides
+	// both the endpoint to try and how long to wait once the list is exhausted.
+	failures := 0
 	for {
-		conn, err := c.inner.Connect(ctx)
+		inner, idx := c.next()
+		conn, err := inner.Connect(ctx)
 		if err != nil {
 			// Neither of these is a connection that would not open: a context
 			// error is the driver shutting down or going to standby, and a
@@ -179,18 +218,34 @@ func (c *countChannel) Connect(ctx context.Context) (io.ReadWriteCloser, error) 
 			// The first failure of a run is worth an operator's attention; the
 			// repeats while a device stays down are not.
 			level := jslog.LevelDetailed
-			if attempt == 0 {
+			if failures == 0 {
 				level = jslog.LevelBasic
 			}
-			jslog.Log(level, "%s - Connection attempt failed: %v", c.opts.Name, err)
-
-			if !c.wait(ctx, c.opts.Retry.delay(attempt)) {
-				return nil, ctx.Err()
+			if len(c.inners) > 1 {
+				jslog.Log(level, "%s - Connection attempt to %s failed: %v",
+					c.opts.Name, inner.String(), err)
+			} else {
+				jslog.Log(level, "%s - Connection attempt failed: %v", c.opts.Name, err)
 			}
-			attempt++
+
+			failures++
+			c.advance()
+
+			// Only once every endpoint has been tried is there a reason to
+			// wait: until then the next address is the faster thing to do.
+			if failures%len(c.inners) == 0 {
+				cycles := failures/len(c.inners) - 1
+				if !c.wait(ctx, c.opts.Retry.delay(cycles)) {
+					return nil, ctx.Err()
+				}
+			}
 			continue
 		}
-		attempt = 0
+		if failures > 0 && len(c.inners) > 1 {
+			jslog.Log(jslog.LevelBasic, "%s - Connected to %s", c.opts.Name, inner.String())
+		}
+		failures = 0
+		_ = idx
 
 		if !c.permitted(conn) {
 			c.counters.closes.Add(1)
@@ -247,8 +302,26 @@ func (c *countChannel) permitted(conn io.ReadWriteCloser) bool {
 	return false
 }
 
-func (c *countChannel) Close() error   { return c.inner.Close() }
-func (c *countChannel) String() string { return c.inner.String() }
+func (c *countChannel) Close() error {
+	var firstErr error
+	for _, inner := range c.inners {
+		if err := inner.Close(); err != nil && firstErr == nil {
+			firstErr = err
+		}
+	}
+	return firstErr
+}
+
+func (c *countChannel) String() string {
+	if len(c.inners) == 1 {
+		return c.inners[0].String()
+	}
+	parts := make([]string, 0, len(c.inners))
+	for _, inner := range c.inners {
+		parts = append(parts, inner.String())
+	}
+	return strings.Join(parts, " | ")
+}
 
 type countConn struct {
 	ch     *countChannel

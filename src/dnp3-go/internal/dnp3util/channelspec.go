@@ -195,29 +195,40 @@ func (s ChannelSpec) serialConfig() channel.SerialConfig {
 // the allowed-address filter and the open delay.
 func (s ChannelSpec) BuildChannel(allowedRemoteIPs []string) (channel.Channel, *Counters, error) {
 	var (
-		inner channel.Channel
-		err   error
+		inners []channel.Channel
+		inner  channel.Channel
+		err    error
 	)
 
 	switch s.Mode {
 	case ModeTCPActive:
-		if len(s.IPAddresses) == 0 || strings.TrimSpace(s.IPAddresses[0]) == "" {
-			return nil, nil, fmt.Errorf("invalid list of ipAddresses parameter")
+		remotes, rerr := s.remoteEndpoints()
+		if rerr != nil {
+			return nil, nil, rerr
 		}
-		inner = channel.TCPClient(NormalizeEndpoint(s.IPAddresses[0], ""), channel.NoRetry)
+		for _, addr := range remotes {
+			inners = append(inners, channel.TCPClient(addr, channel.NoRetry))
+		}
 
 	case ModeTCPPassive:
 		inner = channel.TCPServer(NormalizeEndpoint(s.IPAddressLocalBind, "0.0.0.0"))
 
 	case ModeTLSActive:
-		if len(s.IPAddresses) == 0 || strings.TrimSpace(s.IPAddresses[0]) == "" {
-			return nil, nil, fmt.Errorf("invalid list of ipAddresses parameter")
+		remotes, rerr := s.remoteEndpoints()
+		if rerr != nil {
+			return nil, nil, rerr
 		}
 		tlsCfg, terr := s.tlsConfig()
 		if terr != nil {
 			return nil, nil, terr
 		}
-		inner, err = channel.TLSClient(NormalizeEndpoint(s.IPAddresses[0], ""), tlsCfg, channel.NoRetry)
+		for _, addr := range remotes {
+			ch, cerr := channel.TLSClient(addr, tlsCfg, channel.NoRetry)
+			if cerr != nil {
+				return nil, nil, cerr
+			}
+			inners = append(inners, ch)
+		}
 
 	case ModeTLSPassive:
 		tlsCfg, terr := s.tlsConfig()
@@ -250,6 +261,9 @@ func (s ChannelSpec) BuildChannel(allowedRemoteIPs []string) (channel.Channel, *
 	if err != nil {
 		return nil, nil, err
 	}
+	if inners == nil {
+		inners = []channel.Channel{inner}
+	}
 
 	opts := CountOptions{Name: s.Name}
 	if s.IsPassive() {
@@ -264,6 +278,25 @@ func (s ChannelSpec) BuildChannel(allowedRemoteIPs []string) (channel.Channel, *
 	if s.Mode == ModeSerial && s.AsyncOpenDelayMs > 0 {
 		opts.OpenDelay = time.Duration(s.AsyncOpenDelayMs) * time.Millisecond
 	}
-	wrapped, counters := WrapCounting(inner, opts)
+	wrapped, counters := WrapCountingAll(inners, opts)
 	return wrapped, counters, nil
+}
+
+// remoteEndpoints returns every address an active connection may dial.
+//
+// The C++ drivers use only the first and their documentation says as much;
+// here the whole list is an ordered set of alternatives for one device, tried
+// in turn until one answers (deviation D26).
+func (s ChannelSpec) remoteEndpoints() ([]string, error) {
+	out := make([]string, 0, len(s.IPAddresses))
+	for _, a := range s.IPAddresses {
+		if strings.TrimSpace(a) == "" {
+			continue
+		}
+		out = append(out, NormalizeEndpoint(a, ""))
+	}
+	if len(out) == 0 {
+		return nil, fmt.Errorf("invalid list of ipAddresses parameter")
+	}
+	return out, nil
 }

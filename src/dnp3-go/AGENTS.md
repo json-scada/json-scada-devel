@@ -14,11 +14,14 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 ## Local Contracts
 
 - **Language:** Go 1.26, module `dnp3-go`, `cmd/` + `internal/` layout as in `src/iec60870-5`
-- **Library:** `github.com/dscsystems/go-dnp3` v0.4.1 (GPLv3+, pure Go) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-dnp3` v0.4.4 (GPLv3+, pure Go) — **pin the version**,
   the API is pre-1.0 and the SKILL.md in that repo says so explicitly. JSON-SCADA is GPL-3.0, so
   the copyleft is not a problem; note it rather than re-litigating it.
-  - v0.3.0 and v0.4.x added file transfer (group 70) and device attributes (group 0), and are
-    otherwise additive: nothing the drivers use changed signature. Neither feature is used here —
+  - v0.3.0 and v0.4.x added file transfer (group 70), device attributes (group 0) and
+    `multidrop.Registry`, and are otherwise additive: nothing the drivers use changed signature.
+    The Registry shares a bus between callers that do not know about each other; this module has
+    no use for it, because `dnp3util.BuildGroups` owns bus construction and builds each one once.
+    `multidrop.DefaultQueue` is still 16, so `StationQueue` is still needed. Neither feature is used here —
     the C++ drivers do not support them and JSON-SCADA has no schema for either — so they are
     available if a need appears, not a gap. Before the next bump, diff the API of the packages
     this module imports rather than trusting the version number: pre-1.0 minors may break.
@@ -67,6 +70,11 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
   command's own object address**. That address is fixed by the protocol — a CROB at index N
   operates binary output N — so it cannot be reassigned to dodge a clash; report the clash and
   skip instead.
+- **`ipAddresses` on an active connection is a list of ways to reach one device**, not a list of
+  devices. `ChannelSpec.BuildChannel` makes one inner channel per address and `WrapCountingAll`
+  rotates through them: next address on a failure with no delay, backoff only once the whole list
+  has been tried, and stay put on success. The channel-sharing `GroupKey` already keys on the
+  whole list, so two connections share a channel only when their address lists match.
 - **The multi-drop bus needs a large station queue on a socket.** Its default is 16 frames, which
   a large integrity response overruns instantly; a dropped link frame loses the whole application
   fragment and every tag it would have created. `dnp3util.StationQueue` is 4096. Do not lower it.
