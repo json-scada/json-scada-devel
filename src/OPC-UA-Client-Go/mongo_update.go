@@ -27,8 +27,12 @@ import (
 	"context"
 	"encoding/json"
 	"strconv"
-	"sync"
 	"time"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+	"github.com/riclolsen/json-scada/src/go-common/jsrtdata"
 
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
@@ -38,44 +42,24 @@ import (
 
 // dataQueue holds acquired values until the writer flushes them. It stands
 // in for the C# ConcurrentQueue<OPC_Value>.
-var dataQueue struct {
-	mu    sync.Mutex
-	items []OPCValue
-}
+var dataQueue jsrtdata.Queue[OPCValue]
 
 // enqueueValue queues one acquired value. Called from the notification
 // pump, so it must never block.
-func enqueueValue(ov OPCValue) {
-	dataQueue.mu.Lock()
-	dataQueue.items = append(dataQueue.items, ov)
-	dataQueue.mu.Unlock()
-}
+func enqueueValue(ov OPCValue) { dataQueue.Enqueue(ov) }
 
-func queueLen() int {
-	dataQueue.mu.Lock()
-	defer dataQueue.mu.Unlock()
-	return len(dataQueue.items)
-}
+func queueLen() int { return dataQueue.Len() }
 
-func dequeueValue() (OPCValue, bool) {
-	dataQueue.mu.Lock()
-	defer dataQueue.mu.Unlock()
-	if len(dataQueue.items) == 0 {
-		return OPCValue{}, false
-	}
-	ov := dataQueue.items[0]
-	dataQueue.items = dataQueue.items[1:]
-	return ov, true
-}
+func dequeueValue() (OPCValue, bool) { return dataQueue.Dequeue() }
 
 // mongoUpdateLoop drains the acquired-value queue into realtimeData,
 // inserting tags discovered by autoCreateTags along the way.
-func mongoUpdateLoop(ctx context.Context, cfg JSONSCADAConfig, conns []*OPCUAConnection) {
+func mongoUpdateLoop(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConnection) {
 	for ctx.Err() == nil {
-		cli, err := mongoConnect(cfg)
+		cli, _, err := jsmongo.ConnectAndPing(cfg)
 		if err != nil {
-			Log(LogLevelNoLog, "Exception Mongo")
-			Log(LogLevelNoLog, "%v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception Mongo")
+			jslog.Log(jslog.LevelNoLog, "%v", err)
 			time.Sleep(1 * time.Second)
 			continue
 		}
@@ -84,15 +68,15 @@ func mongoUpdateLoop(ctx context.Context, cfg JSONSCADAConfig, conns []*OPCUACon
 		// parity: the C# driver writes with an unacknowledged write
 		// concern, trading durability for throughput on a stream that is
 		// refreshed continuously anyway.
-		collRTD := db.Collection(RealtimeDataCollectionName,
+		collRTD := db.Collection(jsmongo.RealtimeDataCollectionName,
 			options.Collection().SetWriteConcern(writeconcern.Unacknowledged()))
 
-		Log(LogLevelNoLog, "MongoDB Update Thread Started...")
+		jslog.Log(jslog.LevelNoLog, "MongoDB Update Thread Started...")
 
 		err = updateCycle(ctx, collRTD, conns)
 		if err != nil && ctx.Err() == nil {
-			Log(LogLevelNoLog, "Exception Mongo")
-			Log(LogLevelNoLog, "%v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception Mongo")
+			jslog.Log(jslog.LevelNoLog, "%v", err)
 			time.Sleep(1 * time.Second)
 		}
 		_ = cli.Disconnect(context.Background())
@@ -127,25 +111,25 @@ func updateCycle(ctx context.Context, collRTD *mongo.Collection, conns []*OPCUAC
 				break
 			}
 			if time.Since(start) > 750*time.Millisecond {
-				Log(LogLevelBasic, "break ms %d", time.Since(start).Milliseconds())
+				jslog.Log(jslog.LevelBasic, "break ms %d", time.Since(start).Milliseconds())
 				break
 			}
 		}
 
 		if len(writes) > 0 {
 			flushStart := time.Now()
-			Log(LogLevelBasic, "MongoDB - Bulk writing %d, Total enqueued data %d", len(writes), queueLen())
+			jslog.Log(jslog.LevelBasic, "MongoDB - Bulk writing %d, Total enqueued data %d", len(writes), queueLen())
 			_, err := collRTD.BulkWrite(ctx, writes,
 				options.BulkWrite().SetOrdered(false).SetBypassDocumentValidation(true))
 			if err != nil {
-				Log(LogLevelNoLog, "MongoDB - Bulk write error - %v", err)
+				jslog.Log(jslog.LevelNoLog, "MongoDB - Bulk write error - %v", err)
 			} else {
 				ms := time.Since(flushStart).Milliseconds()
 				ups := 0
 				if ms > 0 {
 					ups = int(float64(len(writes)) / (float64(ms) / 1000))
 				}
-				Log(LogLevelBasic, "MongoDB - Bulk written %d documents in %d ms, updates per second: %d",
+				jslog.Log(jslog.LevelBasic, "MongoDB - Bulk written %d documents in %d ms, updates per second: %d",
 					len(writes), ms, ups)
 			}
 		}
@@ -170,49 +154,45 @@ func updateModel(ov OPCValue) mongo.WriteModel {
 	var valBSON any
 	if ov.ValueJSON != "" {
 		if err := json.Unmarshal([]byte(ov.ValueJSON), &valBSON); err != nil {
-			Log(LogLevelBasic, "%s - %v", ov.ConnName, err)
+			jslog.Log(jslog.LevelBasic, "%s - %v", ov.ConnName, err)
 			valBSON = nil
 		}
 	}
 
-	update := bson.M{"$set": bson.M{"sourceDataUpdate": bson.M{
-		"valueBsonAtSource":           valBSON,
-		"valueJsonAtSource":           ov.ValueJSON,
-		"valueAtSource":               ov.Value,
-		"valueStringAtSource":         ov.ValueString,
-		"asduAtSource":                ov.Asdu,
-		"causeOfTransmissionAtSource": strconv.Itoa(ov.Cot),
-		"timeTagAtSource":             srcTime,
-		"timeTagAtSourceOk":           ov.HasSourceTimestamp,
-		"timeTag":                     bson.NewDateTimeFromTime(ov.ServerTimestamp),
-		"notTopicalAtSource":          false,
-		"invalidAtSource":             !ov.Quality,
-		"overflowAtSource":            false,
-		"blockedAtSource":             false,
-		"substitutedAtSource":         false,
-	}}}
+	update := jsrtdata.SourceDataUpdate{
+		ValueAtSource:               ov.Value,
+		ValueStringAtSource:         ov.ValueString,
+		AsduAtSource:                ov.Asdu,
+		CauseOfTransmissionAtSource: strconv.Itoa(ov.Cot),
+		TimeTagAtSource:             srcTime,
+		TimeTagAtSourceOk:           ov.HasSourceTimestamp,
+		TimeTag:                     bson.NewDateTimeFromTime(ov.ServerTimestamp),
+		NotTopicalAtSource:          false,
+		InvalidAtSource:             !ov.Quality,
+		OverflowAtSource:            false,
+		BlockedAtSource:             false,
+		SubstitutedAtSource:         false,
+		Extra: bson.M{
+			"valueBsonAtSource": valBSON,
+			"valueJsonAtSource": ov.ValueJSON,
+		},
+	}.SetDoc()
 
 	// parity: a value too large to store is dropped rather than failing the
-	// whole bulk write. The C# test is the rendered lengths *and* the
-	// encoded size, so a merely long string still gets through.
-	if len(ov.ValueJSON)+len(ov.ValueString) > 1000000 {
-		if raw, err := bson.Marshal(update); err == nil && len(raw) > 16000000 {
-			Log(LogLevelDetailed,
-				"MongoDB - Too big update for %s - %d bytes, will not be written to MongoDB",
-				ov.Address, len(raw))
-			return nil
-		}
+	// whole bulk write. The test is the rendered lengths *and* the encoded
+	// size, so a merely long string still gets through.
+	if over, size := jsrtdata.Oversize(update, len(ov.ValueJSON)+len(ov.ValueString)); over {
+		jslog.Log(jslog.LevelDetailed,
+			"MongoDB - Too big update for %s - %d bytes, will not be written to MongoDB",
+			ov.Address, size)
+		return nil
 	}
 
 	// The origin filter keeps a supervised point from being updated by the
 	// command tag that shares its object address.
-	filter := bson.M{
-		"protocolSourceConnectionNumber": float64(ov.ConnNumber),
-		"protocolSourceObjectAddress":    ov.Address,
-		"origin":                         "supervised",
-	}
+	filter := jsrtdata.SupervisedFilter(float64(ov.ConnNumber), ov.Address)
 
-	Log(LogLevelDebug, "MongoDB - ADD %s %v", ov.Address, ov.Value)
+	jslog.Log(jslog.LevelDebug, "MongoDB - ADD %s %v", ov.Address, ov.Value)
 
 	return mongo.NewUpdateOneModel().SetFilter(filter).SetUpdate(update)
 }
@@ -226,7 +206,7 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*OPC
 	if conn == nil {
 		// parity: an unknown connection number must not fall back to the
 		// first connection, which would create the tag under the wrong one.
-		Log(LogLevelDetailed, "%s - Connection number not found for address %s, skipping tag insert",
+		jslog.Log(jslog.LevelDetailed, "%s - Connection number not found for address %s, skipping tag insert",
 			ov.ConnName, ov.Address)
 		return nil
 	}
@@ -236,9 +216,9 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*OPC
 	}
 
 	tag := tagFromOPCParameters(*ov)
-	Log(LogLevelDetailed, "%s - INSERT NEW TAG: %s - Addr:%s", ov.ConnName, tag, ov.Address)
+	jslog.Log(jslog.LevelDetailed, "%s - INSERT NEW TAG: %s - Addr:%s", ov.ConnName, tag, ov.Address)
 
-	key := nextTagKey(ctx, collRTD, conn, ov.ConnNumber)
+	key := conn.TagKeys.Next(ctx, collRTD, ov.ConnNumber)
 
 	// A value that arrived through a notification carries no browse path;
 	// fill it in from what browsing recorded.
@@ -248,7 +228,7 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*OPC
 	} else {
 		ov.ParentName = ""
 		ov.Path = ""
-		Log(LogLevelDetailed, "%s - NodeId not found in NodeIdsDetails: %s", ov.ConnName, ov.Address)
+		jslog.Log(jslog.LevelDetailed, "%s - NodeId not found in NodeIdsDetails: %s", ov.ConnName, ov.Address)
 	}
 
 	var writes []mongo.WriteModel
@@ -264,7 +244,7 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*OPC
 		writes = append(writes, mongo.NewInsertOneModel().SetDocument(cmdDoc))
 
 		commandOfSupervised = key
-		key = conn.BumpTagKey()
+		key = conn.TagKeys.Next(ctx, collRTD, ov.ConnNumber)
 	}
 
 	ov.CreateCommandForSupervised = false
@@ -275,30 +255,4 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*OPC
 	writes = append(writes, mongo.NewInsertOneModel().SetDocument(doc))
 
 	return writes
-}
-
-// nextTagKey allocates the _id of a new tag inside the range reserved for
-// its connection. The first call looks up the highest key already used.
-func nextTagKey(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConnection, connNumber int) float64 {
-	if conn.TagKeyStarted() {
-		return conn.BumpTagKey()
-	}
-
-	base := float64(connNumber) * AutoKeyMultiplier
-	last := base
-
-	findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-
-	var doc bson.M
-	err := collRTD.FindOne(findCtx,
-		bson.M{"_id": bson.M{"$gt": base, "$lt": float64(connNumber+1) * AutoKeyMultiplier}},
-		options.FindOne().SetSort(bson.M{"_id": -1}),
-	).Decode(&doc)
-	if err == nil {
-		last = mFloat(doc, "_id", base) + 1
-	}
-
-	conn.SetTagKey(last)
-	return last
 }

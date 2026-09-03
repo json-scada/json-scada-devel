@@ -25,6 +25,8 @@ import (
 	"context"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/ua"
 )
@@ -72,7 +74,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 		return
 	}
 
-	Log(LogLevelNoLog, "%s - Create a subscription with publishing interval of %v seconds",
+	jslog.Log(jslog.LevelNoLog, "%s - Create a subscription with publishing interval of %v seconds",
 		conn.Name, intervalSeconds)
 
 	notifyCh := make(chan *opcua.PublishNotificationData, notifyBuffer)
@@ -90,7 +92,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 		if err == nil {
 			break
 		}
-		Log(LogLevelBasic, "%s - Error creating subscription (attempt %d/%d): %v",
+		jslog.Log(jslog.LevelBasic, "%s - Error creating subscription (attempt %d/%d): %v",
 			conn.Name, attempt, subscribeAttempts, err)
 		if attempt < subscribeAttempts && !sleepCtx(ctx, subscribeRetryPause) {
 			return
@@ -99,7 +101,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 	if err != nil {
 		// Loud on purpose: these points will not update at all until the
 		// connection is rebuilt.
-		Log(LogLevelNoLog,
+		jslog.Log(jslog.LevelNoLog,
 			"%s - Error creating subscription: %v - %d monitored items with a %v s publishing interval WILL NOT UPDATE",
 			conn.Name, err, len(items), intervalSeconds)
 		return
@@ -109,7 +111,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 	for _, it := range items {
 		nodeID, err := ua.ParseNodeID(it.NodeID)
 		if err != nil {
-			Log(LogLevelNoLog, "%s - Error adding monitored item: bad node id %q - %v",
+			jslog.Log(jslog.LevelNoLog, "%s - Error adding monitored item: bad node id %q - %v",
 				conn.Name, it.NodeID, err)
 			continue
 		}
@@ -136,7 +138,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 
 		resp, err := sub.Monitor(ctx, ua.TimestampsToReturnBoth, chunk...)
 		if err != nil {
-			Log(LogLevelNoLog, "%s - Error creating monitored items: %v", conn.Name, err)
+			jslog.Log(jslog.LevelNoLog, "%s - Error creating monitored items: %v", conn.Name, err)
 			continue
 		}
 		// A rejected item must not abort the subscription: the C# driver
@@ -144,7 +146,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 		// would otherwise cost every other point.
 		for i, res := range resp.Results {
 			if !statusIsGood(res.StatusCode) {
-				Log(LogLevelBasic, "%s - Monitored item rejected: %s - %s",
+				jslog.Log(jslog.LevelBasic, "%s - Monitored item rejected: %s - %s",
 					conn.Name, chunk[i].ItemToMonitor.NodeID, statusCodeName(res.StatusCode))
 				continue
 			}
@@ -152,7 +154,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 		}
 	}
 
-	Log(LogLevelNoLog, "%s - %d Monitored items", conn.Name, created)
+	jslog.Log(jslog.LevelNoLog, "%s - %d Monitored items", conn.Name, created)
 
 	go notificationPump(ctx, conn, notifyCh)
 }
@@ -168,7 +170,7 @@ func notificationPump(ctx context.Context, conn *OPCUAConnection, notifyCh <-cha
 				return
 			}
 			if n.Error != nil {
-				Log(LogLevelDetailed, "%s - subscription error: %v", conn.Name, n.Error)
+				jslog.Log(jslog.LevelDetailed, "%s - subscription error: %v", conn.Name, n.Error)
 				continue
 			}
 			dcn, isData := n.Value.(*ua.DataChangeNotification)
@@ -192,12 +194,12 @@ func handleNotification(conn *OPCUAConnection, item *ua.MonitoredItemNotificatio
 	it := conn.ItemForHandle(item.ClientHandle)
 	if it == nil {
 		// A handle from a subscription of a previous session.
-		Log(LogLevelDetailed, "%s - notification for unknown client handle %d",
+		jslog.Log(jslog.LevelDetailed, "%s - notification for unknown client handle %d",
 			conn.Name, item.ClientHandle)
 		return
 	}
 	if item.Value == nil || item.Value.Value == nil || item.Value.Value.Value() == nil {
-		Log(LogLevelDetailed, "%s - %s %s NULL VALUE!", conn.Name, it.NodeID, it.DisplayName)
+		jslog.Log(jslog.LevelDetailed, "%s - %s %s NULL VALUE!", conn.Name, it.NodeID, it.DisplayName)
 		return
 	}
 

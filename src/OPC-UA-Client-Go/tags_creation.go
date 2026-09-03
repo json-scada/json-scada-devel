@@ -25,10 +25,11 @@
 package main
 
 import (
-	"math"
+	"maps"
 	"strconv"
 	"strings"
 
+	"github.com/riclolsen/json-scada/src/go-common/jstags"
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
@@ -65,7 +66,8 @@ func newRealtimeDoc(ov OPCValue, id float64, commandOfSupervised float64) bson.M
 	typ := tagTypeFor(ov.Asdu, ov.IsArray)
 	isCommand := ov.CreateCommandForMethod || ov.CreateCommandForSupervised
 
-	doc := bson.M{
+	doc := jstags.BaseDoc()
+	maps.Copy(doc, bson.M{
 		"_id":                              id,
 		"protocolSourceBrowsePath":         ov.Path,
 		"protocolSourceAccessLevel":        strconv.Itoa(int(ov.AccessLevels)),
@@ -97,50 +99,12 @@ func newRealtimeDoc(ov OPCValue, id float64, commandOfSupervised float64) bson.M
 		"valueString":          "",
 		"valueJson":            "",
 
-		"alarmDisabled":        false,
-		"alerted":              false,
-		"alarmed":              false,
-		"alertState":           "",
-		"annotation":           "",
-		"commandBlocked":       false,
 		"commandOfSupervised":  commandOfSupervised,
-		"commissioningRemarks": "",
-		"formula":              0.0,
-		"frozen":               false,
-		"frozenDetectTimeout":  0.0,
-		"hiLimit":              math.MaxFloat64,
-		"hihiLimit":            math.MaxFloat64,
-		"hihihiLimit":          math.MaxFloat64,
-		"historianDeadBand":    0.0,
-		"historianPeriod":      0.0,
-		"hysteresis":           0.0,
 		"invalid":              true,
 		"invalidDetectTimeout": 60000.0,
-		"isEvent":              false,
-		"kconv1":               1.0,
-		"kconv2":               0.0,
-		"location":             nil,
-		"loLimit":              -math.MaxFloat64,
-		"loloLimit":            -math.MaxFloat64,
-		"lololoLimit":          -math.MaxFloat64,
-		"notes":                "",
-		"overflow":             false,
-		"parcels":              nil,
-		"priority":             0.0,
 		"protocolDestinations": bson.A{},
-		"sourceDataUpdate":     nil,
 		"supervisedOfCommand":  0.0,
-		"substituted":          false,
-		"timeTag":              nil,
-		"timeTagAlarm":         nil,
-		"timeTagAtSource":      nil,
-		"timeTagAtSourceOk":    false,
-		"transient":            false,
-		"unit":                 "",
-		"updatesCnt":           0.0,
-		"valueDefault":         0.0,
-		"zeroDeadband":         0.0,
-	}
+	})
 
 	switch {
 	case isCommand:

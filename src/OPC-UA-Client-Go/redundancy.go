@@ -27,134 +27,39 @@ package main
 
 import (
 	"context"
-	"math/rand"
-	"time"
+	"fmt"
 
-	"go.mongodb.org/mongo-driver/v2/bson"
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+	"github.com/riclolsen/json-scada/src/go-common/jsredundancy"
+	"github.com/riclolsen/json-scada/src/go-common/jsstats"
+
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
 
-// countKeepAliveUpdatesLimit is how many 5 s cycles the keep-alive may stay
-// unchanged before this node takes over.
-const countKeepAliveUpdatesLimit = 4
+// redundancy is the arbitrator. Command execution consults it; acquisition
+// does not, which is this driver's deviation D9.
+var redundancy = &jsredundancy.Controller{}
 
-// redundancyLoop arbitrates the active node and publishes per-connection
-// statistics while active.
-func redundancyLoop(ctx context.Context, cfg JSONSCADAConfig, conns []*OPCUAConnection) {
-	for ctx.Err() == nil {
-		cli, err := mongoConnect(cfg)
-		if err != nil {
-			Log(LogLevelNoLog, "Exception Mongo")
-			Log(LogLevelNoLog, "%v", err)
-			time.Sleep(3 * time.Second)
-			continue
-		}
-		db := cli.Database(cfg.MongoDatabaseName)
-		if err := redundancyCycle(ctx, db, cfg, conns); err != nil && ctx.Err() == nil {
-			Log(LogLevelNoLog, "Exception Mongo")
-			Log(LogLevelNoLog, "%v", err)
-			time.Sleep(3 * time.Second)
-		}
-		_ = cli.Disconnect(context.Background())
+// initRedundancy configures the arbitrator. Called from main before any
+// goroutine that consults it starts.
+//
+// parity: no OnActivate/OnDeactivate is supplied, because the active flag
+// gates command execution only. Acquisition and the MongoDB writer run on
+// both the active and the standby node, exactly as in the C# driver — see
+// deviation D9 in README.md.
+func initRedundancy(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConnection) {
+	redundancy.Config = cfg
+	redundancy.DriverName = ProtocolDriverName
+	redundancy.InstanceNumber = instanceNumber
+	redundancy.OnTick = func(db *mongo.Database) {
+		updateConnectionStats(ctx,
+			db.Collection(jsmongo.ProtocolConnectionsCollectionName), cfg, conns)
 	}
-}
-
-func redundancyCycle(ctx context.Context, db *mongo.Database, cfg JSONSCADAConfig, conns []*OPCUAConnection) error {
-	var lastActiveNodeKeepAliveTimeTag time.Time
-	countKeepAliveUpdates := 0
-
-	collInsts := db.Collection(ProtocolDriverInstancesCollectionName)
-	collConns := db.Collection(ProtocolConnectionsCollectionName)
-
-	for {
-		if ctx.Err() != nil {
-			return ctx.Err()
-		}
-		if err := mongoPing(db, 1*time.Second); err != nil {
-			return err
-		}
-
-		findCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-		var doc bson.M
-		err := collInsts.FindOne(findCtx, bson.M{
-			"protocolDriver":               ProtocolDriverName,
-			"protocolDriverInstanceNumber": instanceNumber,
-		}).Decode(&doc)
-		cancel()
-
-		if err != nil {
-			// No instance document: nobody can be active.
-			if active.Load() {
-				Log(LogLevelNoLog, "Redundancy - DEACTIVATING this Node (no instance found)!")
-				countKeepAliveUpdates = 0
-				time.Sleep(time.Duration(1000+rand.Intn(4000)) * time.Millisecond)
-			}
-			active.Store(false)
-		} else {
-			inst := instanceFromDoc(doc)
-			if !nodeAllowed(inst, cfg.NodeName) {
-				Fatal("Node '%s' not found in instances configuration!", cfg.NodeName)
-			}
-
-			if inst.ActiveNodeName == cfg.NodeName {
-				if !active.Load() {
-					Log(LogLevelNoLog, "Redundancy - ACTIVATING this Node!")
-				}
-				active.Store(true)
-				countKeepAliveUpdates = 0
-			} else {
-				if active.Load() {
-					// Wait a random time before yielding, so two nodes
-					// losing sight of each other do not flip together.
-					Log(LogLevelNoLog, "Redundancy - DEACTIVATING this Node (other node active)!")
-					countKeepAliveUpdates = 0
-					time.Sleep(time.Duration(1000+rand.Intn(4000)) * time.Millisecond)
-				}
-				active.Store(false)
-				if lastActiveNodeKeepAliveTimeTag.Equal(inst.ActiveNodeKeepAliveTimeTag) {
-					countKeepAliveUpdates++
-				}
-				lastActiveNodeKeepAliveTimeTag = inst.ActiveNodeKeepAliveTimeTag
-				if countKeepAliveUpdates > countKeepAliveUpdatesLimit {
-					Log(LogLevelNoLog, "Redundancy - ACTIVATING this Node!")
-					active.Store(true)
-				}
-			}
-
-			if active.Load() {
-				Log(LogLevelNoLog,
-					"Redundancy - This node is active. - Notification events: %d - Lost updates: %d",
-					CntNotificEvents.Load(), CntLostDataUpdates.Load())
-
-				updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
-				_, err := collInsts.UpdateOne(updCtx,
-					bson.M{
-						"protocolDriver":               ProtocolDriverName,
-						"protocolDriverInstanceNumber": instanceNumber,
-					},
-					bson.M{"$set": bson.M{
-						"activeNodeName":             cfg.NodeName,
-						"activeNodeKeepAliveTimeTag": bson.NewDateTimeFromTime(time.Now()),
-					}})
-				if err != nil {
-					Log(LogLevelDetailed, "Redundancy - %v", err)
-				}
-				updateConnectionStats(updCtx, collConns, cfg, conns)
-				cancelUpd()
-			} else {
-				if inst.ActiveNodeName != "" {
-					Log(LogLevelNoLog, "Redundancy - This node is INACTIVE! Node '%s' is active, wait...", inst.ActiveNodeName)
-				} else {
-					Log(LogLevelNoLog, "Redundancy - This node is INACTIVE! No node is active, wait...")
-				}
-			}
-		}
-
-		select {
-		case <-ctx.Done():
-			return ctx.Err()
-		case <-time.After(5 * time.Second):
-		}
+	redundancy.StatusSuffix = func() string {
+		return fmt.Sprintf(" - Notification events: %d - Lost updates: %d",
+			CntNotificEvents.Load(), CntLostDataUpdates.Load())
 	}
 }
 
@@ -163,18 +68,17 @@ func redundancyCycle(ctx context.Context, db *mongo.Database, cfg JSONSCADAConfi
 // parity: the C# driver writes only nodeName and timeTag here, for every
 // connection whose client object exists. Do not add counters without
 // changing the C# driver too.
-func updateConnectionStats(ctx context.Context, collConns *mongo.Collection, cfg JSONSCADAConfig, conns []*OPCUAConnection) {
+func updateConnectionStats(ctx context.Context, collConns *mongo.Collection, cfg jsconfig.Config, conns []*OPCUAConnection) {
+	entries := make([]jsstats.Entry, 0, len(conns))
 	for _, conn := range conns {
-		_, err := collConns.UpdateOne(ctx,
-			bson.M{"protocolConnectionNumber": conn.ProtocolConnectionNumber},
-			bson.M{"$set": bson.M{
-				"stats": bson.M{
-					"nodeName": cfg.NodeName,
-					"timeTag":  bson.NewDateTimeFromTime(time.Now()),
-				},
-			}})
-		if err != nil {
-			Log(LogLevelDetailed, "Redundancy - stats update: %v", err)
-		}
+		entries = append(entries, jsstats.Entry{
+			ConnectionNumber: conn.ProtocolConnectionNumber,
+		})
 	}
+	jsstats.Writer{
+		NodeName: cfg.NodeName,
+		OnError: func(_ jsstats.Entry, err error) {
+			jslog.Log(jslog.LevelDetailed, "Redundancy - stats update: %v", err)
+		},
+	}.Write(ctx, collConns, entries)
 }

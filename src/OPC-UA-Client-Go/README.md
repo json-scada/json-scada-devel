@@ -108,17 +108,19 @@ Behaviour is matched to `src/OPC-UA-Client` on purpose, including its quirks —
 | **D12** | `giInterval` and `protocolSourceDiscardOldest` are read from the documents but never used. | Parity — the C# driver ignores them too. Listed so nobody "fixes" it here alone. |
 | **D13** | Numbers rendered into `valueStringAtSource` use invariant formatting (`42.5`). The C# driver uses the machine's current culture, so on a comma-decimal locale it writes `42,5`. | The invariant form is what the rest of json-scada parses. `valueAtSource` is a BSON double in both, so nothing computed is affected. |
 | **D14** | `valueJsonAtSource` is written without escaping `<`, `>` and `&` into their unicode forms. | Keeps XML elements and text readable in the database and the UI. Both forms are valid JSON and decode identically. |
-| **D15** | References returned by `BrowseNext` are merged back onto the node they continue. The C# driver collects them into a list it never reads, so on a node with more than 1000 references everything past the first 1000 is silently dropped and never tagged. | A data-loss bug rather than behaviour worth keeping. **Consequence:** on such a server this driver discovers more nodes than the C# one, so a node-for-node comparison will differ there. Namespaces with fewer than 1000 references per node are unaffected. |
+| **D15** | ~~References returned by `BrowseNext` are merged back onto the node they continue.~~ **Resolved — no longer a deviation.** The C# driver used to collect them into a list it never read, so on a node with more than 1000 references everything past the first 1000 was silently discarded and never tagged. That has now been fixed in `src/OPC-UA-Client` (`MergeContinuedReferences` in `AsduReceiveHandler.cs`), so both drivers merge the continued references and agree. | It was a data-loss bug rather than behaviour worth keeping. **Measured before the fix:** on the json-scada OPC-UA server at `150.230.171.172:4840` the `JsonScadaServer` object publishes 1994 references; the C# driver kept 1000 and discarded 994, losing 43% of the address space. After the fix both drivers browse 2961 references and produce identical tag sets. |
 
 | **D16** | Browse paths keep every character of a browse name. The C# driver builds `group2`, `protocolSourceBrowsePath` and `description` with `Path.GetDirectoryName`, a filesystem API, which collapses `//` — so a browse name holding a namespace URI becomes `Server/Namespaces/http:/opcfoundation.org/UA` there and `http://opcfoundation.org/UA` here. | The C# form is a corrupted path, and being a filesystem API its behaviour also varies by operating system. Measured against Sterfive's public demo server this affects 83 of 4157 common tags. |
 | **D17** | Transport limits are left at gopcua's defaults, which advertise "no client limit" in the UACP handshake. The C# driver sets `TransportQuotas.MaxMessageSize` to 4 MB, and this driver used to copy that number. | The number is not portable. Advertising a 4 MB cap makes a server whose response exceeds it answer `BadTCPMessageTooLarge` and drop the connection. On Sterfive's demo server this happens while reading the values of a few hundred nodes with large arrays: the C# driver loses one whole batch of 500 tags to it (logged only at level 2, so invisible by default), and this driver used to lose the entire session. |
 | **D18** | Discovery that does not finish is not published. When the session is lost partway through the autotag read pass, the driver reloads the tags from `realtimeData`, rebuilds the connection and browses again. The C# driver skips the failed batch of 500 nodes and carries on, leaving those points without tags until it is restarted. | A partial namespace is worse than a slower start: the missing points never appear, and nothing says so at the default log level. |
 
+| **D19** | The value read adapts: it starts at the C# batch size of 500 and halves, down to a floor of 10, whenever a discovery attempt dies inside a value read. Repeated discovery failures also back off from 5 s up to 5 minutes. | Some servers close the connection instead of answering when a value-read response would be too large, and the C# driver's fixed 500 would then fail identically forever. Backing off also matters because a failed attempt leaves a session behind on the server — enough retries and the server stops accepting new sessions altogether. |
+
 ## Verified against real servers
 
 Both drivers were run **concurrently**, each into its own database, with identical instance and
 connection documents and `autoCreateTags: true`, then the resulting `realtimeData` collections
-were compared.
+were compared. Four servers, four different stacks.
 
 ### Prosys OPC UA Simulation Server
 
@@ -151,7 +153,61 @@ session does and therefore differ by construction:
 The 555 extra tags are ones the C# driver loses to D17 — a silently dropped batch of 500 — plus
 nodes it excludes on attribute-read errors.
 
-### Observed on both servers
+### OPC Foundation UA Sample Server
+
+`opc.tcp://opcua.demo-this.com:51210/UA/SampleServer`. This server closes the connection
+(`unexpected EOF`) rather than answering a large value read, which is what D19 exists for. The
+driver converged on its own — 500, 250, 125, 62, 31, and then succeeded at **15 values per
+read** — and completed discovery:
+
+| | |
+|---|---|
+| References browsed | 1735 |
+| Supervised tags | 1079, every one carrying data |
+| Command tags | 545 |
+| Distinct OPC UA types acquired | **44**, including every array form |
+| Tags with bad quality | 2 |
+
+That is the richest type coverage of the three servers: `boolean[]`, `bytestring[]`,
+`datetime[]`, `double[]`, `expandednodeid[]`, `extensionobject[]`, `guid[]`, `int16[]` and the
+rest all round-trip through the conversion ladder.
+
+**No comparison against the C# driver was possible here.** The server is session-constrained and
+answers `BadServerTooBusy` (`0x80EE0000`); across roughly 15 minutes and 94 attempts the C#
+driver never obtained a session and produced no tags. This is not a defect in either driver —
+checked at the same moment, both clients were refused identically. Worth noting that a failed
+discovery attempt leaves a session behind on the server (the connection is already dead, so it
+cannot be closed politely), which is the other reason D19 backs off.
+
+### A json-scada OPC-UA server (`opc.tcp://150.230.171.172:4840/`)
+
+The comparison that found the C# `BrowseNext` bug, and the one that confirms it is fixed. Both
+drivers ran concurrently; the per-session and per-subscription diagnostics subtrees are excluded
+because they exist only while a session or subscription does.
+
+**Before the C# fix:**
+
+| | |
+|---|---|
+| Stable supervised tags | C# **1309**, Go **2303** |
+| Tags only the C# driver created | 0 |
+| Tags only this driver created | **994**, every one under `JsonScadaServer` |
+
+Measured directly rather than inferred: the `JsonScadaServer` object carries **1994** references;
+one Browse returns the first **1000** plus a continuation point, and the C# driver discarded the
+continued results — exactly **994**, 43% of the address space, including most of the json-scada
+tags the server exists to publish.
+
+**After the C# fix** (`MergeContinuedReferences`), both drivers browse the same **2961**
+references and create the same **2810** monitored items:
+
+| | |
+|---|---|
+| Stable supervised tags | C# **2369**, Go **2369** |
+| Tags only one driver created | **0 on either side** |
+| Field differences over the 2369 common tags | 8, all of them D16 |
+
+### Observed on both servers### Observed on both servers
 
 * `causeOfTransmissionAtSource` is more often `3` here and more often `20` in the C# driver: this
   driver receives the subscription's initial-value notification for every monitored item, while

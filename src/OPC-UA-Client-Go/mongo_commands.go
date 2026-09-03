@@ -30,6 +30,11 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jscommands"
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/id"
 	"github.com/gopcua/opcua/ua"
@@ -39,27 +44,27 @@ import (
 )
 
 // commandExpiry is how old a queued command may be before it is refused.
-const commandExpiry = 10 * time.Second
+const commandExpiry = jscommands.DefaultExpiry
 
 // commandTimeout is the TimeoutHint the C# driver puts on the write.
 const commandTimeout = 10 * time.Second
 
 // commandsLoop watches commandsQueue for inserted commands.
-func commandsLoop(ctx context.Context, cfg JSONSCADAConfig, conns []*OPCUAConnection) {
+func commandsLoop(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConnection) {
 	for ctx.Err() == nil {
-		cli, err := mongoConnect(cfg)
+		cli, _, err := jsmongo.ConnectAndPing(cfg)
 		if err != nil {
-			Log(LogLevelNoLog, "Exception MongoCmd")
-			Log(LogLevelNoLog, "%v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception MongoCmd")
+			jslog.Log(jslog.LevelNoLog, "%v", err)
 			time.Sleep(3 * time.Second)
 			continue
 		}
 		db := cli.Database(cfg.MongoDatabaseName)
-		collCmds := db.Collection(CommandsQueueCollectionName)
+		collCmds := db.Collection(jsmongo.CommandsQueueCollectionName)
 
 		if err := watchCommands(ctx, db, collCmds, conns); err != nil && ctx.Err() == nil {
-			Log(LogLevelNoLog, "Exception MongoCmd")
-			Log(LogLevelNoLog, "%v", err)
+			jslog.Log(jslog.LevelNoLog, "Exception MongoCmd")
+			jslog.Log(jslog.LevelNoLog, "%v", err)
 			time.Sleep(3 * time.Second)
 		}
 		_ = cli.Disconnect(context.Background())
@@ -67,29 +72,29 @@ func commandsLoop(ctx context.Context, cfg JSONSCADAConfig, conns []*OPCUAConnec
 }
 
 func watchCommands(ctx context.Context, db *mongo.Database, collCmds *mongo.Collection, conns []*OPCUAConnection) error {
-	if err := mongoPing(db, 1*time.Second); err != nil {
+	if err := jsmongo.Ping(db, 1*time.Second); err != nil {
 		return err
 	}
 
-	pipeline := mongo.Pipeline{bson.D{{Key: "$match", Value: bson.D{{Key: "operationType", Value: "insert"}}}}}
+	pipeline := jscommands.InsertOnlyPipeline()
 	cs, err := collCmds.Watch(ctx, pipeline, options.ChangeStream().SetFullDocument(options.UpdateLookup))
 	if err != nil {
 		return err
 	}
 	defer cs.Close(context.Background())
 
-	Log(LogLevelNoLog, "MongoDB CMD CS - Start listening for commands via changestream...")
+	jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - Start listening for commands via changestream...")
 
 	for cs.Next(ctx) {
 		var ev struct {
 			FullDocument bson.M `bson:"fullDocument"`
 		}
 		if err := cs.Decode(&ev); err != nil {
-			Log(LogLevelDetailed, "MongoDB CMD CS - decode: %v", err)
+			jslog.Log(jslog.LevelDetailed, "MongoDB CMD CS - decode: %v", err)
 			continue
 		}
 		// parity: commands are executed by the active node only.
-		if !active.Load() {
+		if !redundancy.Active() {
 			continue
 		}
 		handleCommand(ctx, collCmds, conns, ev.FullDocument)
@@ -105,8 +110,8 @@ func handleCommand(ctx context.Context, collCmds *mongo.Collection, conns []*OPC
 	if doc == nil {
 		return
 	}
-	connNumber := mInt(doc, "protocolSourceConnectionNumber", 0)
-	Log(LogLevelDetailed, "MongoDB CMD CS - Looking for connection %d...", connNumber)
+	connNumber := jsmongo.GetInt(doc, "protocolSourceConnectionNumber", 0)
+	jslog.Log(jslog.LevelDetailed, "MongoDB CMD CS - Looking for connection %d...", connNumber)
 
 	conn := connByNumber(conns, connNumber)
 	if conn == nil {
@@ -114,15 +119,15 @@ func handleCommand(ctx context.Context, collCmds *mongo.Collection, conns []*OPC
 	}
 
 	docID := doc["_id"]
-	address := mString(doc, "protocolSourceObjectAddress", "")
-	asdu := mString(doc, "protocolSourceASDU", "")
-	value := mFloat(doc, "value", 0)
-	valueString := mString(doc, "valueString", "")
+	address := jsmongo.GetString(doc, "protocolSourceObjectAddress", "")
+	asdu := jsmongo.GetString(doc, "protocolSourceASDU", "")
+	value := jsmongo.GetDouble(doc, "value", 0)
+	valueString := jsmongo.GetString(doc, "valueString", "")
 
 	// Expired: the operator's intent is stale, so refuse rather than act.
-	age := time.Since(mTime(doc, "timeTag"))
+	age := time.Since(jsmongo.GetTime(doc, "timeTag"))
 	if age > commandExpiry {
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Address %s value %v Command Timeout Expired, %v Seconds old",
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Address %s value %v Command Timeout Expired, %v Seconds old",
 			conn.Name, address, value, age.Seconds())
 		cancelCommand(ctx, collCmds, docID, "expired")
 		return
@@ -136,7 +141,7 @@ func handleCommand(ctx context.Context, collCmds *mongo.Collection, conns []*OPC
 			reason = "commands disabled"
 			what = " Commands Disabled"
 		}
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s Address %s value %v%s", conn.Name, address, value, what)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s Address %s value %v%s", conn.Name, address, value, what)
 		cancelCommand(ctx, collCmds, docID, reason)
 		return
 	}
@@ -196,14 +201,14 @@ func callMethod(ctx context.Context, collCmds *mongo.Collection, conn *OPCUAConn
 			}
 			resultDescription = "OK: " + strings.Join(outs, ",")
 		}
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Method called: %s - %s", conn.Name, address, resultDescription)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Method called: %s - %s", conn.Name, address, resultDescription)
 		return nil
 	}()
 
 	if err != nil {
 		ok = false
 		resultDescription = err.Error()
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Method call error: %v", conn.Name, err)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Method call error: %v", conn.Name, err)
 	}
 
 	ackCommand(ctx, collCmds, docID, ok, resultDescription)
@@ -281,30 +286,30 @@ func methodArguments(valueString string) ([]*ua.Variant, error) {
 func writeValue(ctx context.Context, collCmds *mongo.Collection, conn *OPCUAConnection, cli *opcua.Client, docID any, address, asdu string, value float64, valueString string) {
 	nodeID, err := ua.ParseNodeID(address)
 	if err != nil {
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Type conversion error! %v", conn.Name, err)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Type conversion error! %v", conn.Name, err)
 		cancelCommand(ctx, collCmds, docID, "type conversion error")
 		return
 	}
 
 	variant, reason, err := commandVariant(asdu, value, valueString)
 	if reason != "" {
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - %s", conn.Name, reason)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - %s", conn.Name, reason)
 		cancelCommand(ctx, collCmds, docID, reason)
 		return
 	}
 	if err != nil {
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Type conversion error! %v", conn.Name, err)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Type conversion error! %v", conn.Name, err)
 		cancelCommand(ctx, collCmds, docID, "type conversion error")
 		return
 	}
 	// No branch matched the ASDU: refuse rather than write a null value.
 	if variant == nil {
-		Log(LogLevelNoLog, "MongoDB CMD CS - %s - Unsupported command ASDU '%s', ignoring.", conn.Name, asdu)
+		jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Unsupported command ASDU '%s', ignoring.", conn.Name, asdu)
 		cancelCommand(ctx, collCmds, docID, "unsupported command type")
 		return
 	}
 
-	Log(LogLevelNoLog, "MongoDB CMD CS - %s - Writing node...", conn.Name)
+	jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Writing node...", conn.Name)
 
 	writeCtx, cancel := context.WithTimeout(ctx, commandTimeout)
 	defer cancel()
@@ -330,7 +335,7 @@ func writeValue(ctx context.Context, collCmds *mongo.Collection, conn *OPCUAConn
 		ok = statusIsGood(resp.Results[0])
 	}
 
-	Log(LogLevelNoLog, "MongoDB CMD CS - %s - Address: %s value: %v valueString: %s - Command delivered - %s",
+	jslog.Log(jslog.LevelNoLog, "MongoDB CMD CS - %s - Address: %s value: %v valueString: %s - Command delivered - %s",
 		conn.Name, address, value, valueString, resultDescription)
 
 	ackCommand(ctx, collCmds, docID, ok, resultDescription)
@@ -531,27 +536,14 @@ func arrayVariant(asdu, valueString string) (*ua.Variant, string, error) {
 
 // cancelCommand marks a command refused before it reached the server.
 func cancelCommand(ctx context.Context, collCmds *mongo.Collection, docID any, reason string) {
-	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	_, err := collCmds.UpdateOne(updCtx, bson.M{"_id": docID},
-		bson.M{"$set": bson.M{"cancelReason": reason}})
-	if err != nil {
-		Log(LogLevelDetailed, "MongoDB CMD CS - cancel update: %v", err)
+	if err := jscommands.Cancel(ctx, collCmds, docID, reason); err != nil {
+		jslog.Log(jslog.LevelDetailed, "MongoDB CMD CS - cancel update: %v", err)
 	}
 }
 
 // ackCommand records the outcome of a command that reached the server.
 func ackCommand(ctx context.Context, collCmds *mongo.Collection, docID any, ok bool, resultDescription string) {
-	updCtx, cancel := context.WithTimeout(ctx, 10*time.Second)
-	defer cancel()
-	_, err := collCmds.UpdateOne(updCtx, bson.M{"_id": docID},
-		bson.M{"$set": bson.M{
-			"delivered":         true,
-			"ack":               ok,
-			"ackTimeTag":        bson.NewDateTimeFromTime(time.Now()),
-			"resultDescription": resultDescription,
-		}})
-	if err != nil {
-		Log(LogLevelDetailed, "MongoDB CMD CS - ack update: %v", err)
+	if err := jscommands.Ack(ctx, collCmds, docID, ok, resultDescription); err != nil {
+		jslog.Log(jslog.LevelDetailed, "MongoDB CMD CS - ack update: %v", err)
 	}
 }

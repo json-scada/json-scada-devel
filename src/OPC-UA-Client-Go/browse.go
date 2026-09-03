@@ -27,6 +27,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/id"
 	"github.com/gopcua/opcua/ua"
@@ -72,7 +74,7 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 	duplicates := 0
 
 	for searchDepth := 0; len(pending) > 0 && searchDepth < kMaxSearchDepth; searchDepth++ {
-		Log(LogLevelDetailed, "%s - %d: Browse %d nodes after %dms",
+		jslog.Log(jslog.LevelDetailed, "%s - %d: Browse %d nodes after %dms",
 			conn.Name, searchDepth+1, len(pending), time.Since(began).Milliseconds())
 
 		var results []*ua.BrowseResult
@@ -102,11 +104,11 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 					if maxNodesPerBrowse < 1 {
 						return nil, err
 					}
-					Log(LogLevelDetailed, "%s - Browse too large, retrying with %d nodes per browse",
+					jslog.Log(jslog.LevelDetailed, "%s - Browse too large, retrying with %d nodes per browse",
 						conn.Name, maxNodesPerBrowse)
 					continue
 				}
-				Log(LogLevelNoLog, "%s - Browse error: %v", conn.Name, err)
+				jslog.Log(jslog.LevelNoLog, "%s - Browse error: %v", conn.Name, err)
 				return nil, err
 			}
 
@@ -132,19 +134,20 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 
 		// Drain the continuation points of this level.
 		//
-		// deviation D15: the C# driver collects these results into a list it
-		// never reads, so references past the first kMaxReferencesPerNode of
-		// a node are silently dropped. They are merged into the node's
-		// reference list here instead.
+		// The continued references are merged into the node's own reference
+		// list. The C# driver used to collect them into a list it never read,
+		// dropping every reference past the first kMaxReferencesPerNode; that
+		// was fixed in src/OPC-UA-Client (MergeContinuedReferences), so the
+		// two drivers now agree. See D15 in README.md.
 		cps := continuationPoints(results)
 		for len(cps) > 0 {
-			Log(LogLevelDetailed, "%s - BrowseNext %d continuation points.", conn.Name, len(cps))
+			jslog.Log(jslog.LevelDetailed, "%s - BrowseNext %d continuation points.", conn.Name, len(cps))
 			nextResp, err := cli.BrowseNext(ctx, &ua.BrowseNextRequest{
 				ContinuationPoints:        cps,
 				ReleaseContinuationPoints: false,
 			})
 			if err != nil {
-				Log(LogLevelBasic, "%s - BrowseNext error: %v", conn.Name, err)
+				jslog.Log(jslog.LevelBasic, "%s - BrowseNext error: %v", conn.Name, err)
 				break
 			}
 			mergeContinued(results, nextResp.Results)
@@ -193,15 +196,15 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 	}
 
 	if duplicates > 0 {
-		Log(LogLevelDetailed, "%s - Browse Result %d duplicate nodes were ignored.", conn.Name, duplicates)
+		jslog.Log(jslog.LevelDetailed, "%s - Browse Result %d duplicate nodes were ignored.", conn.Name, duplicates)
 	}
-	Log(LogLevelNoLog, "%s - BrowseFullAddressSpace found %d references on server in %dms.",
+	jslog.Log(jslog.LevelNoLog, "%s - BrowseFullAddressSpace found %d references on server in %dms.",
 		conn.Name, len(out.Refs), time.Since(began).Milliseconds())
 
-	if LogLevel >= LogLevelDebug {
+	if jslog.Level() >= jslog.LevelDebug {
 		for _, key := range out.Order {
 			e := out.Refs[key]
-			Log(LogLevelDebug, "NodeId %s %v %s Path: %s",
+			jslog.Log(jslog.LevelDebug, "NodeId %s %v %s Path: %s",
 				key, e.Ref.NodeClass, e.Ref.BrowseName.Name, e.Path)
 		}
 	}

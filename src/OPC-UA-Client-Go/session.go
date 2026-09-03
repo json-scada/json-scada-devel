@@ -23,9 +23,13 @@ package main
 
 import (
 	"context"
+	"errors"
 	"path/filepath"
 	"strings"
 	"time"
+
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
 
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/id"
@@ -48,10 +52,27 @@ const (
 	// deviation D11.
 	reconnectGiveUpPeriod = 60 * time.Second
 
+	// maxDiscoveryBackoff caps the wait between repeated failed attempts to
+	// discover a namespace.
+	maxDiscoveryBackoff = 5 * time.Minute
+
 	// sessionTimeout matches the value the C# driver passes to
 	// Session.Create.
 	sessionTimeout = 60 * time.Second
 )
+
+// discoveryBackoff spaces out repeated discovery failures, from retryPeriod
+// up to maxDiscoveryBackoff.
+func discoveryBackoff(failures int) time.Duration {
+	if failures < 1 {
+		failures = 1
+	}
+	wait := retryPeriod
+	for i := 1; i < failures && wait < maxDiscoveryBackoff; i++ {
+		wait *= 2
+	}
+	return min(wait, maxDiscoveryBackoff)
+}
 
 // certDir is where generated certificates and the server trust list live.
 var certDir = filepath.Join("..", "conf", "opcua")
@@ -64,14 +85,15 @@ var certDir = filepath.Join("..", "conf", "opcua")
 // watchdog in Program.cs that restarted a failed connection thread. Doing
 // it in one goroutine makes it impossible to run two clients for the same
 // connection, which is the race the C# watchdog comments warn about.
-func connectionLoop(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnection) {
+func connectionLoop(ctx context.Context, cfg jsconfig.Config, conn *OPCUAConnection) {
 	appCfg := readUAConfigXML(conn.ConfigFileName)
 	attempt := 0
+	discoveryFailures := 0
 
 	for ctx.Err() == nil {
 		cli, err := connectOnce(ctx, conn, appCfg, attempt)
 		if err != nil {
-			Log(LogLevelNoLog, "%s - FATAL: error creating session! %v", conn.Name, err)
+			jslog.Log(jslog.LevelNoLog, "%s - FATAL: error creating session! %v", conn.Name, err)
 			attempt++ // advance to the next configured endpoint URL
 			if !sleepCtx(ctx, retryPeriod) {
 				return
@@ -79,7 +101,7 @@ func connectionLoop(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnect
 			continue
 		}
 
-		Log(LogLevelNoLog, "%s - Session created successfully.", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Session created successfully.", conn.Name)
 		conn.setClient(cli)
 
 		// Browsing must precede the subscriptions: it appends the
@@ -94,15 +116,30 @@ func connectionLoop(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnect
 			browsed, err := browseFullAddressSpace(ctx, cli, conn,
 				ua.NewNumericNodeID(0, id.ObjectsFolder))
 			if err != nil {
-				Log(LogLevelNoLog, "%s - Error browsing the namespace: %v", conn.Name, err)
+				jslog.Log(jslog.LevelNoLog, "%s - Error browsing the namespace: %v", conn.Name, err)
 				discovered = false
 			} else if err := autotagPass(ctx, cli, conn, browsed); err != nil {
-				Log(LogLevelNoLog, "%s - Tag discovery incomplete: %v", conn.Name, err)
+				jslog.Log(jslog.LevelNoLog, "%s - Tag discovery incomplete: %v", conn.Name, err)
 				discovered = false
+
+				// A server that drops the connection rather than answering
+				// an oversized value read would fail the same way forever.
+				// Ask for fewer values at a time on the next attempt.
+				if errors.Is(err, errValueReadTooLarge) {
+					if n, shrank := conn.ShrinkValueReadChunk(); shrank {
+						jslog.Log(jslog.LevelNoLog,
+							"%s - Reading fewer values at a time from now on: %d", conn.Name, n)
+					} else {
+						jslog.Log(jslog.LevelNoLog,
+							"%s - Already reading only %d values at a time and the server still "+
+								"drops the connection; the namespace cannot be discovered.", conn.Name, n)
+					}
+				}
 			}
 		}
 
 		if !discovered {
+			discoveryFailures++
 			conn.setClient(nil)
 			closeCtx, cancelDisc := context.WithTimeout(context.Background(), 5*time.Second)
 			_ = cli.Close(closeCtx)
@@ -114,19 +151,26 @@ func connectionLoop(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnect
 			// so the next attempt starts from the same state a fresh
 			// process would.
 			if err := reloadConnectionTags(ctx, cfg, conn); err != nil {
-				Log(LogLevelNoLog, "%s - Error reloading tags before retry: %v", conn.Name, err)
+				jslog.Log(jslog.LevelNoLog, "%s - Error reloading tags before retry: %v", conn.Name, err)
 			}
-			Log(LogLevelNoLog, "%s - Restarting the connection to discover the namespace again...", conn.Name)
+			// Back off: a discovery that keeps failing must not hammer the
+			// server. Each failed attempt leaves a session behind when the
+			// connection died before it could be closed, and some servers
+			// then refuse new ones entirely.
+			wait := discoveryBackoff(discoveryFailures)
+			jslog.Log(jslog.LevelNoLog,
+				"%s - Restarting the connection to discover the namespace again in %v...", conn.Name, wait)
 			attempt++
-			if !sleepCtx(ctx, retryPeriod) {
+			if !sleepCtx(ctx, wait) {
 				return
 			}
 			continue
 		}
 
+		discoveryFailures = 0
 		setupSubscriptions(ctx, cli, conn)
 
-		Log(LogLevelNoLog, "%s - Running...", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Running...", conn.Name)
 
 		reason := watchClient(ctx, conn, cli)
 		conn.setClient(nil)
@@ -137,7 +181,7 @@ func connectionLoop(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnect
 		if ctx.Err() != nil {
 			return
 		}
-		Log(LogLevelNoLog, "%s - Connection lost (%s), reconnecting...", conn.Name, reason)
+		jslog.Log(jslog.LevelNoLog, "%s - Connection lost (%s), reconnecting...", conn.Name, reason)
 		attempt++
 		if !sleepCtx(ctx, retryPeriod) {
 			return
@@ -162,7 +206,7 @@ func connectOnce(ctx context.Context, conn *OPCUAConnection, appCfg uaAppConfig,
 		return nil, err
 	}
 
-	Log(LogLevelNoLog, "%s - Create a session with OPC UA server.", conn.Name)
+	jslog.Log(jslog.LevelNoLog, "%s - Create a session with OPC UA server.", conn.Name)
 	cli, err := opcua.NewClient(ep.EndpointURL, opts...)
 	if err != nil {
 		return nil, err
@@ -194,9 +238,9 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 	secMode := conn.SecurityMode
 	secPolicy := conn.SecurityPolicy
 
-	Log(LogLevelNoLog, "%s - Discovering endpoints from server...", conn.Name)
+	jslog.Log(jslog.LevelNoLog, "%s - Discovering endpoints from server...", conn.Name)
 	if !conn.UseSecurity {
-		Log(LogLevelNoLog, "%s - Warning: Security is disabled, will attempt to use unsecure endpoint.", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Warning: Security is disabled, will attempt to use unsecure endpoint.", conn.Name)
 		secMode = "None"
 		secPolicy = "None"
 	}
@@ -210,14 +254,14 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 	eps, err := opcua.GetEndpoints(discCtx, endpointURL)
 	cancel()
 	if err != nil {
-		Log(LogLevelNoLog, "%s - Warning: Could not discover endpoints: %v", conn.Name, err)
+		jslog.Log(jslog.LevelNoLog, "%s - Warning: Could not discover endpoints: %v", conn.Name, err)
 	} else if len(eps) > 0 {
-		Log(LogLevelNoLog, "%s - Found %d endpoints from server.", conn.Name, len(eps))
+		jslog.Log(jslog.LevelNoLog, "%s - Found %d endpoints from server.", conn.Name, len(eps))
 
 		for _, ep := range eps {
 			if ep.SecurityPolicyURI == wantPolicy && ep.SecurityMode == wantMode {
 				selected = ep
-				Log(LogLevelNoLog, "%s - Selected discovered endpoint matching security policy: %s and mode: %v",
+				jslog.Log(jslog.LevelNoLog, "%s - Selected discovered endpoint matching security policy: %s and mode: %v",
 					conn.Name, policyShortName(ep.SecurityPolicyURI), ep.SecurityMode)
 				break
 			}
@@ -226,7 +270,7 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 			for _, ep := range eps {
 				if ep.SecurityMode == wantMode {
 					selected = ep
-					Log(LogLevelNoLog, "%s - Selected discovered endpoint with matching security mode: %v",
+					jslog.Log(jslog.LevelNoLog, "%s - Selected discovered endpoint with matching security mode: %v",
 						conn.Name, ep.SecurityMode)
 					break
 				}
@@ -234,13 +278,13 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 		}
 		if selected == nil {
 			selected = eps[0]
-			Log(LogLevelNoLog, "%s - Using first discovered endpoint: %s | Mode: %v",
+			jslog.Log(jslog.LevelNoLog, "%s - Using first discovered endpoint: %s | Mode: %v",
 				conn.Name, policyShortName(selected.SecurityPolicyURI), selected.SecurityMode)
 		}
 	}
 
 	if selected == nil {
-		Log(LogLevelNoLog, "%s - Assembling endpoint directly from configuration.", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Assembling endpoint directly from configuration.", conn.Name)
 		selected = &ua.EndpointDescription{
 			EndpointURL:       endpointURL,
 			SecurityMode:      wantMode,
@@ -251,7 +295,7 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 				{TokenType: ua.UserTokenTypeCertificate, PolicyID: "Certificate"},
 			},
 		}
-		Log(LogLevelNoLog, "%s - Assembled endpoint: %s | SecurityMode: %v | SecurityPolicy: %s",
+		jslog.Log(jslog.LevelNoLog, "%s - Assembled endpoint: %s | SecurityMode: %v | SecurityPolicy: %s",
 			conn.Name, selected.EndpointURL, selected.SecurityMode, policyShortName(selected.SecurityPolicyURI))
 	}
 
@@ -259,19 +303,19 @@ func selectEndpoint(ctx context.Context, conn *OPCUAConnection, endpointURL stri
 	// resolve. The configured URL is the one the operator can reach, so
 	// keep it and take only the security settings from discovery.
 	if selected.EndpointURL != endpointURL {
-		Log(LogLevelDetailed, "%s - Server advertises %s; connecting to the configured %s instead.",
+		jslog.Log(jslog.LevelDetailed, "%s - Server advertises %s; connecting to the configured %s instead.",
 			conn.Name, selected.EndpointURL, endpointURL)
 		selected.EndpointURL = endpointURL
 	}
 
-	Log(LogLevelNoLog, "%s - Selected endpoint uses: %s", conn.Name, policyShortName(selected.SecurityPolicyURI))
+	jslog.Log(jslog.LevelNoLog, "%s - Selected endpoint uses: %s", conn.Name, policyShortName(selected.SecurityPolicyURI))
 	if len(selected.UserIdentityTokens) > 0 {
-		Log(LogLevelNoLog, "%s - Endpoint supports the following authentication methods:", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Endpoint supports the following authentication methods:", conn.Name)
 		for _, t := range selected.UserIdentityTokens {
-			Log(LogLevelNoLog, "%s -   - %v (PolicyId: %s)", conn.Name, t.TokenType, t.PolicyID)
+			jslog.Log(jslog.LevelNoLog, "%s -   - %v (PolicyId: %s)", conn.Name, t.TokenType, t.PolicyID)
 		}
 	} else {
-		Log(LogLevelNoLog, "%s - WARNING: Endpoint has no UserIdentityTokens defined!", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - WARNING: Endpoint has no UserIdentityTokens defined!", conn.Name)
 	}
 
 	if !conn.AutoAcceptUntrustedCertificates && selected.SecurityMode != ua.MessageSecurityModeNone {
@@ -301,9 +345,9 @@ func clientOptions(conn *OPCUAConnection, appCfg uaAppConfig, ep *ua.EndpointDes
 			if err != nil {
 				// parity: the C# driver treats a bad local certificate file
 				// as fatal.
-				Fatal("%s - FATAL: error in local certificate file! %v", conn.Name, err)
+				jslog.Fatal("%s - FATAL: error in local certificate file! %v", conn.Name, err)
 			}
-			Log(LogLevelBasic, "%s - Using application certificate %s", conn.Name, conn.LocalCertFilePath)
+			jslog.Log(jslog.LevelBasic, "%s - Using application certificate %s", conn.Name, conn.LocalCertFilePath)
 		} else {
 			appCert, err = ensureClientCert(certDir, appURI, appCfg.ApplicationName)
 			if err != nil {
@@ -341,7 +385,7 @@ func clientOptions(conn *OPCUAConnection, appCfg uaAppConfig, ep *ua.EndpointDes
 		// number is not portable.
 		opcua.StateChangedFunc(func(s opcua.ConnState) {
 			// Called synchronously by the client: log only, never block.
-			Log(LogLevelDetailed, "%s - connection state: %v", conn.Name, s)
+			jslog.Log(jslog.LevelDetailed, "%s - connection state: %v", conn.Name, s)
 		}),
 	}
 
@@ -356,15 +400,15 @@ func clientOptions(conn *OPCUAConnection, appCfg uaAppConfig, ep *ua.EndpointDes
 	tokenType := ua.UserTokenTypeAnonymous
 	switch {
 	case conn.Username != "":
-		Log(LogLevelNoLog, "%s - Using username/password authentication for user: %s", conn.Name, conn.Username)
+		jslog.Log(jslog.LevelNoLog, "%s - Using username/password authentication for user: %s", conn.Name, conn.Username)
 		tokenType = ua.UserTokenTypeUserName
 		opts = append(opts, opcua.AuthUsername(conn.Username, conn.Password))
 
 	case conn.PfxFilePath != "":
-		Log(LogLevelNoLog, "%s - Using certificate authentication from: %s", conn.Name, conn.PfxFilePath)
+		jslog.Log(jslog.LevelNoLog, "%s - Using certificate authentication from: %s", conn.Name, conn.PfxFilePath)
 		userCert, err := loadKeyPair(conn.PfxFilePath, conn.Passphrase)
 		if err != nil {
-			Log(LogLevelNoLog, "%s - ERROR: Failed to load certificate: %v", conn.Name, err)
+			jslog.Log(jslog.LevelNoLog, "%s - ERROR: Failed to load certificate: %v", conn.Name, err)
 			return nil, err
 		}
 		tokenType = ua.UserTokenTypeCertificate
@@ -374,7 +418,7 @@ func clientOptions(conn *OPCUAConnection, appCfg uaAppConfig, ep *ua.EndpointDes
 		)
 
 	default:
-		Log(LogLevelNoLog, "%s - Using anonymous authentication.", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - Using anonymous authentication.", conn.Name)
 		opts = append(opts, opcua.AuthAnonymous())
 	}
 
@@ -422,7 +466,7 @@ func watchClient(ctx context.Context, conn *OPCUAConnection, cli *opcua.Client) 
 			// Throttled: a whole give-up window at one line per second
 			// would bury everything else in the log.
 			if time.Since(lastWaitLog) >= 10*time.Second {
-				Log(LogLevelDetailed, "%s - waiting for reconnection, %.0fs since last connected...",
+				jslog.Log(jslog.LevelDetailed, "%s - waiting for reconnection, %.0fs since last connected...",
 					conn.Name, time.Since(lastConnected).Seconds())
 				lastWaitLog = time.Now()
 			}

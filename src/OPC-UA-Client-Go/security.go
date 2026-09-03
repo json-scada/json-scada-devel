@@ -42,6 +42,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+
 	"github.com/youmark/pkcs8"
 	pkcs12 "software.sslmate.com/src/go-pkcs12"
 )
@@ -100,13 +102,13 @@ func readUAConfigXML(path string) uaAppConfig {
 		}
 	}
 	if found == "" {
-		Log(LogLevelDetailed, "No application configuration file found, using built-in defaults.")
+		jslog.Log(jslog.LevelDetailed, "No application configuration file found, using built-in defaults.")
 		return cfg
 	}
 
 	data, err := os.ReadFile(filepath.Clean(found))
 	if err != nil {
-		Log(LogLevelBasic, "WARN: cannot read %s - %v", found, err)
+		jslog.Log(jslog.LevelBasic, "WARN: cannot read %s - %v", found, err)
 		return cfg
 	}
 
@@ -116,11 +118,11 @@ func readUAConfigXML(path string) uaAppConfig {
 		ProductURI      string `xml:"ProductUri"`
 	}
 	if err := xml.Unmarshal(data, &doc); err != nil {
-		Log(LogLevelBasic, "WARN: cannot parse %s - %v", found, err)
+		jslog.Log(jslog.LevelBasic, "WARN: cannot parse %s - %v", found, err)
 		return cfg
 	}
 
-	Log(LogLevelBasic, "Load config from %s", found)
+	jslog.Log(jslog.LevelBasic, "Load config from %s", found)
 	if s := strings.TrimSpace(doc.ApplicationName); s != "" {
 		cfg.ApplicationName = s
 	}
@@ -130,7 +132,7 @@ func readUAConfigXML(path string) uaAppConfig {
 	if s := strings.TrimSpace(doc.ProductURI); s != "" {
 		cfg.ProductURI = s
 	}
-	Log(LogLevelDetailed, "Only ApplicationName/ApplicationUri/ProductUri are honoured from that file (deviation D1).")
+	jslog.Log(jslog.LevelDetailed, "Only ApplicationName/ApplicationUri/ProductUri are honoured from that file (deviation D1).")
 	return cfg
 }
 
@@ -303,10 +305,10 @@ func ensureClientCert(dir, appURI, appName string) (*keyPair, error) {
 		if _, err := os.Stat(keyPath); err == nil {
 			kp, lerr := loadKeyPair(certPath, "")
 			if lerr == nil {
-				Log(LogLevelBasic, "Using generated application certificate %s", certPath)
+				jslog.Log(jslog.LevelBasic, "Using generated application certificate %s", certPath)
 				return kp, nil
 			}
-			Log(LogLevelBasic, "WARN: cannot reuse %s - %v, generating a new one", certPath, lerr)
+			jslog.Log(jslog.LevelBasic, "WARN: cannot reuse %s - %v, generating a new one", certPath, lerr)
 		}
 	}
 
@@ -314,7 +316,7 @@ func ensureClientCert(dir, appURI, appName string) (*keyPair, error) {
 		return nil, err
 	}
 
-	Log(LogLevelBasic, "Generating a self-signed application certificate in %s", dir)
+	jslog.Log(jslog.LevelBasic, "Generating a self-signed application certificate in %s", dir)
 	kp, certPEM, keyPEM, err := generateSelfSigned(appURI, appName)
 	if err != nil {
 		return nil, err
@@ -429,6 +431,6 @@ func validateServerCert(der []byte, trustedDir, connName string) error {
 	}); err != nil {
 		return fmt.Errorf("server certificate '%s' is not trusted: %v", cert.Subject.String(), err)
 	}
-	Log(LogLevelDetailed, "%s - Accepted server certificate: %s", connName, cert.Subject.String())
+	jslog.Log(jslog.LevelDetailed, "%s - Accepted server certificate: %s", connName, cert.Subject.String())
 	return nil
 }

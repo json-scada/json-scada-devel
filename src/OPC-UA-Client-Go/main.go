@@ -31,6 +31,11 @@ import (
 	"syscall"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jsconfig"
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+	"github.com/riclolsen/json-scada/src/go-common/jsmodel"
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+
 	"go.mongodb.org/mongo-driver/v2/bson"
 	"go.mongodb.org/mongo-driver/v2/mongo"
 )
@@ -42,21 +47,22 @@ func main() {
 	cfg, instNum := readConfigFile()
 	instanceNumber = instNum
 
-	cli, err := mongoConnect(cfg)
+	cli, _, err := jsmongo.ConnectAndPing(cfg)
 	if err != nil {
-		Fatal("Error connecting to MongoDB - %v", err)
+		jslog.Fatal("Error connecting to MongoDB - %v", err)
 	}
 	db := cli.Database(cfg.MongoDatabaseName)
 
 	inst := loadInstance(db, cfg)
-	Log(LogLevelNoLog, "Instance: %d", inst.ProtocolDriverInstanceNumber)
+	jslog.Log(jslog.LevelNoLog, "Instance: %d", inst.ProtocolDriverInstanceNumber)
 
 	conns := loadConnections(db)
 
 	ctx, cancel := context.WithCancel(context.Background())
 	defer cancel()
 
-	go redundancyLoop(ctx, cfg, conns)
+	initRedundancy(ctx, cfg, conns)
+	go redundancy.Run(ctx)
 
 	go mongoUpdateLoop(ctx, cfg, conns)
 	go commandsLoop(ctx, cfg, conns)
@@ -74,9 +80,9 @@ func main() {
 	for {
 		select {
 		case <-sigs:
-			Log(LogLevelNoLog, "Exiting application!")
+			jslog.Log(jslog.LevelNoLog, "Exiting application!")
 			cancel()
-			LogFlush()
+			jslog.Flush()
 			os.Exit(0)
 		case <-ticker.C:
 		}
@@ -85,35 +91,35 @@ func main() {
 
 // loadInstance reads the driver instance document and validates it can run
 // on this node, with the same checks and messages as the C# driver.
-func loadInstance(db *mongo.Database, cfg JSONSCADAConfig) *ProtocolDriverInstance {
+func loadInstance(db *mongo.Database, cfg jsconfig.Config) *jsmodel.DriverInstance {
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	coll := db.Collection(ProtocolDriverInstancesCollectionName)
+	coll := db.Collection(jsmongo.ProtocolDriverInstancesCollectionName)
 	cur, err := coll.Find(ctx, bson.M{
 		"protocolDriver":               ProtocolDriverName,
 		"protocolDriverInstanceNumber": instanceNumber,
 		"enabled":                      true,
 	})
 	if err != nil {
-		Fatal("Error reading driver instances - %v", err)
+		jslog.Fatal("Error reading driver instances - %v", err)
 	}
 	var docs []bson.M
 	if err := cur.All(ctx, &docs); err != nil {
-		Fatal("Error reading driver instances - %v", err)
+		jslog.Fatal("Error reading driver instances - %v", err)
 	}
 	if len(docs) == 0 {
-		Fatal("Driver instance [%d] not found in configuration!", instanceNumber)
+		jslog.Fatal("Driver instance [%d] not found in configuration!", instanceNumber)
 	}
 
 	// parity: the C# driver breaks out of the loop after the first
 	// document, so only the first match is ever considered.
-	inst := instanceFromDoc(docs[0])
+	inst := jsmodel.InstanceFromDoc(docs[0])
 	if !inst.Enabled {
-		Fatal("Driver instance [%d] disabled!", instanceNumber)
+		jslog.Fatal("Driver instance [%d] disabled!", instanceNumber)
 	}
-	if !nodeAllowed(inst, cfg.NodeName) {
-		Fatal("Node '%s' not found in instances configuration!", cfg.NodeName)
+	if !jsmodel.NodeAllowed(inst, cfg.NodeName) {
+		jslog.Fatal("Node '%s' not found in instances configuration!", cfg.NodeName)
 	}
 	return inst
 }
@@ -124,38 +130,38 @@ func loadConnections(db *mongo.Database) []*OPCUAConnection {
 	ctx, cancel := context.WithTimeout(context.Background(), 60*time.Second)
 	defer cancel()
 
-	coll := db.Collection(ProtocolConnectionsCollectionName)
+	coll := db.Collection(jsmongo.ProtocolConnectionsCollectionName)
 	cur, err := coll.Find(ctx, bson.M{
 		"protocolDriver":               ProtocolDriverName,
 		"protocolDriverInstanceNumber": instanceNumber,
 		"enabled":                      true,
 	})
 	if err != nil {
-		Fatal("Error reading protocol connections - %v", err)
+		jslog.Fatal("Error reading protocol connections - %v", err)
 	}
 	var docs []bson.M
 	if err := cur.All(ctx, &docs); err != nil {
-		Fatal("Error reading protocol connections - %v", err)
+		jslog.Fatal("Error reading protocol connections - %v", err)
 	}
 
-	collRTD := db.Collection(RealtimeDataCollectionName)
+	collRTD := db.Collection(jsmongo.RealtimeDataCollectionName)
 	conns := make([]*OPCUAConnection, 0, len(docs))
 
 	for _, doc := range docs {
 		conn := connectionFromDoc(doc)
 		if err := preloadTags(ctx, collRTD, conn); err != nil {
-			Fatal("Error reading realtime data - %v", err)
+			jslog.Fatal("Error reading realtime data - %v", err)
 		}
-		conn.LastNewKeyCreated = 0
+		conn.TagKeys.Reset()
 		if len(conn.EndpointURLs) < 1 {
-			Fatal("Missing remote endpoint URLs list!")
+			jslog.Fatal("Missing remote endpoint URLs list!")
 		}
 		conns = append(conns, conn)
-		Log(LogLevelNoLog, "%s - New Connection", conn.Name)
+		jslog.Log(jslog.LevelNoLog, "%s - New Connection", conn.Name)
 	}
 
 	if len(conns) == 0 {
-		Fatal("No connections found!")
+		jslog.Fatal("No connections found!")
 	}
 	return conns
 }
@@ -176,7 +182,7 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 		return err
 	}
 
-	Log(LogLevelNoLog, "%s - Found %d tags in database.", conn.Name, len(docs))
+	jslog.Log(jslog.LevelNoLog, "%s - Found %d tags in database.", conn.Name, len(docs))
 
 	var listMon []*monItem
 	var order []float64
@@ -184,20 +190,20 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 	addrs := map[string]bool{}
 
 	for _, doc := range docs {
-		addr := mString(doc, "protocolSourceObjectAddress", "")
+		addr := jsmongo.GetString(doc, "protocolSourceObjectAddress", "")
 
-		if mString(doc, "origin", "") == "supervised" {
-			pub := mFloat(doc, "protocolSourcePublishingInterval", 0)
+		if jsmongo.GetString(doc, "origin", "") == "supervised" {
+			pub := jsmongo.GetDouble(doc, "protocolSourcePublishingInterval", 0)
 			if _, seen := subs[pub]; !seen {
-				Log(LogLevelNoLog, "%s - Found publishing interval of %v seconds.", conn.Name, pub)
+				jslog.Log(jslog.LevelNoLog, "%s - Found publishing interval of %v seconds.", conn.Name, pub)
 				subs[pub] = nil
 				order = append(order, pub)
 			}
 			it := &monItem{
 				NodeID:      addr,
-				DisplayName: mString(doc, "ungroupedDescription", ""),
-				SamplingMs:  mFloat(doc, "protocolSourceSamplingInterval", 0) * 1000,
-				QueueSize:   uint32(mFloat(doc, "protocolSourceQueueSize", 0)),
+				DisplayName: jsmongo.GetString(doc, "ungroupedDescription", ""),
+				SamplingMs:  jsmongo.GetDouble(doc, "protocolSourceSamplingInterval", 0) * 1000,
+				QueueSize:   uint32(jsmongo.GetDouble(doc, "protocolSourceQueueSize", 0)),
 			}
 			subs[pub] = append(subs[pub], it)
 
@@ -215,7 +221,7 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 
 	conn.CommitPreloadedTags(listMon, subs, order, addrs)
 
-	Log(LogLevelDetailed, "%s - %d monitored items preconfigured in %d subscription(s)",
+	jslog.Log(jslog.LevelDetailed, "%s - %d monitored items preconfigured in %d subscription(s)",
 		conn.Name, len(listMon), len(order))
 	return nil
 }
@@ -224,8 +230,8 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 // discovery that did not finish: the tags created by the partial pass are in
 // realtimeData, so they must be read back before browsing again or they
 // would be skipped as "already inserted" and never monitored.
-func reloadConnectionTags(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAConnection) error {
-	cli, err := mongoConnect(cfg)
+func reloadConnectionTags(ctx context.Context, cfg jsconfig.Config, conn *OPCUAConnection) error {
+	cli, _, err := jsmongo.ConnectAndPing(cfg)
 	if err != nil {
 		return err
 	}
@@ -235,5 +241,5 @@ func reloadConnectionTags(ctx context.Context, cfg JSONSCADAConfig, conn *OPCUAC
 
 	loadCtx, cancel := context.WithTimeout(ctx, 60*time.Second)
 	defer cancel()
-	return preloadTags(loadCtx, cli.Database(cfg.MongoDatabaseName).Collection(RealtimeDataCollectionName), conn)
+	return preloadTags(loadCtx, cli.Database(cfg.MongoDatabaseName).Collection(jsmongo.RealtimeDataCollectionName), conn)
 }

@@ -22,20 +22,15 @@
 package main
 
 import (
-	"context"
-	"encoding/json"
-	"os"
-	"path/filepath"
-	"strconv"
-	"strings"
 	"sync"
 	"sync/atomic"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jsmongo"
+	"github.com/riclolsen/json-scada/src/go-common/jstags"
+
 	"github.com/gopcua/opcua"
 	"go.mongodb.org/mongo-driver/v2/bson"
-	"go.mongodb.org/mongo-driver/v2/mongo"
-	"go.mongodb.org/mongo-driver/v2/mongo/options"
 )
 
 // Driver identity, matching the C# driver so the same instance and
@@ -45,14 +40,6 @@ const (
 	ProtocolDriverName = "OPC-UA"
 	DriverVersion      = "0.1.0"
 	LibraryVersion     = "gopcua v0.9.1"
-)
-
-// Collection names.
-const (
-	ProtocolConnectionsCollectionName     = "protocolConnections"
-	ProtocolDriverInstancesCollectionName = "protocolDriverInstances"
-	RealtimeDataCollectionName            = "realtimeData"
-	CommandsQueueCollectionName           = "commandsQueue"
 )
 
 // Queue and key-allocation limits, same values as the C# driver.
@@ -69,45 +56,11 @@ const (
 	JSONConfigFilePathAlt = "c:/json-scada/conf/json-scada.json"
 )
 
-// active is set by the redundancy loop; only command execution honours it.
-//
-// parity: the C# driver acquires data and writes it to MongoDB on both the
-// active and the standby node — ProcessMongo and the OPC UA session never
-// look at Active. Reproduced here on purpose; see deviation D9 in README.md.
-var active atomic.Bool
-
 // Counters reported by the redundancy loop, as in the C# driver.
 var (
 	CntNotificEvents   atomic.Uint64
 	CntLostDataUpdates atomic.Uint64
 )
-
-// JSONSCADAConfig is conf/json-scada.json.
-type JSONSCADAConfig struct {
-	NodeName                 string `json:"nodeName"`
-	MongoConnectionString    string `json:"mongoConnectionString"`
-	MongoDatabaseName        string `json:"mongoDatabaseName"`
-	TLSCaPemFile             string `json:"tlsCaPemFile"`
-	TLSClientPemFile         string `json:"tlsClientPemFile"`
-	TLSClientPfxFile         string `json:"tlsClientPfxFile"`
-	TLSClientKeyPassword     string `json:"tlsClientKeyPassword"`
-	TLSAllowInvalidHostnames bool   `json:"tlsAllowInvalidHostnames"`
-	TLSAllowChainErrors      bool   `json:"tlsAllowChainErrors"`
-	TLSInsecure              bool   `json:"tlsInsecure"`
-}
-
-// ProtocolDriverInstance is a document of protocolDriverInstances.
-type ProtocolDriverInstance struct {
-	ID                               bson.ObjectID
-	ProtocolDriver                   string
-	ProtocolDriverInstanceNumber     int
-	Enabled                          bool
-	LogLevel                         int
-	NodeNames                        []string
-	ActiveNodeName                   string
-	ActiveNodeKeepAliveTimeTag       time.Time
-	KeepProtocolRunningWhileInactive bool
-}
 
 // NodeDetails is what browsing learned about a node, kept so the MongoDB
 // writer can fill in the tag document of a value that arrived through a
@@ -175,10 +128,14 @@ type OPCUAConnection struct {
 	mu                sync.Mutex
 	InsertedAddresses map[string]bool
 	NodeIdsDetails    map[string]*NodeDetails
-	LastNewKeyCreated float64
-	handles           map[uint32]*monItem
-	nextHandle        uint32
-	client            *opcua.Client
+	// TagKeys allocates _id values inside this connection's partition.
+	TagKeys    jstags.KeyAllocator
+	handles    map[uint32]*monItem
+	nextHandle uint32
+	client     *opcua.Client
+	// valueReadChunk adapts to what the server will answer; see
+	// ValueReadChunk.
+	valueReadChunk int
 
 	// ListMon holds every monitored item of the connection, preconfigured
 	// ones first. It is the subscription content when autoCreateTags is
@@ -272,31 +229,33 @@ func (c *OPCUAConnection) ItemForHandle(h uint32) *monItem {
 	return c.handles[h]
 }
 
-// TagKeyStarted reports whether the _id allocator has been seeded from the
-// database yet.
-//
-// parity: the C# driver uses LastNewKeyCreated == 0 as that sentinel, which
-// is safe because the first key of a connection is its number times a
-// million.
-func (c *OPCUAConnection) TagKeyStarted() bool {
+// ValueReadChunk is how many node values the driver asks for in one Read.
+// It starts at the C# batch size and halves whenever a discovery attempt
+// dies inside a value read, because some servers close the connection
+// instead of answering when the response would be too large. Without this
+// the retry would fail identically forever.
+func (c *OPCUAConnection) ValueReadChunk() int {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	return c.LastNewKeyCreated != 0
+	if c.valueReadChunk <= 0 {
+		c.valueReadChunk = maxNodesToRead
+	}
+	return c.valueReadChunk
 }
 
-// SetTagKey seeds the _id allocator with the first key to use.
-func (c *OPCUAConnection) SetTagKey(v float64) {
-	c.mu.Lock()
-	c.LastNewKeyCreated = v
-	c.mu.Unlock()
-}
-
-// BumpTagKey advances the allocator and returns the next key.
-func (c *OPCUAConnection) BumpTagKey() float64 {
+// ShrinkValueReadChunk halves the value-read size, returning the new size
+// and whether there was any room left to shrink.
+func (c *OPCUAConnection) ShrinkValueReadChunk() (int, bool) {
 	c.mu.Lock()
 	defer c.mu.Unlock()
-	c.LastNewKeyCreated++
-	return c.LastNewKeyCreated
+	if c.valueReadChunk <= 0 {
+		c.valueReadChunk = maxNodesToRead
+	}
+	if c.valueReadChunk <= minValueReadChunk {
+		return c.valueReadChunk, false
+	}
+	c.valueReadChunk = max(c.valueReadChunk/2, minValueReadChunk)
+	return c.valueReadChunk, true
 }
 
 // ResetDiscovery drops everything the last discovery built, so the tags can
@@ -310,10 +269,10 @@ func (c *OPCUAConnection) ResetDiscovery() {
 	c.NodeIdsDetails = map[string]*NodeDetails{}
 	c.handles = map[uint32]*monItem{}
 	c.nextHandle = 0
+	c.mu.Unlock()
 	// Forces the _id allocator to look up the highest key again, which a
 	// partially completed pass will have moved.
-	c.LastNewKeyCreated = 0
-	c.mu.Unlock()
+	c.TagKeys.Reset()
 }
 
 // CommitPreloadedTags installs the tags read from realtimeData.
@@ -349,240 +308,11 @@ func (c *OPCUAConnection) setClient(cli *opcua.Client) {
 
 // --- startup configuration -----------------------------------------------
 
-// readConfigFile parses the command line and conf/json-scada.json with the
-// same semantics as the C# driver: arg1 instance number, arg2 log level,
-// arg3 config file path (used only when the file exists).
-func readConfigFile() (cfg JSONSCADAConfig, instanceNumber int) {
-	instanceNumber = 1
-	if len(os.Args) > 1 {
-		if n, err := strconv.Atoi(strings.TrimSpace(os.Args[1])); err == nil {
-			instanceNumber = n
-		}
-	}
-	if len(os.Args) > 2 {
-		if n, err := strconv.Atoi(strings.TrimSpace(os.Args[2])); err == nil {
-			LogLevel = n
-		}
-	}
-
-	Log(LogLevelNoLog, "%s", CopyrightMessage)
-	Log(LogLevelNoLog, "Driver version %s", DriverVersion)
-	Log(LogLevelNoLog, "Using the gopcua library, %s.", LibraryVersion)
-	Log(LogLevelNoLog, "Log level: %d", LogLevel)
-
-	fname := JSONConfigFilePath
-	if env := os.Getenv("JS_CONFIG_FILE"); env != "" {
-		if _, err := os.Stat(env); err == nil {
-			fname = env
-		}
-	}
-	if len(os.Args) > 3 {
-		if _, err := os.Stat(os.Args[3]); err == nil {
-			fname = os.Args[3]
-		}
-	}
-	if _, err := os.Stat(fname); err != nil {
-		fname = JSONConfigFilePathAlt
-	}
-	if _, err := os.Stat(fname); err != nil {
-		Fatal("Missing config file %s", JSONConfigFilePath)
-	}
-
-	Log(LogLevelNoLog, "Reading config file %s", fname)
-	data, err := os.ReadFile(filepath.Clean(fname))
-	if err != nil {
-		Fatal("Missing config file %s", fname)
-	}
-	if err := json.Unmarshal(data, &cfg); err != nil {
-		Fatal("Error parsing JSON config file %s - %v", fname, err)
-	}
-
-	cfg.MongoConnectionString = strings.TrimSpace(cfg.MongoConnectionString)
-	cfg.MongoDatabaseName = strings.TrimSpace(cfg.MongoDatabaseName)
-	cfg.NodeName = strings.TrimSpace(cfg.NodeName)
-
-	if cfg.MongoConnectionString == "" {
-		Fatal("Missing MongoDB connection string in JSON config file %s", fname)
-	}
-	if cfg.MongoDatabaseName == "" {
-		Fatal("Missing MongoDB database name in JSON config file %s", fname)
-	}
-	Log(LogLevelNoLog, "MongoDB database name: %s", cfg.MongoDatabaseName)
-	if cfg.NodeName == "" {
-		Fatal("Missing nodeName parameter in JSON config file %s", fname)
-	}
-	Log(LogLevelNoLog, "Node name: %s", cfg.NodeName)
-
-	return cfg, instanceNumber
-}
-
-// mongoConnect opens a MongoDB client, applying the TLS options of the
-// json-scada config as URI parameters (same approach as the other Go
-// drivers).
-func mongoConnect(cfg JSONSCADAConfig) (*mongo.Client, error) {
-	uri := cfg.MongoConnectionString
-	if cfg.TLSCaPemFile != "" || cfg.TLSClientPemFile != "" {
-		uri += "&tls=true"
-	}
-	if cfg.TLSCaPemFile != "" {
-		uri += "&tlsCAFile=" + cfg.TLSCaPemFile
-	}
-	if cfg.TLSClientPemFile != "" {
-		uri += "&tlsCertificateKeyFile=" + cfg.TLSClientPemFile
-	}
-	if cfg.TLSClientKeyPassword != "" {
-		uri += "&tlsCertificateKeyFilePassword=" + cfg.TLSClientKeyPassword
-	}
-	if cfg.TLSInsecure || cfg.TLSAllowChainErrors {
-		uri += "&tlsInsecure=true"
-	}
-	if cfg.TLSAllowInvalidHostnames {
-		uri += "&tlsAllowInvalidHostnames=true"
-	}
-
-	cli, err := mongo.Connect(options.Client().ApplyURI(uri))
-	if err != nil {
-		return nil, err
-	}
-	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
-	defer cancel()
-	if err := cli.Ping(ctx, nil); err != nil {
-		return nil, err
-	}
-	return cli, nil
-}
-
-// mongoPing checks the database is answering, with the budget the C#
-// driver allowed for the same test.
-func mongoPing(db *mongo.Database, budget time.Duration) error {
-	ctx, cancel := context.WithTimeout(context.Background(), budget)
-	defer cancel()
-	return db.RunCommand(ctx, bson.D{{Key: "ping", Value: 1}}).Err()
-}
-
 // --- permissive BSON accessors -------------------------------------------
 //
 // Configuration numbers are BSON doubles by convention but hand-edited
 // documents carry int32/int64/strings. These mirror the C# driver's
 // BsonDoubleSerializer: read almost anything, produce a number.
-
-func mFloat(m bson.M, key string, def float64) float64 {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def
-	}
-	switch t := v.(type) {
-	case float64:
-		return t
-	case float32:
-		return float64(t)
-	case int32:
-		return float64(t)
-	case int64:
-		return float64(t)
-	case int:
-		return float64(t)
-	case bool:
-		if t {
-			return 1
-		}
-		return 0
-	case string:
-		if f, err := strconv.ParseFloat(strings.TrimSpace(t), 64); err == nil {
-			return f
-		}
-	case bson.Decimal128:
-		if f, err := strconv.ParseFloat(t.String(), 64); err == nil {
-			return f
-		}
-	}
-	return def
-}
-
-func mInt(m bson.M, key string, def int) int {
-	return int(mFloat(m, key, float64(def)))
-}
-
-func mString(m bson.M, key string, def string) string {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def
-	}
-	switch t := v.(type) {
-	case string:
-		return t
-	case float64:
-		return strconv.FormatFloat(t, 'G', -1, 64)
-	case int32:
-		return strconv.Itoa(int(t))
-	case int64:
-		return strconv.FormatInt(t, 10)
-	case bool:
-		return strconv.FormatBool(t)
-	case bson.ObjectID:
-		return t.Hex()
-	}
-	return def
-}
-
-func mBool(m bson.M, key string, def bool) bool {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return def
-	}
-	switch t := v.(type) {
-	case bool:
-		return t
-	case float64:
-		return t != 0
-	case int32:
-		return t != 0
-	case int64:
-		return t != 0
-	case string:
-		if b, err := strconv.ParseBool(strings.TrimSpace(t)); err == nil {
-			return b
-		}
-	}
-	return def
-}
-
-func mStrings(m bson.M, key string) []string {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return nil
-	}
-	arr, ok := v.(bson.A)
-	if !ok {
-		if s, isStr := v.(string); isStr {
-			return []string{s}
-		}
-		return nil
-	}
-	out := make([]string, 0, len(arr))
-	for _, e := range arr {
-		if s, isStr := e.(string); isStr {
-			out = append(out, s)
-		}
-	}
-	return out
-}
-
-func mTime(m bson.M, key string) time.Time {
-	v, ok := m[key]
-	if !ok || v == nil {
-		return time.Time{}
-	}
-	switch t := v.(type) {
-	case time.Time:
-		return t
-	case bson.DateTime:
-		return t.Time()
-	case int64:
-		return time.UnixMilli(t)
-	}
-	return time.Time{}
-}
 
 // --- document mapping ----------------------------------------------------
 
@@ -590,32 +320,32 @@ func mTime(m bson.M, key string) time.Time {
 // struct, applying the same defaults as the C# BsonDefaultValue attributes.
 func connectionFromDoc(doc bson.M) *OPCUAConnection {
 	c := &OPCUAConnection{
-		ProtocolDriver:                  mString(doc, "protocolDriver", ""),
-		ProtocolDriverInstanceNumber:    mInt(doc, "protocolDriverInstanceNumber", 1),
-		ProtocolConnectionNumber:        mInt(doc, "protocolConnectionNumber", 1),
-		Name:                            mString(doc, "name", "NO NAME"),
-		Description:                     mString(doc, "description", "SERVER NOT DESCRIPTED"),
-		Enabled:                         mBool(doc, "enabled", true),
-		CommandsEnabled:                 mBool(doc, "commandsEnabled", true),
-		EndpointURLs:                    mStrings(doc, "endpointURLs"),
-		ConfigFileName:                  mString(doc, "configFileName", "../conf/Opc.Ua.DefaultClient.Config.xml"),
-		AutoCreateTags:                  mBool(doc, "autoCreateTags", true),
-		AutoCreateTagPublishingInterval: mFloat(doc, "autoCreateTagPublishingInterval", 5.0),
-		AutoCreateTagSamplingInterval:   mFloat(doc, "autoCreateTagSamplingInterval", 5.0),
-		AutoCreateTagQueueSize:          mFloat(doc, "autoCreateTagQueueSize", 5.0),
-		TimeoutMs:                       mFloat(doc, "timeoutMs", 20000),
-		UseSecurity:                     mBool(doc, "useSecurity", false),
-		HoursShift:                      mFloat(doc, "hoursShift", 0),
-		GiInterval:                      mFloat(doc, "giInterval", 300),
-		Topics:                          mStrings(doc, "topics"),
-		Username:                        mString(doc, "username", ""),
-		Password:                        mString(doc, "password", ""),
-		PfxFilePath:                     mString(doc, "pfxFilePath", ""),
-		Passphrase:                      mString(doc, "passphrase", ""),
-		LocalCertFilePath:               mString(doc, "localCertFilePath", ""),
-		SecurityMode:                    mString(doc, "securityMode", "None"),
-		SecurityPolicy:                  mString(doc, "securityPolicy", "None"),
-		AutoAcceptUntrustedCertificates: mBool(doc, "autoAcceptUntrustedCertificates", true),
+		ProtocolDriver:                  jsmongo.GetString(doc, "protocolDriver", ""),
+		ProtocolDriverInstanceNumber:    jsmongo.GetInt(doc, "protocolDriverInstanceNumber", 1),
+		ProtocolConnectionNumber:        jsmongo.GetInt(doc, "protocolConnectionNumber", 1),
+		Name:                            jsmongo.GetString(doc, "name", "NO NAME"),
+		Description:                     jsmongo.GetString(doc, "description", "SERVER NOT DESCRIPTED"),
+		Enabled:                         jsmongo.GetBool(doc, "enabled", true),
+		CommandsEnabled:                 jsmongo.GetBool(doc, "commandsEnabled", true),
+		EndpointURLs:                    jsmongo.GetStringArray(doc, "endpointURLs"),
+		ConfigFileName:                  jsmongo.GetString(doc, "configFileName", "../conf/Opc.Ua.DefaultClient.Config.xml"),
+		AutoCreateTags:                  jsmongo.GetBool(doc, "autoCreateTags", true),
+		AutoCreateTagPublishingInterval: jsmongo.GetDouble(doc, "autoCreateTagPublishingInterval", 5.0),
+		AutoCreateTagSamplingInterval:   jsmongo.GetDouble(doc, "autoCreateTagSamplingInterval", 5.0),
+		AutoCreateTagQueueSize:          jsmongo.GetDouble(doc, "autoCreateTagQueueSize", 5.0),
+		TimeoutMs:                       jsmongo.GetDouble(doc, "timeoutMs", 20000),
+		UseSecurity:                     jsmongo.GetBool(doc, "useSecurity", false),
+		HoursShift:                      jsmongo.GetDouble(doc, "hoursShift", 0),
+		GiInterval:                      jsmongo.GetDouble(doc, "giInterval", 300),
+		Topics:                          jsmongo.GetStringArray(doc, "topics"),
+		Username:                        jsmongo.GetString(doc, "username", ""),
+		Password:                        jsmongo.GetString(doc, "password", ""),
+		PfxFilePath:                     jsmongo.GetString(doc, "pfxFilePath", ""),
+		Passphrase:                      jsmongo.GetString(doc, "passphrase", ""),
+		LocalCertFilePath:               jsmongo.GetString(doc, "localCertFilePath", ""),
+		SecurityMode:                    jsmongo.GetString(doc, "securityMode", "None"),
+		SecurityPolicy:                  jsmongo.GetString(doc, "securityPolicy", "None"),
+		AutoAcceptUntrustedCertificates: jsmongo.GetBool(doc, "autoAcceptUntrustedCertificates", true),
 
 		InsertedAddresses: map[string]bool{},
 		NodeIdsDetails:    map[string]*NodeDetails{},
@@ -626,38 +356,6 @@ func connectionFromDoc(doc bson.M) *OPCUAConnection {
 		c.ID = id
 	}
 	return c
-}
-
-// instanceFromDoc maps a protocolDriverInstances document.
-func instanceFromDoc(doc bson.M) *ProtocolDriverInstance {
-	inst := &ProtocolDriverInstance{
-		ProtocolDriver:                   mString(doc, "protocolDriver", ""),
-		ProtocolDriverInstanceNumber:     mInt(doc, "protocolDriverInstanceNumber", 1),
-		Enabled:                          mBool(doc, "enabled", true),
-		LogLevel:                         mInt(doc, "logLevel", 1),
-		NodeNames:                        mStrings(doc, "nodeNames"),
-		ActiveNodeName:                   mString(doc, "activeNodeName", ""),
-		ActiveNodeKeepAliveTimeTag:       mTime(doc, "activeNodeKeepAliveTimeTag"),
-		KeepProtocolRunningWhileInactive: mBool(doc, "keepProtocolRunningWhileInactive", false),
-	}
-	if id, ok := doc["_id"].(bson.ObjectID); ok {
-		inst.ID = id
-	}
-	return inst
-}
-
-// nodeAllowed reports whether this node may run the instance: an empty
-// nodeNames list means any node.
-func nodeAllowed(inst *ProtocolDriverInstance, nodeName string) bool {
-	if len(inst.NodeNames) == 0 {
-		return true
-	}
-	for _, n := range inst.NodeNames {
-		if n == nodeName {
-			return true
-		}
-	}
-	return false
 }
 
 // connByNumber finds a connection by its protocolConnectionNumber.

@@ -30,6 +30,8 @@ import (
 	"strings"
 	"time"
 
+	"github.com/riclolsen/json-scada/src/go-common/jslog"
+
 	"github.com/gopcua/opcua"
 	"github.com/gopcua/opcua/id"
 	"github.com/gopcua/opcua/ua"
@@ -37,6 +39,14 @@ import (
 
 // maxNodesToRead is the C# batch size for the attribute and value reads.
 const maxNodesToRead = 500
+
+// minValueReadChunk is the smallest value-read size worth trying before
+// giving up on shrinking.
+const minValueReadChunk = 10
+
+// deviation D19: errValueReadTooLarge marks a discovery attempt that died inside a value
+// read. The connection loop shrinks the read size before trying again.
+var errValueReadTooLarge = errors.New("the server closed the connection during a value read")
 
 // nodeAttrs are the attributes the read pass needs. NodeClass comes first
 // because its status stands in for C#'s per-node ServiceResult: a node
@@ -91,12 +101,12 @@ func sessionLost(cli *opcua.Client, err error) bool {
 // otherwise leave most of the namespace untagged until the driver is
 // restarted.
 func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, browsed *browseResult) error {
-	Log(LogLevelNoLog, "%s - Browsing the OPC UA server namespace.", conn.Name)
+	jslog.Log(jslog.LevelNoLog, "%s - Browsing the OPC UA server namespace.", conn.Name)
 
 	// parity: the topic filter runs twice with two different rules. This is
 	// the first: a topic must match a whole path segment.
 	if len(conn.Topics) > 0 {
-		Log(LogLevelNoLog, "%s - Filtering nodes by topics: %s", conn.Name, strings.Join(conn.Topics, ", "))
+		jslog.Log(jslog.LevelNoLog, "%s - Filtering nodes by topics: %s", conn.Name, strings.Join(conn.Topics, ", "))
 		kept := browsed.Order[:0]
 		for _, key := range browsed.Order {
 			e := browsed.Refs[key]
@@ -123,7 +133,7 @@ func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, 
 		}
 		browsed.Order = kept
 	}
-	Log(LogLevelNoLog, "%s - %d nodes found in the namespace.", conn.Name, len(browsed.Refs))
+	jslog.Log(jslog.LevelNoLog, "%s - %d nodes found in the namespace.", conn.Name, len(browsed.Refs))
 
 	// Objects are containers, not data; methods only matter when commands
 	// are allowed.
@@ -153,24 +163,27 @@ func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, 
 
 		infos, err := readNodeAttributes(ctx, cli, batch, maxPerRead)
 		if err != nil {
-			Log(LogLevelNoLog, "%s - Error reading nodes %d", conn.Name, offset)
-			Log(LogLevelNoLog, "%v", err)
+			jslog.Log(jslog.LevelNoLog, "%s - Error reading nodes %d", conn.Name, offset)
+			jslog.Log(jslog.LevelNoLog, "%v", err)
 			if sessionLost(cli, err) {
 				return fmt.Errorf("session lost while reading node attributes at offset %d: %w", offset, err)
 			}
 			continue
 		}
 
-		values, valuesErr := readNodeValues(ctx, cli, batch, maxPerRead)
+		values, valuesErr := readNodeValues(ctx, cli, batch, maxPerRead, conn.ValueReadChunk())
 		valuesOK := valuesErr == nil
 		if !valuesOK {
-			Log(LogLevelDetailed, "%s - Error reading values %d - %v", conn.Name, offset, valuesErr)
+			jslog.Log(jslog.LevelDetailed, "%s - Error reading values %d - %v", conn.Name, offset, valuesErr)
 			if sessionLost(cli, valuesErr) {
-				return fmt.Errorf("session lost while reading node values at offset %d: %w", offset, valuesErr)
+				// Distinct from an attribute-read failure: the caller
+				// shrinks the value-read size before trying again.
+				return fmt.Errorf("%w: at offset %d reading %d values at a time: %v",
+					errValueReadTooLarge, offset, conn.ValueReadChunk(), valuesErr)
 			}
 		}
 
-		Log(LogLevelNoLog, "%s -  Autotag - Read %d nodes at offset %d from a total of %d",
+		jslog.Log(jslog.LevelNoLog, "%s -  Autotag - Read %d nodes at offset %d from a total of %d",
 			conn.Name, len(infos), offset, len(toRead))
 
 		for i, info := range infos {
@@ -189,7 +202,7 @@ func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, 
 
 			if info.NodeClass == ua.NodeClassMethod && conn.CommandsEnabled {
 				if info.Executable && info.UserExecutable {
-					Log(LogLevelDetailed, "%s - NodeId %s %v %s Path: %s",
+					jslog.Log(jslog.LevelDetailed, "%s - NodeId %s %v %s Path: %s",
 						conn.Name, info.Address, info.NodeClass, info.BrowseName, entry.Path)
 
 					conn.SetNodeDetails(info.Address, &NodeDetails{
@@ -249,7 +262,7 @@ func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, 
 				continue
 			}
 
-			Log(LogLevelDetailed, "%s - NodeId %s %v %s Path: %s",
+			jslog.Log(jslog.LevelDetailed, "%s - NodeId %s %v %s Path: %s",
 				conn.Name, info.Address, info.NodeClass, info.BrowseName, entry.Path)
 
 			conn.SetNodeDetails(info.Address, &NodeDetails{
@@ -312,7 +325,7 @@ func autotagPass(ctx context.Context, cli *opcua.Client, conn *OPCUAConnection, 
 		}
 	}
 
-	Log(LogLevelNoLog, "%s - %d variables added to monitoring.", conn.Name, len(conn.ListMon))
+	jslog.Log(jslog.LevelNoLog, "%s - %d variables added to monitoring.", conn.Name, len(conn.ListMon))
 	return nil
 }
 
@@ -405,7 +418,7 @@ func readNodeAttributes(ctx context.Context, cli *opcua.Client, addrs []string, 
 }
 
 // readNodeValues reads the Value attribute of a batch of nodes.
-func readNodeValues(ctx context.Context, cli *opcua.Client, addrs []string, maxPerRead uint32) ([]*ua.DataValue, error) {
+func readNodeValues(ctx context.Context, cli *opcua.Client, addrs []string, maxPerRead uint32, chunk int) ([]*ua.DataValue, error) {
 	reads := make([]*ua.ReadValueID, 0, len(addrs))
 	for _, addr := range addrs {
 		nid, err := ua.ParseNodeID(addr)
@@ -414,7 +427,14 @@ func readNodeValues(ctx context.Context, cli *opcua.Client, addrs []string, maxP
 		}
 		reads = append(reads, &ua.ReadValueID{NodeID: nid, AttributeID: ua.AttributeIDValue})
 	}
-	results, err := readChunked(ctx, cli, reads, maxPerRead)
+	// Values can be arbitrarily large, unlike the fixed-size attributes, so
+	// they are read in their own, adaptive, chunk size.
+	step := maxPerRead
+	if chunk > 0 && (step == 0 || uint32(chunk) < step) {
+		step = uint32(chunk)
+	}
+
+	results, err := readChunked(ctx, cli, reads, step)
 	if err != nil {
 		return nil, err
 	}
