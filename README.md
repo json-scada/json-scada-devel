@@ -106,8 +106,6 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Schema Documentation](https://github.com/riclolsen/json-scada/blob/master/docs/schema.md)
 - [Config File](https://github.com/riclolsen/json-scada/blob/master/conf/README.md)
 - [SVG Synoptic Display Editor](https://github.com/riclolsen/json-scada/blob/master/src/svg-display-editor/README.md)
-- [IEC61850 Client Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_client/README.md)
-- [IEC61850 Server Driver (C#)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850_server/README.md)
 - [IEC61850 Client Driver (GO)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850/iec61850_client/README.md)
 - [IEC61850 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec61850/iec61850_server/README.md)
 - [IEC60870-5-104 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104server/README.md)

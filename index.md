@@ -106,8 +106,6 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Schema Documentation](docs/schema.md)
 - [Config File](conf/README.md)
 - [SVG Synoptic Display Editor](src/svg-display-editor/README.md)
-- [IEC61850 Client Driver (C#)](src/iec61850_client/README.md)
-- [IEC61850 Server Driver (C#)](src/iec61850_server/README.md)
 - [IEC61850 Client Driver (Go)](src/iec61850/iec61850_client/README.md)
 - [IEC61850 Server Driver (Go)](src/iec61850/iec61850_server/README.md)
 - [IEC61850 Client Driver in Go](src/iec61850/iec61850_client/README.md)

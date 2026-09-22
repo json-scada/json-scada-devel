@@ -1,23 +1,14 @@
 # IEC 61850 Server (Go)
 
-This driver exposes the JSON-SCADA real-time database as an **IEC 61850 MMS server**, acting as a
-telecontrol gateway / proxy in the sense of **IEC 61850-90-2**. It is written in Go on top of
-[go-iec61850](https://github.com/dscsystems/go-iec61850), a pure-Go implementation of the protocol
-stack, so **no native library is required**.
-
-It is a drop-in alternative to the C# driver in [src/iec61850_server](../../iec61850_server): same
-`protocolDriver` name (`IEC61850_SERVER`), same connection document, same model layout and object
-references, same `commandsQueue` documents. Everything in the C# driver's README applies; this
-document lists what you need to run this binary and where the two differ.
+This driver exposes the JSON-SCADA real-time database as an **IEC 61850 MMS server**, acting as a telecontrol gateway / proxy in the sense of **IEC 61850-90-2**. It is written in Go on top of
+[go-iec61850](https://github.com/dscsystems/go-iec61850), a pure-Go implementation of the protocol stack.
 
     Binary:  iec61850-server (iec61850-server.exe on Windows)
-    Service: JSON_SCADA_iec61850goserver (Windows), [program:iec61850goserver] (Linux)
-    Log:     log/iec61850goserver.log
+    Service: JSON_SCADA_iec61850server (Windows), [program:iec61850server] (Linux)
+    Log:     log/iec61850server.log
 
-> **Enable either the C# `iec61850server` or the Go `iec61850goserver` for a given instance
-> number — never both.** They would bind the same port and answer as the same IED.
-
-The AdminUI needs no change: it already knows the `IEC61850_SERVER` driver.
+It works making all points from `realtimeData` available to IEC 61850 clients, **filtered by `group1` via the
+connection's `topics` list** (an empty `topics` list exposes every point).
 
 ## How it works
 
@@ -112,8 +103,7 @@ Example:
 
 ## Model sizing
 
-The model is bounded so that no MMS response grows past what a client with a small negotiated PDU
-can take. The bounds are the C# driver's, so a client sees the same model shape from either driver:
+The model is bounded so that no MMS response grows past what a client with a small negotiated PDU can take. The bounds are:
 
 | Bound | Default | Why |
 |---|---|---|
@@ -150,19 +140,6 @@ bounds protect clients rather than the server.
   or use a port above 1024 in `ipAddressLocalBind`.
 - GOOSE/SV publishing, setting groups, log services and SCL export are out of scope.
 
-## Differences from the C# driver
-
-| # | Difference | Why |
-|---|---|---|
-| D2 | `maxQueueSize` counts **reports** per buffered control block, not bytes | The C# converts it to a byte budget at ~128 B/entry for libiec61850; this library counts reports |
-| D4 | `password` (ACSE authentication) is accepted but not enforced | The Go server does not check ACSE authentication values |
-| D5 | `RptID` is set to each control block instance's own object reference | Which is the default IEC 61850-8-1 prescribes and what libiec61850 sends; see the workaround note below |
-| D6 | The mapping manifest is sorted by `pointKey` | The C# writes map-iteration order, which is unstable between runs |
-| D8 | Terminates on SIGINT/SIGTERM | Services have no console |
-| D9 | The banner names go-iec61850 | It is not libiec61850 |
-| D10 | **No active/standby arbitration**: the node is always active and always listens | An MMS server is a passive TCP listener; both nodes of a redundant pair can serve and the clients pick one. The C# driver stops the server on the standby node |
-| D11 | Controls are refused only when `commandsEnabled` is false | There is no inactive state to refuse them in |
-
 **Library workaround in force:** go-iec61850 composes a report control block's default `RptID` from
 the *configured* block name rather than the materialised instance name, so `brcbMX01` with two
 instances would have both report `LD/LLN0$BR$brcbMX01` — a block that does not exist, and the same
@@ -176,28 +153,3 @@ Reproduced on purpose, so both drivers present the same gateway: the model layou
 references, the sizing bounds, description truncation, `invalid` treated as true when the field is
 missing, command points excluded from data sets and never written from the database, and one
 logical device per topic with the same splitting rule.
-
-## Testing
-
-```bash
-cd src/iec61850/iec61850_server && go test ./...
-```
-
-The suite covers the model builder (layout, packing, splitting, data sets, report controls, control
-models, truncation), the update path (quality mapping, per-class value placement, time quality) and
-the command documents, and it runs the server against the library's own IEC 61850 client
-in-process: browse, read, data set read, GI, data-change reporting, direct/analogue/SBO controls,
-refusal when commands are disabled, the client allow-list, the connection cap and a stop/start
-cycle. No
-MongoDB or network device is needed.
-
-To eyeball the model with any client:
-
-```bash
-./iec61850-server selftest 10102
-```
-
-## Design notes
-
-The full design, the parity rules and the analysis of the library are in
-[GO_DRIVER_PLAN.md](GO_DRIVER_PLAN.md).
