@@ -30,25 +30,25 @@ func waitFor(t *testing.T, what string, cond func() bool) {
 type recorder struct {
 	master.NopHandler
 	mu       chan struct{}
-	binaries map[uint16]dnp3.Binary
-	analogs  map[uint16]dnp3.Analog
-	counters map[uint16]dnp3.Counter
-	frozen   map[uint16]dnp3.FrozenCounter
-	doubles  map[uint16]dnp3.DoubleBitBinary
-	bos      map[uint16]dnp3.BinaryOutputStatus
-	aos      map[uint16]dnp3.AnalogOutputStatus
+	binaries map[uint32]dnp3.Binary
+	analogs  map[uint32]dnp3.Analog
+	counters map[uint32]dnp3.Counter
+	frozen   map[uint32]dnp3.FrozenCounter
+	doubles  map[uint32]dnp3.DoubleBitBinary
+	bos      map[uint32]dnp3.BinaryOutputStatus
+	aos      map[uint32]dnp3.AnalogOutputStatus
 }
 
 func newRecorder() *recorder {
 	r := &recorder{
 		mu:       make(chan struct{}, 1),
-		binaries: map[uint16]dnp3.Binary{},
-		analogs:  map[uint16]dnp3.Analog{},
-		counters: map[uint16]dnp3.Counter{},
-		frozen:   map[uint16]dnp3.FrozenCounter{},
-		doubles:  map[uint16]dnp3.DoubleBitBinary{},
-		bos:      map[uint16]dnp3.BinaryOutputStatus{},
-		aos:      map[uint16]dnp3.AnalogOutputStatus{},
+		binaries: map[uint32]dnp3.Binary{},
+		analogs:  map[uint32]dnp3.Analog{},
+		counters: map[uint32]dnp3.Counter{},
+		frozen:   map[uint32]dnp3.FrozenCounter{},
+		doubles:  map[uint32]dnp3.DoubleBitBinary{},
+		bos:      map[uint32]dnp3.BinaryOutputStatus{},
+		aos:      map[uint32]dnp3.AnalogOutputStatus{},
 	}
 	r.mu <- struct{}{}
 	return r
@@ -256,16 +256,16 @@ func TestServerDistributesChange(t *testing.T) {
 	// The same path the change stream takes.
 	e.distribute(toBson(tag(1, "ANA0", 42.5, 30, 0, 5, nil)))
 
-	if err := m.ScanClasses(ctx, dnp3.Class123); err != nil {
-		t.Fatalf("ScanClasses: %v", err)
-	}
-
-	rec.lock()
-	got := rec.analogs[0].Value
-	rec.unlock()
-	if got != 42.5 {
-		t.Errorf("analog 0 = %v after the change, want 42.5", got)
-	}
+	// Session.Update hands the change to the session loop, so a single scan
+	// can run before it lands; poll until it is reported.
+	waitFor(t, "analog 0 to read 42.5 after the change", func() bool {
+		if err := m.ScanClasses(ctx, dnp3.Class123); err != nil {
+			t.Fatalf("ScanClasses: %v", err)
+		}
+		rec.lock()
+		defer rec.unlock()
+		return rec.analogs[0].Value == 42.5
+	})
 }
 
 // TestServerMultidrop puts two outstations behind one bus and checks that each

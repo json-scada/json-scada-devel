@@ -80,3 +80,33 @@ func TestCROBForUnimplemented(t *testing.T) {
 		}
 	}
 }
+
+// TestCROBWireCodes pins the octet each duration puts on the wire, which is
+// what a device acts on. The table above compares against the library's
+// constants, so it agreed with go-dnp3 releases before v0.5.3 that had
+// ControlClose and ControlTrip transposed — and sent a trip where a close was
+// meant. These octets are the C++ client's (opendnp3: operation type in the
+// low nibble, trip/close code in bits 7-6, 1 = close = 0x40, 2 = trip = 0x80).
+func TestCROBWireCodes(t *testing.T) {
+	for _, c := range []struct {
+		duration int
+		on, off  byte
+	}{
+		{1, 0x01, 0x02},  // PULSE 1=ON 0=OFF
+		{2, 0x02, 0x01},  // PULSE 0=ON 1=OFF
+		{3, 0x03, 0x04},  // LATCH 1=ON 0=OFF
+		{4, 0x04, 0x03},  // LATCH 0=ON 1=OFF
+		{11, 0x41, 0x82}, // PULSE CLOSE 1=ON / PULSE TRIP 0=OFF
+		{13, 0x43, 0x84}, // LATCH CLOSE / LATCH TRIP
+		{21, 0x81, 0x42}, // PULSE TRIP 1=ON / PULSE CLOSE 0=OFF
+		{23, 0x83, 0x44}, // LATCH TRIP / LATCH CLOSE
+		{0, 0x00, 0x00},  // NUL
+	} {
+		if got := byte(CROBFor(c.duration, 1).Code); got != c.on {
+			t.Errorf("duration %d, value 1: code 0x%02X, want 0x%02X", c.duration, got, c.on)
+		}
+		if got := byte(CROBFor(c.duration, 0).Code); got != c.off {
+			t.Errorf("duration %d, value 0: code 0x%02X, want 0x%02X", c.duration, got, c.off)
+		}
+	}
+}

@@ -42,6 +42,11 @@ On Windows, `build.bat` does the same. The platform build scripts
 (`platform-linux/build.sh`, `platform-mac/build.sh`, `platform-windows/build.bat`) build both
 binaries automatically.
 
+> **Rebuild any binary built against go-dnp3 before v0.5.3.** Those releases had the CROB close
+> and trip codes transposed. The client sent a **trip where a close was meant** (and the reverse)
+> for command durations 11, 13, 21 and 23, and the server read a close from any other master as 0.
+> Plain pulse and latch commands (durations 1 to 4) were not affected.
+
 ## Running
 
 ```
@@ -90,6 +95,7 @@ Intentional differences. Everything not listed here is meant to behave identical
 | D24 | The server answers device attribute reads (group 0) with the driver's identity and the point counts of the connection. opendnp3 has no group 0 support, so the C++ server answers none of it. Read-only, and nothing else in JSON-SCADA is affected. |
 | D25 | Auto-created command destinations get a matching output status destination: a CROB at group 12 index N is mirrored by group 10 index N on the command's supervised twin, and an analog output block at group 41 index N by group 40 index N. The C++ server creates the command alone, leaving a master able to operate a point but not read it back. |
 | D26 | An active connection uses every entry of `ipAddresses` as an alternative address for the same device, trying them in turn until one answers. The C++ drivers use only the first and their documentation says so. |
+| D27 | Every change of a digital or analog value is reported as an event **with its time**. The C++ server picks the untimed analog event variations (g32v1, g32v2, g32v5, g32v6) for `protocolDestinationASDU` 1, 2, 5 and 6 — 5 being the default and 6 what auto-creation uses — so a master learns that an analog changed but not when. The Go server uses the timed variation of the same width and type instead (g32v3, g32v4, g32v7, g32v8); the static variation still follows the ASDU. See [Events and timestamps](#events-and-timestamps). |
 
 
 
@@ -134,7 +140,10 @@ already carrying its status destination is left alone.
 
 The server answers a read of group 0, which is how a master asks an outstation what it is. A
 commissioning engineer facing several identical-looking gateways reads this instead of trusting a
-drawing.
+drawing. A master can read one attribute or all of them (variation 254). Variation numbers are
+IEEE 1815-2012's set 0, the table Wireshark's DNP3 dissector also uses.
+
+**Identity**
 
 | Variation | Attribute | Value |
 | --- | --- | --- |
@@ -145,25 +154,96 @@ drawing.
 | 247 | device name | the connection's `name`, which is what the tag names and every log line already use |
 | 245 | location | the connection's `description`, omitted when it is empty |
 | 246 | ID code | the `protocolConnectionNumber`, unique across every driver of an installation |
+| 208 | system name | `JSON-SCADA` |
+| 211 | user-specific attribute sets | empty: no private sets are defined |
 
-The library adds the point counts and the fragment sizes from the session it built — number of
-binary inputs, analog inputs, counters and so on — so those cannot drift from the database they
-describe. A point type the connection does not carry is left unreported rather than reported as
-zero: "none" and "I did not say" are different answers.
+**Capacity**, from the database the connection was built with. Each point type reports whether
+it produces events (every point the server configures has an event class, so a type that exists
+does), its highest index and its count. A type the connection does not carry reports no events,
+a count of 0 and a highest index of 0.
 
-Two standard attributes are deliberately **not** answered:
+| Point type | Events supported | Max index | Count |
+| --- | --- | --- | --- |
+| binary inputs | 237 | 238 | 239 |
+| double-bit binary inputs | 234 | 235 | 236 |
+| analog inputs | 231 | 232 | 233 |
+| counters | 227 | 228 | 229 |
+| binary outputs | 222 | 223 | 224 |
+| analog outputs | 219 | 220 | 221 |
+
+| Variation | Attribute | Value |
+| --- | --- | --- |
+| 225, 226 | frozen counter events, frozen counters supported | yes when the connection has frozen counters |
+| 230 | frozen analog inputs supported | no |
+| 240, 241 | max transmit / receive fragment | 2048 / 2048 |
+| 216 | max binary outputs per request | 157: the CROBs that fit one 2048-octet request with two-octet indexes |
+
+The "supported" attributes are signed integers, 1 or 0, as the standard types them.
+
+**Why the driver reports the capacity itself.** go-dnp3 derives the point counts and fragment
+sizes on its own, but only those, and leaves out a point type the database does not have. The
+driver reports the whole block for every type instead, empty ones included, so a master can tell
+"none" from "not said". Configured attributes replace derived ones variation by variation, and
+`TestAttributesCoverDerived` checks that every variation the library derives is one the driver
+answers, so the two are never mixed in one response. go-dnp3 releases before v0.5.2 used an older
+numbering for the derived attributes (the binary input count as 226, "frozen counters supported"
+in IEEE 1815); this module needs v0.5.3 or later.
+
+**List of attributes (variation 255).** A master asking which attributes exist gets one list of
+every variation the server reports, none of them writable.
+
+Not answered, deliberately:
 
 - **Subset level and conformance (249).** Nothing here has been through certified conformance
   testing, and go-dnp3's own device profile says the same. Answering it would be a claim, not a
   fact.
 - **Serial number (248).** A software gateway has no serial number, and inventing one from a
   connection number invites somebody to key an asset register off it.
+- **Owner and operator names, location coordinates, configuration identity, time accuracy,
+  secure authentication and data set counts** (196–207, 209, 210, 212–215, 217, 218, 244):
+  nothing in the connection document says any of them.
 
 A master reading an attribute the outstation does not report learns that it does not report it,
 which is true. A plausible wrong value propagates.
 
 Nothing is configurable from MongoDB: no schema change was needed, and every value is either
-fixed or already in the connection document.
+fixed, derived from the database, or already in the connection document. Attributes are
+read-only.
+
+## Events and timestamps
+
+A change of value or quality of any point assigned to an event class — every point is, by
+default — is queued as an event and reported by class poll or unsolicited response. Every event
+variation the server selects carries an absolute time:
+
+| Family | Event variations |
+| --- | --- |
+| binary input | g2v2 |
+| double-bit binary input | g4v2 |
+| binary output status | g11v2 |
+| counter / frozen counter | g22v5, g22v6 / g23v5, g23v6 |
+| analog input | g32v3, g32v4, g32v7, g32v8 (deviation D27) |
+| analog output status | g42v3, g42v4, g42v7, g42v8 |
+
+The time of an event is taken from the tag, in this order:
+
+1. `timeTagAtSource` — the field time the source device reported. `cs_data_processor` clears it on
+   any update that brings none, so a present value always belongs to the current one.
+2. `timeTag` — the local time the tag was last updated.
+3. the moment the server applied the change, when the tag has neither.
+
+`protocolDestinationHoursShift` plus the connection's `hoursShift` is added to it in every case. The
+outstation reports its times as unsynchronised until a master has set its clock, so a master
+without time synchronisation will see `timeTagAtSourceOk: false` on otherwise correct times.
+
+Static values (class 0 and range reads) carry no time, as DNP3 defines them.
+
+Each point is reported in its own static variation, so analogs of one connection may mix integer
+(ASDU 1–4) and floating point (5–8) variations. This needs go-dnp3 v0.5.0 or later: earlier
+versions encoded a whole range in the variation of its first point and truncated floating point
+values that followed an integer one. A value that an integer variation cannot hold is sent
+saturated with OVER_RANGE set.
+
 
 ## Quirks reproduced on purpose
 
@@ -176,6 +256,7 @@ depends on them.
 | Q2 | Timestamps outside 2001-09-09 … 2033-05-18 are zeroed before `sourceDataUpdate` is written. It is a guard against a device reporting a wild time; it will also discard legitimate timestamps from 2033. |
 | Q3 | CROB durations 10, 12, 20 and 22 appear in the driver README's table but were never implemented by the C++ switch. They produce a block that operates nothing. A guess here would operate the wrong coil of a breaker, so they are left as they are and documented instead. |
 | Q4 | `sourceDataUpdate.asduAtSource` always ends in variation 0, and `causeOfTransmissionAtSource` is always 20. |
+| Q6 | The server ignores `timeSyncMode` and accepts every clock write from a master, as the C++ server's `DefaultOutstationApplication` does. Refusing it is not harmless: the outstation asks for the time (NEED_TIME) until it is set, so a master keeps writing it, and the refusal (NO_FUNC_CODE_SUPPORT) would be repeated on every connection. Event times come from the tags, not from this clock, so accepting the write changes nothing but the indication. |
 
 ## Multi-drop
 
@@ -332,7 +413,9 @@ go vet ./... && gofmt -l .
 The loopback tests run a real master against a real outstation through `channel.Pipe` — the
 whole link, transport, application and object stack — with no socket, no MongoDB and no
 hardware. `TestServerMultidrop` puts two outstations and two masters on one line and checks each
-master reaches only its own station.
+master reaches only its own station. `TestChangesAreTimedEvents` changes digital and analog points
+under every analog ASDU and checks that each change reaches the master as a timed event carrying
+the field time, the local time or the update time, in that order of preference.
 
 ### Running the serial port test
 

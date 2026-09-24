@@ -17,18 +17,18 @@ import (
 type counter struct {
 	master.NopHandler
 	mu  sync.Mutex
-	bi  map[uint16]bool
-	ai  map[uint16]float64
-	bos map[uint16]bool
-	aos map[uint16]float64
+	bi  map[uint32]bool
+	ai  map[uint32]float64
+	bos map[uint32]bool
+	aos map[uint32]float64
 }
 
 func newCounter() *counter {
 	return &counter{
-		bi:  map[uint16]bool{},
-		ai:  map[uint16]float64{},
-		bos: map[uint16]bool{},
-		aos: map[uint16]float64{},
+		bi:  map[uint32]bool{},
+		ai:  map[uint32]float64{},
+		bos: map[uint32]bool{},
+		aos: map[uint32]float64{},
 	}
 }
 

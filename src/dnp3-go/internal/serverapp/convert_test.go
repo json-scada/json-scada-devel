@@ -284,8 +284,8 @@ func TestConfigurePointsAppliesVariations(t *testing.T) {
 	if !ok {
 		t.Fatal("analog 0 missing")
 	}
-	if pc.StaticVariation != 2 || pc.EventVariation != 2 {
-		t.Errorf("analog 0 variations = %d/%d, want 2/2 from ASDU 2",
+	if pc.StaticVariation != 2 || pc.EventVariation != 4 {
+		t.Errorf("analog 0 variations = %d/%d, want 2/4 from ASDU 2 (16 bit, timed event)",
 			pc.StaticVariation, pc.EventVariation)
 	}
 	if pc.Class != dnp3.Class2 {

@@ -260,15 +260,15 @@ func TestTLSConfigMapping(t *testing.T) {
 type tlsRecorder struct {
 	master.NopHandler
 	mu       lockable
-	analogs  map[uint16]float64
-	binaries map[uint16]bool
+	analogs  map[uint32]float64
+	binaries map[uint32]bool
 }
 
 func newTLSRecorder() *tlsRecorder {
 	return &tlsRecorder{
 		mu:       newLockable(),
-		analogs:  map[uint16]float64{},
-		binaries: map[uint16]bool{},
+		analogs:  map[uint32]float64{},
+		binaries: map[uint32]bool{},
 	}
 }
 

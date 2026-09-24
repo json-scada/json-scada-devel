@@ -54,6 +54,28 @@ func (h *commandHandler) SelectCROB(index uint16, _ dnp3.ControlRelayOutputBlock
 	return status
 }
 
+// crobValue is the command value a control code asks for: close is 1 and trip
+// is 0, and without a trip/close code the operation type decides.
+//
+// The trip/close code is bits 7-6 of the control code, 1 for close (0x40) and
+// 2 for trip (0x80). go-dnp3 before v0.5.3 had the two constants transposed,
+// so a close sent by any other implementation was read here as a trip;
+// TestCROBValueWireCodes pins the raw octets.
+func crobValue(code dnp3.ControlCode) float64 {
+	switch {
+	case code.IsClose():
+		return 1.0
+	case code.IsTrip():
+		return 0.0
+	}
+	switch code.OpType() {
+	case dnp3.ControlLatchOn, dnp3.ControlPulseOn:
+		return 1.0
+	default:
+		return 0.0
+	}
+}
+
 // OperateCROB queues a digital command for the connection that owns the tag.
 func (h *commandHandler) OperateCROB(index uint16, c dnp3.ControlRelayOutputBlock, _ outstation.OperateType) dnp3.CommandStatus {
 	tag, status := h.lookup(true, index, "ControlRelayOutputBlock")
@@ -87,20 +109,7 @@ func (h *commandHandler) OperateCROB(index uint16, c dnp3.ControlRelayOutputBloc
 	// never reaches the field. Its own client driver auto-creates command tags
 	// with duration 3, LATCH 1=ON 0=OFF, so the two halves of the product could
 	// not operate a point through each other on their default settings.
-	value := 0.0
-	switch {
-	case c.Code.IsClose():
-		value = 1.0
-	case c.Code.IsTrip():
-		value = 0.0
-	default:
-		switch c.Code.OpType() {
-		case dnp3.ControlLatchOn, dnp3.ControlPulseOn:
-			value = 1.0
-		case dnp3.ControlLatchOff, dnp3.ControlPulseOff:
-			value = 0.0
-		}
-	}
+	value := crobValue(c.Code)
 	if dest.KConv1 == -1.0 {
 		value = 1.0 - value
 	}

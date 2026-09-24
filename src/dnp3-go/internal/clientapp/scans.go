@@ -99,6 +99,14 @@ func registerClassScans(ctx context.Context, conn *Connection, session *master.S
 // scan is ours to schedule. It reads once before waiting, matching opendnp3's
 // AddRangeScan, which runs its first scan immediately.
 func rangeScanLoop(ctx context.Context, conn *Connection, session *master.Session, rs RangeScan) {
+	// A request carries 16-bit point indexes here; narrowing a larger address
+	// would wrap it and read a different range than the one configured.
+	if !validPointIndex(rs.StartAddress) || !validPointIndex(rs.StopAddress) ||
+		rs.StartAddress > rs.StopAddress {
+		jslog.Log(jslog.LevelBasic, "%s - Range scan g%dv%d %d-%d ignored: addresses must be 0..65535 and start <= stop",
+			conn.Name, rs.Group, rs.Variation, rs.StartAddress, rs.StopAddress)
+		return
+	}
 	t := time.NewTicker(time.Duration(rs.Period) * time.Second)
 	defer t.Stop()
 
