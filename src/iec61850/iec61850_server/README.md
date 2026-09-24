@@ -79,7 +79,7 @@ iec61850-server selftest [port [bulkPoints]]
 | `serverModeMultiActive` / `maxClientConnections` | max simultaneous MMS clients, and the number of report control block instances per data set |
 | `maxQueueSize` | buffered-report depth, in **reports** per buffered control block |
 | `useSecurity` + `localCertFilePath` / `privateKeyFilePath` / `rootCertFilePath` / `peerCertFilesPaths` / `chainValidation` / `allowOnlySpecificCertificates` / `allowTLSv1x` / `cipherList` | IEC 62351-3 TLS |
-| `password` | ACSE password (accepted, not enforced — see D4) |
+| `password` | ACSE password (accepted, not enforced) |
 
 Example:
 
@@ -140,14 +140,12 @@ bounds protect clients rather than the server.
   or use a port above 1024 in `ipAddressLocalBind`.
 - GOOSE/SV publishing, setting groups, log services and SCL export are out of scope.
 
-**Library workaround in force:** go-iec61850 composes a report control block's default `RptID` from
-the *configured* block name rather than the materialised instance name, so `brcbMX01` with two
-instances would have both report `LD/LLN0$BR$brcbMX01` — a block that does not exist, and the same
-identifier for both. Clients that bind an incoming report to the block they enabled (IEDExplorer
-among them) then cannot attach the values to their model, and structured attributes such as `mag`
-never appear. `fixReportIDs` in `server.go` rewrites each instance's `RptID` to its own object
-reference after the model is materialised, which is what libiec61850 sends. Remove it once the
-library fixes `rcbRptID`.
+**RptID in the control block:** go-iec61850 leaves a report control block's `RptID` empty and sends
+the instance reference (`LD/LLN0$BR$brcbMX0101`) in its reports, as IEC 61850-8-1 prescribes. A
+client that reads `RptID` would then see an empty string and, if it matches incoming reports against
+what it read (IEDExplorer does), could not attach the values to its model. `fixReportIDs` in
+`server.go` writes each instance's own reference into the attribute, as libiec61850 does, so the
+value read and the value reported agree.
 
 Reproduced on purpose, so both drivers present the same gateway: the model layout and object
 references, the sizing bounds, description truncation, `invalid` treated as true when the field is

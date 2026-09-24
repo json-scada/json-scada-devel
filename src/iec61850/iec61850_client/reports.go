@@ -153,7 +153,12 @@ func enableRCB(ctx context.Context, conn *Iec61850Connection, ref model.ObjectRe
 	conn.RcbByDataSet[dsKey] = st
 	conn.mu.Unlock()
 
-	rcb.TrgOps = model.TrgDataChange | model.TrgIntegrity
+	// GI is requested below as soon as the block is enabled, and a server
+	// only answers a GI request whose trigger is enabled in TrgOps
+	// (IEC 61850-7-2). Without it a conformant IED ignores the request and
+	// nothing arrives until the first change or integrity period. The C#
+	// driver left GI out.
+	rcb.TrgOps = model.TrgDataChange | model.TrgIntegrity | model.TrgGI
 	rcb.IntgPd = time.Duration(conn.Class0ScanInterval) * time.Second
 	// The C# driver also requested DATA_REFERENCE. Report entries are
 	// identified here from the data set members instead, and the client

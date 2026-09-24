@@ -30,8 +30,8 @@ import (
 const (
 	CopyrightMessage   = "{json:scada} IEC61850 Server Driver (IEC61850-90-2, Go) - Copyright 2020-2026 Ricardo Olsen"
 	ProtocolDriverName = "IEC61850_SERVER"
-	DriverVersion      = "0.1.2"
-	LibraryVersion     = "v0.2.5"
+	DriverVersion      = "0.2.0"
+	LibraryVersion     = "v0.3.0"
 )
 
 // Default config file locations, in the C# driver's resolution order.

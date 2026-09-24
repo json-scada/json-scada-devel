@@ -14,7 +14,7 @@ MongoDB semantics, no native library dependency.
 ## Local Contracts
 
 - **Language:** Go 1.26, module `iec61850_client`, flat `package main`
-- **Library:** `github.com/dscsystems/go-iec61850` v0.2.5 (pure Go, GPLv3) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-iec61850` v0.3.0 (pure Go, GPLv3) — **pin the version**,
   the API is pre-v1
 - **Binary:** `iec61850-client(.exe)` — must differ from the C# `iec61850_client(.exe)` so both can
   live in `bin/`
@@ -39,8 +39,8 @@ MongoDB semantics, no native library dependency.
 
 - The C# driver is the specification. Before changing behaviour, check what
   `src/iec61850_client` does; quirks are reproduced on purpose and are marked `parity:` in
-  comments. Intentional differences are numbered D1..D11 and listed in `README.md` — add to that
-  list rather than silently diverging.
+  comments. Intentional differences are explained in a comment where the code diverges (older ones
+  are tagged `deviation Dn`) — never diverge silently.
 - Only `sourceDataUpdate` is written for data; never tag `value`, alarms or history.
 - `Iec61850Entry.AutoPublish` marks a point the driver discovered itself (browse or report); only those carry the self-publish flag, so a point configured in realtimeData never gets a second tag.
 - Command tags are created by the MongoDB writer, not the value path: a control object carries no value, so `createCommandTags` inserts it and links it to its supervised twin (`supervisedOfCommand` / `commandOfSupervised`). It waits for the twin to exist, up to `commandLinkAttempts` writer cycles.
@@ -48,6 +48,8 @@ MongoDB semantics, no native library dependency.
 - Report callbacks run on the association's reader goroutine: never block them, only enqueue.
 - Report entries are identified from the data set members, and reports are matched to their
   subscription by `RptID` — see the RptID handling in `reports.go` before touching that path.
+- `TrgOps` must include GI: the driver requests a GI right after enabling a block, and a
+  conformant server ignores GI when its trigger is off.
 
 ## Verification
 

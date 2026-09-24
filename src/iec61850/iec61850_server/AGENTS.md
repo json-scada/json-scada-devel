@@ -15,7 +15,7 @@ connection document, same model layout and object references, no native library 
 ## Local Contracts
 
 - **Language:** Go 1.26, module `iec61850_server`, flat `package main`
-- **Library:** `github.com/dscsystems/go-iec61850` v0.2.5 (pure Go, GPLv3) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-iec61850` v0.3.0 (pure Go, GPLv3) — **pin the version**,
   the API is pre-v1, and keep it in step with the client driver
 - **Binary:** `iec61850-server(.exe)` — must differ from the C# `iec61850_server(.exe)` so both can
   live in `bin/`
@@ -39,8 +39,9 @@ connection document, same model layout and object references, no native library 
 ## Work Guidance
 
 - The C# driver is the specification. Object references, data set composition and report control
-  block names must stay identical, so a client cannot tell the two apart. Intentional differences
-  are numbered D2..D9 in `README.md` — add to that list rather than silently diverging.
+  block names must stay identical, so a client cannot tell the two apart. Explain an intentional
+  difference in a comment where the code diverges, and in `README.md` when an operator would notice
+  it — never diverge silently.
 - Data sets use **DO-level FCDAs** (`GGIO1$ST$Ind1`), so a report entry carries value, quality and
   timestamp as one structure. This needs library ≥ v0.2.3, where `reporting.go:memberChanged`
   matches a member against changes below it as well as above.
