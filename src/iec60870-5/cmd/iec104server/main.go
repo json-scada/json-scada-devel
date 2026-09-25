@@ -226,14 +226,22 @@ func main() {
 			InfoObjTimeZone: time.Local,
 		}
 		server.SetParams(&params)
-		server.SetConfig(cs104.Config{
+		srvCfg := cs104.Config{
 			ConnectTimeout0:   time.Duration(defInt(int(cc.T0), 10)) * time.Second,
 			SendUnAckLimitK:   uint16(defInt(int(cc.K), 12)),
 			SendUnAckTimeout1: time.Duration(defInt(int(cc.T1), 15)) * time.Second,
 			RecvUnAckLimitW:   uint16(defInt(int(cc.W), 8)),
 			RecvUnAckTimeout2: time.Duration(defInt(int(cc.T2), 10)) * time.Second,
 			IdleTimeout3:      time.Duration(defInt(int(cc.T3), 20)) * time.Second,
-		})
+		}
+		// go-iecp5 silently falls back to its default config when the
+		// parameters are invalid (e.g. t2 >= t1, or w above two thirds of k)
+		chk := srvCfg
+		if err := chk.Valid(); err != nil {
+			jslog.Log(jslog.LevelBasic, "%s - Invalid k/w/t0..t3 parameters (%s): library defaults will be used instead.",
+				cc.Name, err.Error())
+		}
+		server.SetConfig(srvCfg)
 		server.SetInfoObjTimeZone(time.Local)
 		if jslog.Level() >= jslog.LevelDebug {
 			server.LogMode(true)

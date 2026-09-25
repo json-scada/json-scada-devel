@@ -350,6 +350,13 @@ func main() {
 			RecvUnAckTimeout2: time.Duration(defInt(int(cc.T2), 10)) * time.Second,
 			IdleTimeout3:      time.Duration(defInt(int(cc.T3), 20)) * time.Second,
 		}
+		// go-iecp5 silently falls back to its default config when the
+		// parameters are invalid (e.g. t2 >= t1, or w above two thirds of k)
+		chk := c.config
+		if err := chk.Valid(); err != nil {
+			jslog.Log(jslog.LevelBasic, "%s - Invalid k/w/t0..t3 parameters (%s): library defaults will be used instead.",
+				cc.Name, err.Error())
+		}
 		tlsCfg, err := tlsutil.BuildTLSConfig(&c.cfg, false)
 		if err != nil {
 			jslog.Log(jslog.LevelBasic, "%s", cc.Name+" - Error configuring TLS certificates.")

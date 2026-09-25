@@ -85,11 +85,11 @@ A instance for this driver can have many server ports defined that must be descr
 - _**sizeOfCOT**_ [Double] - Size of Cause Of Transmission protocol field in bytes (1 or 2). **Mandatory parameter**.
 - _**sizeOfCA**_ [Double] - Size of Command Address protocol field in bytes (1 or 2). **Mandatory parameter**.
 - _**sizeOfIOA**_ [Double] - Size of Information Object Address protocol field in bytes (1, 2, or 3). **Mandatory parameter**.
-- _**k**_ [Double] - Protocol _k_ parameter. **Mandatory parameter**.
-- _**w**_ [Double] - Protocol _w_ parameter. **Mandatory parameter**.
+- _**k**_ [Double] - Protocol _k_ parameter. An invalid k/w/t0..t3 set (out of range, w above two thirds of k, or t2 not less than t1) is logged at startup and replaced as a whole by the library defaults (k=12, w=8, t0=30, t1=15, t2=10, t3=20). **Mandatory parameter**.
+- _**w**_ [Double] - Protocol _w_ parameter. Must not exceed two thirds of _k_ (e.g. k=12, w=8). **Mandatory parameter**.
 - _**t0**_ [Double] - Protocol _t0_ timeout in seconds. **Mandatory parameter**.
 - _**t1**_ [Double] - Protocol _t1_ timeout in seconds. **Mandatory parameter**.
-- _**t2**_ [Double] - Protocol _t2_ timeout in seconds. **Mandatory parameter**.
+- _**t2**_ [Double] - Protocol _t2_ timeout in seconds. Must be less than _t1_. **Mandatory parameter**.
 - _**t3**_ [Double] - Protocol _t3_ timeout in seconds. **Mandatory parameter**.
 - _**serverModeMultiActive**_ [Boolean] - When true there is kept a separate data buffer for each client. **Mandatory parameter**.
 - _**maxClientConnections**_ [Double] - Maximum number of clients allowed to connect at the same time. **Mandatory parameter**.
