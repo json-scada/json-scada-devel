@@ -14,13 +14,15 @@ ICCP (IEC 60870-6 / TASE.2) client and server protocol drivers for JSON-SCADA, w
 
 - **Language:** Go (1.21+)
 - **Dependencies:** `go.mod` / `go.sum`
-- **Build:** `go build` in component directories
+- **Build:** `GOWORK=off go build` in component directories
 - Sub-projects:
   - `iccp-client/` — ICCP TASE.2 client driver
   - `iccp-server/` — ICCP TASE.2 server driver
   - `tase2/` — TASE.2 communication library (closed source, 100% native Go)
 - Configuration via the central `json-scada.json` or environment variables
 - Uses MongoDB Go driver for database access
+- `iccp-client` and `iccp-server` are intentionally commented out of `src/go.work`; build and test them standalone with `GOWORK=off`
+- Each module resolves the library through `replace github.com/riclolsen/tase2 => ../tase2`, so `tase2/` must be checked out at a compatible tag (currently `v0.3.0`)
 
 ## Work Guidance
 
@@ -30,8 +32,10 @@ ICCP (IEC 60870-6 / TASE.2) client and server protocol drivers for JSON-SCADA, w
 - Server side: accept connections from remote ICCP clients
 - Both sides: support TCP/TLS transport
 - Follow Go idioms: `error` returns, `context.Context`, idiomatic naming
+- Use the exported `tase2` quality constants (`QualityValid`/`QualityHeld`/`QualitySuspect`/`QualityInvalid`, `SourceTelemetered`/`SourceCalculated`/`SourceEntered`/`SourceEstimated`) instead of literal strings; decoded values only ever use the canonical names, while legacy spellings such as `questionable`, `substituted` and `process` are accepted on encode only and will silently fail to match on decode
 
 ## Verification
 
-- `go build ./...` in the iccp directory
-- `go test ./...` (if tests exist)
+- `GOWORK=off go build ./...` in `iccp-client/` and `iccp-server/`
+- `GOWORK=off go vet ./...` and `GOWORK=off go test ./...` in each module (both have unit plus in-process loopback tests; no MongoDB required)
+- Run the same checks after bumping `tase2/`: the library compiles against unchanged driver code even when quality or data-model semantics shift, so the tests are the real gate

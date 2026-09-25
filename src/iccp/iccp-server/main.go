@@ -898,9 +898,9 @@ func convertToDataValueWithQuality(tag rtData) (*tase2.DataValue, *tase2.Quality
 	val := convertToDataValue(tag)
 	var qual *tase2.Quality
 	if tag.Invalid {
-		qual = &tase2.Quality{Validity: "invalid", Source: "process"}
+		qual = &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
 	} else {
-		qual = &tase2.Quality{Validity: "good", Source: "process"}
+		qual = &tase2.Quality{Validity: tase2.QualityValid, Source: tase2.SourceTelemetered}
 	}
 	return val, qual
 }
@@ -929,9 +929,9 @@ func getICCPType(tag rtData) tase2.ICCPType {
 // using the appropriate constructor for the given ICCP type. The returned value
 // embeds quality and timestamp per the ICCP data type specification.
 func convertToICCPValue(tag rtData, iccpType tase2.ICCPType) *tase2.DataValue {
-	q := &tase2.Quality{Validity: "good", Source: "process"}
+	q := &tase2.Quality{Validity: tase2.QualityValid, Source: tase2.SourceTelemetered}
 	if tag.Invalid {
-		q = &tase2.Quality{Validity: "invalid", Source: "process"}
+		q = &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
 	}
 	tod := tase2.TimeTagNow()
 	if tag.TimeTagAtSource != nil && tag.TimeTagAtSourceOk {

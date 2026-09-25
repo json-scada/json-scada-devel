@@ -46,6 +46,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 - [mcp-json-scada-db](mcp-json-scada-db/AGENTS.md) — MCP server for AI-assisted JSON-SCADA development (TypeScript)
 - [lib60870.netcore](lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 client/server (.NET Core)
 - [dnp3](dnp3/AGENTS.md) — DNP3 client/server (C++/C# with opendnp3 submodule)
+- [dnp3-go](dnp3-go/AGENTS.md) — DNP3 client/server on go-dnp3 (Go, drop-in alternative)
 - [mqtt-sparkplug](mqtt-sparkplug/AGENTS.md) — MQTT/Sparkplug-B pub/sub client (Node.js)
 - [server_realtime_auth](server_realtime_auth/AGENTS.md) — Realtime WebSocket data server with JWT auth (Node.js)
 - [calculations](calculations/AGENTS.md) — Compiled cyclic calculations engine (Go)

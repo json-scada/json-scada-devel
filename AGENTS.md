@@ -85,32 +85,42 @@ When the user requests a durable behavior change, record it here or in the relev
 All protocol drivers, web UI, data processors, and tools. Contains its own child index covering 25+ components with individual AGENTS.md files:
 
 - [src/AdminUI/](src/AdminUI/AGENTS.md) — Vue.js web admin interface SPA
-- [src/iccp/](src/iccp/AGENTS.md) — ICCP TASE.2 client/server drivers (Go)
 - [src/mcp-json-scada-db/](src/mcp-json-scada-db/AGENTS.md) — MCP server for AI tooling
-- [src/lib60870.netcore/](src/lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 (.NET Core)
-- [src/dnp3/](src/dnp3/AGENTS.md) — DNP3 client/server (C++/C#)
+- [src/dnp3-go/](src/dnp3-go/AGENTS.md) — DNP3 client/server (Go, drop-in alternative)
 - [src/mqtt-sparkplug/](src/mqtt-sparkplug/AGENTS.md) — MQTT/Sparkplug B (Node.js)
 - [src/server_realtime_auth/](src/server_realtime_auth/AGENTS.md) — Realtime WebSocket server (Node.js)
 - [src/calculations/](src/calculations/AGENTS.md) — Calculations engine (Go)
-- [src/mongowr/](src/mongowr/AGENTS.md) — MongoDB writer (Node.js)
-- [src/mongofw/](src/mongofw/AGENTS.md) — MongoDB forwarder (Node.js)
+- [src/mongowr/](src/mongowr/AGENTS.md) — 1-way replication: MongoDB writer (Node.js)
+- [src/mongofw/](src/mongofw/AGENTS.md) — 1-way replication: MongoDB forwarder (Node.js)
 - [src/cs_custom_processor/](src/cs_custom_processor/AGENTS.md) — Custom processor (TypeScript)
 - [src/cs_data_processor/](src/cs_data_processor/AGENTS.md) — Data processor (Node.js)
-- [src/OPC-UA-Client/](src/OPC-UA-Client/AGENTS.md) — OPC UA client (.NET Core)
+- [src/cs_data_processor-go/](src/cs_data_processor-go/AGENTS.md) — Data processor (Go, drop-in alternative)
+- [src/OPC-UA-Client-Go/](src/OPC-UA-Client-Go/AGENTS.md) — OPC UA client (Go)
 - [src/OPC-UA-Server/](src/OPC-UA-Server/AGENTS.md) — OPC UA server (Node.js)
 - [src/OPC-DA-Client/](src/OPC-DA-Client/AGENTS.md) — OPC DA client (.NET Core)
 - [src/OPC-DA-Server/](src/OPC-DA-Server/AGENTS.md) — OPC DA server (.NET Framework)
-- [src/iec61850_client/](src/iec61850_client/AGENTS.md) — IEC 61850 MMS client (.NET Core)
-- [src/iec61850/iec61850_client/](src/iec61850/iec61850_client/AGENTS.md) — IEC 61850 MMS client (Go, drop-in alternative)
-- [src/iec61850/iec61850_server/](src/iec61850/iec61850_server/AGENTS.md) — IEC 61850 MMS server (Go, drop-in alternative)
+- [src/iec60870-5/cmd/iec101client] — IEC 101 client (Go)
+- [src/iec60870-5/cmd/iec101server] — IEC 101 server (Go)
+- [src/iec60870-5/cmd/iec103client] — IEC 103 client (Go)
+- [src/iec60870-5/cmd/iec104client] — IEC 104 client (Go)
+- [src/iec60870-5/cmd/iec104server] — IEC 104 server (Go)
+- [src/iec61850/iec61850_client/](src/iec61850/iec61850_client/AGENTS.md) — IEC 61850 MMS client (Go)
+- [src/iec61850/iec61850_server/](src/iec61850/iec61850_server/AGENTS.md) — IEC 61850 MMS server (Go)
+- [src/iccp/](src/iccp/AGENTS.md) — ICCP TASE.2 client/server drivers (Go)
 - [src/telegraf-listener/](src/telegraf-listener/AGENTS.md) — Telegraf listener (Node.js)
-- [src/plc4x-client/](src/plc4x-client/AGENTS.md) — Modbus client via PLC4X (Go)
-- [src/i104m/](src/i104m/AGENTS.md) — I104M adapter (Go)
+- [src/plc4j-client/](src/plc4j-client/AGENTS.md) — Various PLC protocols client via PLC4X (Java)
 - [src/camera-onvif/](src/camera-onvif/AGENTS.md) — ONVIF camera (Node.js)
-- [src/convex_bridge/](src/convex_bridge/AGENTS.md) — Convex bridge (TypeScript)
-- [src/libplctag/](src/libplctag/AGENTS.md) — CIP Ethernet/IP (.NET Core)
-- [src/amqp/](src/amqp/AGENTS.md) — AMQP messaging (Node.js)
 - Plus tools & utilities detailed in [src/AGENTS.md](src/AGENTS.md) (Node.js, Go, C#, C, Python, PHP)
+
+Deprecated drivers:
+- [src/lib60870.netcore/](src/lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 (.NET Core)
+- [src/dnp3/](src/dnp3/AGENTS.md) — DNP3 client/server (C++/C#)
+- [src/OPC-UA-Client/](src/OPC-UA-Client/AGENTS.md) — OPC UA client (.NET Core)
+- [src/i104m/](src/i104m/AGENTS.md) — I104M adapter (Go)
+- [src/libplctag/](src/libplctag/AGENTS.md) — CIP Ethernet/IP (.NET Core)
+- [src/plc4x-client/](src/plc4x-client/AGENTS.md) — Modbus client via PLC4X (Go)
+- [src/iec61850_client/](src/iec61850_client/AGENTS.md) — IEC 61850 MMS client (.NET Core)
+
 
 ### Platform Configurations
 
@@ -120,8 +130,6 @@ All protocol drivers, web UI, data processors, and tools. Contains its own child
 - [platform-rhel9/](platform-rhel9/AGENTS.md) — RHEL 9 / Rocky 9 / Alma 9 installer & config
 - [platform-rhel10/](platform-rhel10/AGENTS.md) — RHEL 10 / Rocky 10 / Alma 10 installer & config
 - [platform-linux/](platform-linux/AGENTS.md) — Generic Linux build/export/restart scripts
-- [platform-mac/](platform-mac/AGENTS.md) — Mac OSX build scripts
-- [platform-nix-idx/](platform-nix-idx/AGENTS.md) — Nix/IDX development environment
 
 ### Configuration
 

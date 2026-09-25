@@ -8,6 +8,7 @@ rem _set NPM="%programfiles%\nodejs\npm"
 
 set GOOS=windows
 set GOARCH=amd64
+set GOWORK=off
 go mod tidy 
 go build -ldflags="-s -w"
 copy /Y iccp-client.exe %BINPATH%

@@ -619,12 +619,16 @@ func dataValueToUpdate(dv *tase2.DataValue, m tagMapping, now time.Time, hoursSh
 
 	if dp.Quality != nil {
 		switch dp.Quality.Validity {
-		case "invalid":
+		case tase2.QualityInvalid:
 			upd.invalid = true
-		case "questionable":
+		case tase2.QualityHeld, tase2.QualitySuspect:
 			upd.notTopical = true
 		}
-		if dp.Quality.Source == "substituted" || dp.Quality.Source == "calculated" {
+		// Any current source other than telemetered means the value did not come
+		// straight from the process: entered (manually substituted), calculated
+		// or estimated all map to substitutedAtSource.
+		switch dp.Quality.Source {
+		case tase2.SourceEntered, tase2.SourceCalculated, tase2.SourceEstimated:
 			upd.substituted = true
 		}
 	}
