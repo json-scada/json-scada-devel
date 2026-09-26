@@ -26,9 +26,11 @@ The ICCP client:
   (RBE) reporting plus periodic integrity snapshots.
 - **Polls** domains without a DSTS subscription periodically via chunked
   ICCP `ReadMultiple` calls (integrity polling at configurable interval).
-- **Decodes** ICCP typed points (RealQ, StateQTimeTag, ...Extended, etc.):
-  value, quality (invalid / questionable / substituted flags) and the
-  source timestamp are mapped into the `sourceDataUpdate` document.
+- **Decodes** ICCP typed points (RealQ, StateQTimeTag, ...Extended,
+  ...QTimeTagExtended, etc.): value, quality (invalid / held-suspect /
+  non-telemetered source flags) and the source timestamp (GMT seconds, with
+  milliseconds for the 802 Ed.2 QTimeTagExtended types) are mapped into the
+  `sourceDataUpdate` document.
 - **Writes** acquired values to MongoDB using bulk writes with the
   `sourceDataUpdate` sub-document pattern.
 - **Watches** the `commandsQueue` MongoDB collection via change streams

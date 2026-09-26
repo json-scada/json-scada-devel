@@ -234,13 +234,13 @@ When a TASE.2 client writes to a control point, the driver:
 |---|---|
 | `group1` | Domain name |
 | `tag` | Point name (sanitized) |
-| `type: "digital"` | StateQTimeTag Indication Point (state + quality + timetag) |
-| `type: "analog"` | RealQTimeTag Indication Point (float32 + quality + timetag) |
-| `type: "analog"` with integer ASDU (int16/32/64, uint16/32/64) | DiscreteQTimeTag Indication Point (int + quality + timetag) |
+| `type: "digital"` | StateQTimeTagExtended Indication Point (state + quality + ms time stamp) |
+| `type: "analog"` | RealQTimeTagExtended Indication Point (float32 + quality + ms time stamp) |
+| `type: "analog"` with integer ASDU (int16/32/64, uint16/32/64) | DiscreteQTimeTagExtended Indication Point (int + quality + ms time stamp) |
 | `type: "string"`, `"json"`, others | Not exposed via ICCP |
 | `origin: "command"` | Command Control Point (INTEGER32; SBO when `protocolSourceCommandUseSBO`, else direct operate) |
 | `invalid` | Quality validity (good/invalid) |
-| `timeTagAtSource` (when `timeTagAtSourceOk`) | Point TimeStamp |
+| `timeTagAtSource` (when `timeTagAtSourceOk`, else current time) | Point TimeStamp: IEC 60870-6-802 Ed.2 TimeStampExtended {GMTBasedS, Milliseconds}, UTC, millisecond resolution |
 
 ## License
 

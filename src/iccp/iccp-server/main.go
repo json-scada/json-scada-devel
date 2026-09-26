@@ -906,20 +906,21 @@ func convertToDataValueWithQuality(tag rtData) (*tase2.DataValue, *tase2.Quality
 }
 
 // getICCPType maps a realtimeData tag type to an ICCP data type with quality
-// and timestamp. Returns ICCPTypeUnknown for types that don't map to a
+// and a millisecond-resolution time stamp (IEC 60870-6-802 Ed.2
+// QTimeTagExtended). Returns ICCPTypeUnknown for types that don't map to a
 // standard ICCP type (e.g. strings, JSON).
 func getICCPType(tag rtData) tase2.ICCPType {
 	switch tag.Type {
 	case "digital":
-		return tase2.ICCPTypeStateQTimeTag
+		return tase2.ICCPTypeStateQTimeTagExtended
 	case "analog":
 		// Integer-typed analogs map to Discrete to avoid float32 precision
 		// loss on large values.
 		switch asduToString(tag.ProtocolSourceASDU) {
 		case "int16", "uint16", "int32", "uint32", "int64", "uint64", "integer":
-			return tase2.ICCPTypeDiscreteQTimeTag
+			return tase2.ICCPTypeDiscreteQTimeTagExtended
 		}
-		return tase2.ICCPTypeRealQTimeTag
+		return tase2.ICCPTypeRealQTimeTagExtended
 	default:
 		return tase2.ICCPTypeUnknown
 	}
@@ -933,22 +934,29 @@ func convertToICCPValue(tag rtData, iccpType tase2.ICCPType) *tase2.DataValue {
 	if tag.Invalid {
 		q = &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
 	}
-	tod := tase2.TimeTagNow()
+	ts := time.Now()
 	if tag.TimeTagAtSource != nil && tag.TimeTagAtSourceOk {
-		tod = tase2.TimeTagFrom(*tag.TimeTagAtSource)
+		ts = *tag.TimeTagAtSource
+	}
+	state := tase2.StateOff
+	if tag.Value != 0 {
+		state = tase2.StateOn
 	}
 
 	switch iccpType {
+	case tase2.ICCPTypeStateQTimeTagExtended:
+		return tase2.NewStateQTimeTagExtended(state, q, ts)
+	case tase2.ICCPTypeRealQTimeTagExtended:
+		return tase2.NewRealQTimeTagExtended(float32(tag.Value), q, ts)
+	case tase2.ICCPTypeDiscreteQTimeTagExtended:
+		return tase2.NewDiscreteQTimeTagExtended(int64(tag.Value), q, ts)
+	// Second-resolution (GMTBasedS) variants, for points declared with them.
 	case tase2.ICCPTypeStateQTimeTag:
-		state := tase2.StateOff
-		if tag.Value != 0 {
-			state = tase2.StateOn
-		}
-		return tase2.NewStateQTimeTag(state, q, tod)
+		return tase2.NewStateQTimeTag(state, q, tase2.TimeStampFrom(ts))
 	case tase2.ICCPTypeRealQTimeTag:
-		return tase2.NewRealQTimeTag(float32(tag.Value), q, tod)
+		return tase2.NewRealQTimeTag(float32(tag.Value), q, tase2.TimeStampFrom(ts))
 	case tase2.ICCPTypeDiscreteQTimeTag:
-		return tase2.NewDiscreteQTimeTag(int64(tag.Value), q, tod)
+		return tase2.NewDiscreteQTimeTag(int64(tag.Value), q, tase2.TimeStampFrom(ts))
 	default:
 		val, _ := convertToDataValueWithQuality(tag)
 		return val

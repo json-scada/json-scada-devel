@@ -633,27 +633,20 @@ func dataValueToUpdate(dv *tase2.DataValue, m tagMapping, now time.Time, hoursSh
 		}
 	}
 
-	if dp.TimeTag != nil {
-		upd.timeTagAtSource = iccpTimeTagToTime(*dp.TimeTag, now, hoursShift)
+	if t, ok := dp.Time(); ok {
+		upd.timeTagAtSource = iccpTimeStampToTime(t, hoursShift)
 		upd.timeTagAtSourceOk = true
 	}
 
 	return upd
 }
 
-// iccpTimeTagToTime converts an ICCP time tag (milliseconds since midnight, as
-// decoded by the tase2 library) to an absolute time. The date is taken from the
-// current UTC day; hoursShift (connection config) compensates a peer sending
-// local time instead of UTC. A result ahead of now by more than an hour is
-// assumed to be from just before a midnight rollover and shifted back one day.
-func iccpTimeTagToTime(ms int64, now time.Time, hoursShift float64) time.Time {
-	midnight := now.UTC().Truncate(24 * time.Hour)
-	t := midnight.Add(time.Duration(ms) * time.Millisecond)
-	t = t.Add(time.Duration(hoursShift * float64(time.Hour)))
-	if t.After(now.Add(time.Hour)) {
-		t = t.AddDate(0, 0, -1)
-	}
-	return t
+// iccpTimeStampToTime applies the connection's hoursShift to a decoded ICCP
+// time stamp. The time is already absolute (GMTBasedS seconds, plus
+// milliseconds for the 802 Ed.2 QTimeTagExtended types); hoursShift only
+// compensates a peer that stamps local time instead of UTC.
+func iccpTimeStampToTime(t time.Time, hoursShift float64) time.Time {
+	return t.Add(time.Duration(hoursShift * float64(time.Hour)))
 }
 
 // updateConnectionStats updates the stats field on the protocol connection document.

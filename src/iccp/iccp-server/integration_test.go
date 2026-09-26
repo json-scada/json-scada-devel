@@ -27,15 +27,15 @@ func TestServerLoopback(t *testing.T) {
 	domA := dataModel.AddDomain("SUB_A")
 	tagA := rtData{Tag: "KAW2TR1-0MTRP", Type: "analog", Value: 55.5, Group1: "SUB_A"}
 	pointA := sanitizePointName(tagA.Tag)
-	ipA := domA.AddDataPoint(pointA, tase2.ICCPTypeRealQTimeTag)
-	ipA.UpdateValue(convertToICCPValue(tagA, tase2.ICCPTypeRealQTimeTag), nil)
+	ipA := domA.AddDataPoint(pointA, tase2.ICCPTypeRealQTimeTagExtended)
+	ipA.UpdateValue(convertToICCPValue(tagA, tase2.ICCPTypeRealQTimeTagExtended), nil)
 	domA.AddDSTransferSet("DSTrans").AttachDataSet("SUB_A", "SUB_A_DataSet")
 
 	domB := dataModel.AddDomain("SUB_B")
 	tagB := rtData{Tag: "HIDDEN-POINT", Type: "analog", Value: 99.9, Group1: "SUB_B"}
 	pointB := sanitizePointName(tagB.Tag)
-	ipB := domB.AddDataPoint(pointB, tase2.ICCPTypeRealQTimeTag)
-	ipB.UpdateValue(convertToICCPValue(tagB, tase2.ICCPTypeRealQTimeTag), nil)
+	ipB := domB.AddDataPoint(pointB, tase2.ICCPTypeRealQTimeTagExtended)
+	ipB.UpdateValue(convertToICCPValue(tagB, tase2.ICCPTypeRealQTimeTagExtended), nil)
 	domB.AddDSTransferSet("DSTrans").AttachDataSet("SUB_B", "SUB_B_DataSet")
 
 	datasetDefs := []datasetDef{
@@ -147,6 +147,8 @@ func TestServerLoopback(t *testing.T) {
 
 	// Buffer an update exactly as watchRealtimeDataChanges does, then flush.
 	tagA.Value = 66.25
+	srcTime := time.Date(2026, 9, 26, 8, 53, 7, 123000000, time.UTC)
+	tagA.TimeTagAtSource, tagA.TimeTagAtSourceOk = &srcTime, true
 	newVal := convertToICCPValue(tagA, ipA.ICCPType)
 	pendingChangesMu.Lock()
 	for _, entry := range servers {
@@ -174,6 +176,12 @@ func TestServerLoopback(t *testing.T) {
 				d := tase2.DecodeICCP(rv.Value)
 				if d.Real != nil && *d.Real > 66.2 && *d.Real < 66.3 {
 					found = true
+					if d.Type != tase2.ICCPTypeRealQTimeTagExtended {
+						t.Errorf("DSTS report type = %v, want RealQTimeTagExtended", d.Type)
+					}
+					if got, ok := d.Time(); !ok || !got.Equal(srcTime) {
+						t.Errorf("DSTS report time = %v (ok=%v), want %v (ms resolution)", got, ok, srcTime)
+					}
 				}
 			}
 		}
