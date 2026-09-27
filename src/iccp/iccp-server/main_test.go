@@ -1,6 +1,7 @@
 package main
 
 import (
+	"net"
 	"testing"
 	"time"
 
@@ -134,5 +135,63 @@ func TestSanitizePointName(t *testing.T) {
 		if got := sanitizePointName(in); got != want {
 			t.Errorf("sanitizePointName(%q) = %q, want %q", in, got, want)
 		}
+	}
+}
+
+func TestParseLocalBind(t *testing.T) {
+	cases := []struct {
+		in   string
+		host string
+		port int
+		bad  bool
+	}{
+		{"", "0.0.0.0", 102, false},
+		{":10102", "0.0.0.0", 10102, false},
+		{"0.0.0.0:102", "0.0.0.0", 102, false},
+		{"192.168.1.10:2102", "192.168.1.10", 2102, false},
+		{"127.0.0.1", "127.0.0.1", 102, false},
+		{"[::1]:102", "::1", 102, false},
+		{"::", "::", 102, false},
+		{" 10.0.0.5:102 ", "10.0.0.5", 102, false},
+		{"0.0.0.0:abc", "", 0, true},
+		{"0.0.0.0:70000", "", 0, true},
+	}
+	for _, c := range cases {
+		host, port, err := parseLocalBind(c.in)
+		if c.bad {
+			if err == nil {
+				t.Errorf("parseLocalBind(%q) = %q, %d; want error", c.in, host, port)
+			}
+			continue
+		}
+		if err != nil || host != c.host || port != c.port {
+			t.Errorf("parseLocalBind(%q) = %q, %d, %v; want %q, %d", c.in, host, port, err, c.host, c.port)
+		}
+	}
+}
+
+// The library binds passive endpoints to loopback by default; the driver's
+// default must still listen on all interfaces.
+func TestListenAllInterfacesByDefault(t *testing.T) {
+	host, _, err := parseLocalBind("")
+	if err != nil {
+		t.Fatal(err)
+	}
+	ep := tase2.NewEndpoint(tase2.EndpointPassive)
+	if err := ep.SetListenAddress(host); err != nil {
+		t.Fatalf("SetListenAddress(%q): %v", host, err)
+	}
+	if err := ep.Listen(0); err != nil {
+		t.Fatalf("Listen: %v", err)
+	}
+	defer ep.Disconnect()
+	addr, ok := ep.ListenAddr().(*net.TCPAddr)
+	if !ok || !addr.IP.IsUnspecified() {
+		t.Errorf("listening on %v, want the unspecified (all interfaces) address", ep.ListenAddr())
+	}
+
+	// A host name other than localhost is rejected rather than resolved.
+	if err := tase2.NewEndpoint(tase2.EndpointPassive).SetListenAddress("scada-server"); err == nil {
+		t.Error("SetListenAddress(host name) succeeded, want error")
 	}
 }

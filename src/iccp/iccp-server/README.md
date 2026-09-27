@@ -90,7 +90,7 @@ db.protocolConnections.insert({
 - **description** [String] - Description. **Optional**.
 - **enabled** [Boolean] - Enable/disable connection. **Mandatory**.
 - **commandsEnabled** [Boolean] - Enable command forwarding. **Mandatory**.
-- **ipAddressLocalBind** [String] - Listen address and port (e.g. "0.0.0.0:102"). Default port is 102. **Mandatory**.
+- **ipAddressLocalBind** [String] - Listen address and port: `"host:port"`, `":port"`, `"host"` or `"[ipv6]:port"` (e.g. "0.0.0.0:102"). The host must be an IP address or `localhost`; an empty host listens on all interfaces (0.0.0.0), and the port defaults to 102. An invalid value is logged and that connection is not started. **Mandatory**.
 - **ipAddresses** [Array of Strings] - Allowed client IP addresses (not yet enforced!). Empty = allow all. **Optional**.
 - **topics** [Array of Strings] - `group1` filter for exposed tags. Empty = all tags. When `remoteApTitle` is set, topics are enforced on discovery/reads/writes via the bilateral table (only the listed domains are granted); without a `remoteApTitle` (open mode) topics only filter DSTS pushes. **Optional**.
 - **timeoutMs** [Double] - Connection timeout in ms. **Optional**.
@@ -105,9 +105,6 @@ db.protocolConnections.insert({
 - **chainValidation** [Boolean] - Require and verify client certificates (mutual TLS) against the CA. Default: false. **Optional**.
 - **password** [String] - ACSE authentication password. Empty = no auth. **Optional**.
 - **stats** [Object] - Protocol statistics, written by the driver every 10 s (see [Statistics](#statistics)). **Mandatory**.
-
-Note: the host part of `ipAddressLocalBind` is not honored yet (the server
-listens on all interfaces); only the port is used.
 
 ## Logging
 

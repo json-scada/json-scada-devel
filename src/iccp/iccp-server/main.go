@@ -448,20 +448,11 @@ func main() {
 
 			for _, conn := range connections {
 				conn := conn // capture for closure
-				port := 102  // default ICCP port
-				if conn.IPAddressLocalBind != "" {
-					parts := strings.Split(conn.IPAddressLocalBind, ":")
-					if len(parts) > 1 {
-						if p, err := strconv.Atoi(parts[1]); err == nil {
-							port = p
-						}
-					}
-					// The tase2 library listens on all interfaces; a specific
-					// bind host cannot be honored yet.
-					if host := parts[0]; host != "" && host != "0.0.0.0" && host != "::" {
-						LogMsg(LogLevelMin, "ICCP - Connection %q: bind host %q ignored, listening on all interfaces (port %d)",
-							conn.Name, host, port)
-					}
+				bindHost, port, err := parseLocalBind(conn.IPAddressLocalBind)
+				if err != nil {
+					LogMsg(LogLevelMin, "ICCP - Connection %q: invalid ipAddressLocalBind %q: %v; not listening",
+						conn.Name, conn.IPAddressLocalBind, err)
+					continue
 				}
 
 				localAPTitle := conn.LocalApTitle
@@ -497,6 +488,12 @@ func main() {
 				// Library messages for this listener's associations are
 				// attributed to the connection; accepted endpoints inherit it.
 				endpoint.SetLogHandler(tase2LogHandler(conn.Name))
+				// The library binds passive endpoints to loopback unless told
+				// otherwise; bind where ipAddressLocalBind says.
+				if err := endpoint.SetListenAddress(bindHost); err != nil {
+					LogMsg(LogLevelMin, "ICCP - Connection %q: %v; not listening", conn.Name, err)
+					continue
+				}
 
 				// Secure ICCP (IEC 62351-3): TLS wraps the whole association.
 				// chainValidation=true additionally requires and verifies
@@ -515,8 +512,8 @@ func main() {
 					continue
 				}
 
-				LogMsg(LogLevelMin, "ICCP - Connection %q listening on port %d (AP: %s, AE: %d)",
-					conn.Name, port, localAPTitle, localAEQual)
+				LogMsg(LogLevelMin, "ICCP - Connection %q listening on %v (AP: %s, AE: %d)",
+					conn.Name, endpoint.ListenAddr(), localAPTitle, localAEQual)
 
 				// Serve clients: ServeClients runs the accept loop, one server
 				// goroutine per association, and closes each transport when the
