@@ -104,10 +104,45 @@ db.protocolConnections.insert({
 - **rootCertFilePath** [String] - CA certificate (PEM) to verify client certificates. **Optional**.
 - **chainValidation** [Boolean] - Require and verify client certificates (mutual TLS) against the CA. Default: false. **Optional**.
 - **password** [String] - ACSE authentication password. Empty = no auth. **Optional**.
-- **stats** [Object] - Protocol statistics (updated by driver). **Mandatory**.
+- **stats** [Object] - Protocol statistics, written by the driver every 10 s (see [Statistics](#statistics)). **Mandatory**.
 
 Note: the host part of `ipAddressLocalBind` is not honored yet (the server
 listens on all interfaces); only the port is used.
+
+## Logging
+
+Library messages (the `iso`, `mms` and `tase2` layers) go through the driver
+log, filtered by the same `logLevel`: library errors at 0, informational
+messages at 2 (detailed) and protocol debug at 3. Messages about one
+association are prefixed with the connection name and the transport
+context, e.g.
+
+```
+TASE2 ICCP_SRV1 [conn 3 10.0.0.9:40001 1.1.999.2/12] mms - ...
+```
+
+## Statistics
+
+Every 10 seconds the driver writes each listening connection's `stats`.
+Counters are cumulative since the driver started and include associations
+that have already ended:
+
+| Field | Meaning |
+|---|---|
+| `nodeName`, `timeTag` | writing node and time of the update |
+| `clientConnections` | live associations |
+| `clients` | one entry per live association: `remoteAddress`, `apTitle`, `aeQualifier`, `connectedAt` |
+| `associations` | associations accepted |
+| `requests` | confirmed MMS requests answered, per service (`read`, `write`, `getNameList`, ...) |
+| `errors`, `rejects` | requests answered with an error PDU or a reject |
+| `reportsSent`, `reportsDropped` | DSTS reports |
+| `informationMessagesSent` | Information Messages |
+| `bytesRx`, `bytesTx` | MMS PDU octets |
+| `eventsDropped` | server events lost because the observer fell behind |
+
+Server events are logged too: association accepted, released, aborted or
+lost, and dropped reports at `logLevel >= 1`; rejected requests and failed
+controls at 2; everything else at 3.
 
 ## Command Line Arguments
 
@@ -211,11 +246,10 @@ Upon activation (`Status` transitions to `true`), the server:
 
 Reports are delivered as MMS **InformationReport** messages. Each report contains
 the ObjectRef (domain + item) and the current `DataValue` for each included
-dataset member. The server logs every report at `logLevel >= 1`:
-
-```
-ICCP Server: DSTS report '<dataset>' kind=<kind> values=<n> (first=<domain>/<item>)
-```
+dataset member. Reporting start and stop per transfer set are logged at
+`logLevel >= 2`; each sent report is logged at `logLevel 3` as a
+`ReportSent` server event, and counted in `stats.reportsSent` (see
+[Statistics](#statistics)). Dropped reports are logged at `logLevel >= 1`.
 
 On transport failure (e.g. client disconnect), the server stops the affected DSTS
 goroutines automatically.

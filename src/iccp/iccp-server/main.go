@@ -49,22 +49,30 @@ type serverEntry struct {
 	server     *tase2.Server
 	connection protocolConnection
 	endpoint   *tase2.Endpoint
+	since      time.Time
+	peer       tase2.EventPeer // set by the AssociationAccepted event
 }
 
-// serverRegistry tracks all live per-connection servers.
+// serverRegistry tracks all live per-connection servers, and keeps the
+// counters of associations that have ended so connection statistics survive
+// client reconnects.
 type serverRegistry struct {
 	mu      sync.Mutex
 	entries map[*tase2.Server]*serverEntry
+	closed  map[int]*connStats // by protocolConnectionNumber
 }
 
 func newServerRegistry() *serverRegistry {
-	return &serverRegistry{entries: make(map[*tase2.Server]*serverEntry)}
+	return &serverRegistry{
+		entries: make(map[*tase2.Server]*serverEntry),
+		closed:  make(map[int]*connStats),
+	}
 }
 
 func (r *serverRegistry) add(srv *tase2.Server, ep *tase2.Endpoint, conn protocolConnection) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.entries[srv] = &serverEntry{server: srv, endpoint: ep, connection: conn}
+	r.entries[srv] = &serverEntry{server: srv, endpoint: ep, connection: conn, since: time.Now()}
 	return len(r.entries)
 }
 
@@ -72,9 +80,26 @@ func (r *serverRegistry) remove(srv *tase2.Server) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// The per-connection transport is already closed by ServeClients before
-	// the post-disconnect hook (which calls remove) runs.
-	delete(r.entries, srv)
+	// the post-disconnect hook (which calls remove) runs; its counters are
+	// final, so fold them into the connection totals.
+	if e, ok := r.entries[srv]; ok {
+		n := e.connection.ProtocolConnectionNumber
+		if r.closed[n] == nil {
+			r.closed[n] = newConnStats()
+		}
+		r.closed[n].add(srv.Stats())
+		delete(r.entries, srv)
+	}
 	return len(r.entries)
+}
+
+// setPeer records the peer identity of a live association.
+func (r *serverRegistry) setPeer(srv *tase2.Server, peer tase2.EventPeer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[srv]; ok {
+		e.peer = peer
+	}
 }
 
 func (r *serverRegistry) snapshot() []*serverEntry {
@@ -419,6 +444,7 @@ func main() {
 
 			// Start servers for each connection
 			registry := newServerRegistry()
+			var listening []protocolConnection
 
 			for _, conn := range connections {
 				conn := conn // capture for closure
@@ -468,6 +494,9 @@ func main() {
 				endpoint := tase2.NewEndpoint(tase2.EndpointPassive)
 				endpoint.SetLocalAPTitle(localAPTitle, localAEQual)
 				endpoint.SetMaxTPDUSizeParam(maxTPDUSizeParam)
+				// Library messages for this listener's associations are
+				// attributed to the connection; accepted endpoints inherit it.
+				endpoint.SetLogHandler(tase2LogHandler(conn.Name))
 
 				// Secure ICCP (IEC 62351-3): TLS wraps the whole association.
 				// chainValidation=true additionally requires and verifies
@@ -493,27 +522,9 @@ func main() {
 				// goroutine per association, and closes each transport when the
 				// association ends; the post-disconnect hook keeps the registry
 				// in sync for change-stream fan-out and client counting.
+				listening = append(listening, conn)
 				go func(ep *tase2.Endpoint, conn protocolConnection, srvCfg tase2.ServerConfig) {
-					err := ep.ServeClients(
-						func(ce *tase2.Endpoint) *tase2.Server {
-							// IP filtering is done at the ICCP bilateral-table
-							// level; IP-based access control can be added in a
-							// future version.
-							srv := buildServer(dataModel, ce, srvCfg, conn, datasetDefs, collectionCommands)
-							n := registry.add(srv, ce, conn)
-							LogMsg(LogLevelNormal, "ICCP - Client associated! %s (%d active client(s))",
-								conn.Name, n)
-							return srv
-						},
-						func(ce *tase2.Endpoint, srv *tase2.Server, serveErr error) {
-							if serveErr != nil {
-								LogMsg(LogLevelNormal, "ICCP - Server error for %s: %v", conn.Name, serveErr)
-							}
-							n := registry.remove(srv)
-							LogMsg(LogLevelNormal, "ICCP - Client disconnected from %s (%d active client(s))",
-								conn.Name, n)
-						},
-					)
+					err := ep.ServeClients(serveClientCallbacks(registry, dataModel, srvCfg, conn, datasetDefs, collectionCommands))
 					if errors.Is(err, net.ErrClosed) {
 						LogMsg(LogLevelNormal, "ICCP - Listener closed for %s", conn.Name)
 					} else if err != nil {
@@ -521,6 +532,9 @@ func main() {
 					}
 				}(endpoint, conn, cfg)
 			}
+
+			// Publish per-connection association statistics
+			go publishConnectionStats(collectionConnections, registry, listening, cfg.NodeName)
 
 			// Start the MongoDB change stream watcher
 			go watchRealtimeDataChanges(clientMongo, collectionRtData, registry, ipByTag, cpByTag, connNumbers, topicList)
@@ -549,17 +563,6 @@ func main() {
 			clientMongo.Disconnect(context.TODO())
 			clientMongo = nil
 		}
-	}
-}
-
-func configureTASE2Logging(level int) {
-	switch {
-	case level >= LogLevelDebug:
-		tase2.SetLogLevel(tase2.LogLevelDebug)
-	case level >= LogLevelDetailed:
-		tase2.SetLogLevel(tase2.LogLevelInfo)
-	default:
-		tase2.SetLogLevel(tase2.LogLevelError)
 	}
 }
 

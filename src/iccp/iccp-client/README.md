@@ -159,6 +159,18 @@ db.realtimeData.updateOne({"tag": "Breaker1.Command"}, {
 - **protocolSourceASDU** [String] - Data type (boolean, float, double, int32, string, etc.). **Mandatory**.
 - **origin** [String] - Must be "command". **Mandatory**.
 
+## Logging
+
+Library messages (the `iso`, `mms` and `tase2` layers) go through the driver
+log, filtered by the same `logLevel`: library errors at 0, informational
+messages at 2 (detailed) and protocol debug at 3. Messages about one
+association are prefixed with the connection name and the transport
+context, e.g.
+
+```
+TASE2 ICCP_CLI1 [conn 3 10.0.0.9:40001 1.1.999.2/12] mms - ...
+```
+
 ## Command Line Arguments
 
 - **1st arg - Instance Number** [Integer] - Instance number. Default: 1.

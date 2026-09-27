@@ -21,7 +21,10 @@ package main
 import (
 	"fmt"
 	"log"
+	"strings"
 	"time"
+
+	"github.com/riclolsen/tase2/tase2"
 )
 
 const (
@@ -36,9 +39,63 @@ var currentLogLevel = LogLevelNormal
 // LogMsg logs a message at the given level if the current log level allows it.
 func LogMsg(level int, format string, v ...interface{}) {
 	if level <= currentLogLevel {
-		msg := fmt.Sprintf(format, v...)
-		log.Printf("%s - %s", time.Now().Format("2006-01-02T15:04:05.000Z07:00"), msg)
+		logLine(time.Now(), fmt.Sprintf(format, v...))
 	}
+}
+
+func logLine(t time.Time, msg string) {
+	log.Printf("%s - %s", t.Format("2006-01-02T15:04:05.000Z07:00"), msg)
+}
+
+// configureTASE2Logging sets the library's level filter from the driver log
+// level and routes process-level library messages (iso, mms and tase2)
+// through the driver log. Endpoints add connection attribution with
+// tase2LogHandler.
+func configureTASE2Logging(level int) {
+	switch {
+	case level >= LogLevelDebug:
+		tase2.SetLogLevel(tase2.LogLevelDebug)
+	case level >= LogLevelDetailed:
+		tase2.SetLogLevel(tase2.LogLevelInfo)
+	default:
+		tase2.SetLogLevel(tase2.LogLevelError)
+	}
+	tase2.SetLogHandler(tase2LogHandler(""))
+}
+
+// tase2LogHandler returns a library log handler that writes through the
+// driver log, prefixed with the connection name (label) and, for messages
+// about one transport connection, its id, remote address and peer AP title.
+func tase2LogHandler(label string) func(tase2.LogRecord) {
+	return func(r tase2.LogRecord) {
+		level := LogLevelDebug
+		switch r.Level {
+		case tase2.LogLevelError:
+			level = LogLevelMin
+		case tase2.LogLevelInfo:
+			level = LogLevelDetailed
+		}
+		if level <= currentLogLevel {
+			logLine(r.Time, formatTASE2LogRecord(label, r))
+		}
+	}
+}
+
+func formatTASE2LogRecord(label string, r tase2.LogRecord) string {
+	var b strings.Builder
+	b.WriteString("TASE2")
+	if label != "" {
+		b.WriteString(" " + label)
+	}
+	if r.ConnID != 0 {
+		fmt.Fprintf(&b, " [conn %d %s", r.ConnID, r.RemoteAddr)
+		if r.PeerAPTitle != "" {
+			fmt.Fprintf(&b, " %s/%d", r.PeerAPTitle, r.PeerAEQualifier)
+		}
+		b.WriteString("]")
+	}
+	fmt.Fprintf(&b, " %s - %s", r.Package, r.Message)
+	return b.String()
 }
 
 // CheckFatalError logs and exits if there is an error.

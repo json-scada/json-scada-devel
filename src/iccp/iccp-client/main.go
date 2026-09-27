@@ -80,6 +80,7 @@ func main() {
 
 	cfg, instanceNumber, instLogLevel := readConfigFile()
 	currentLogLevel = instLogLevel
+	configureTASE2Logging(currentLogLevel)
 	maxTPDUSizeParam := readTuningInt(EnvPrefix+"MAX_TPDU_SIZE_PARAM", cfg.ICCPMaxTPDUSizeParam, 16)
 	if maxTPDUSizeParam < 7 || maxTPDUSizeParam > 16 {
 		LogMsg(LogLevelMin, "Config - Invalid max TPDU size parameter %d, using 16", maxTPDUSizeParam)
@@ -227,6 +228,8 @@ func runICCPConnection(conn protocolConnection, collectionRtData *mongo.Collecti
 		ep.SetLocalAPTitle(localAP, localAE)
 		ep.SetRemoteAPTitle(remoteAP, remoteAE)
 		ep.SetMaxTPDUSizeParam(maxTPDUSizeParam)
+		// Set before Connect so the handshake is attributed to the connection.
+		ep.SetLogHandler(tase2LogHandler(conn.Name))
 		if conn.Password != "" {
 			ep.SetAuthenticationPassword(conn.Password)
 		}
