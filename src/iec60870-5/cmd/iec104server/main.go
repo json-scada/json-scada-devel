@@ -234,12 +234,16 @@ func main() {
 			RecvUnAckTimeout2: time.Duration(defInt(int(cc.T2), 10)) * time.Second,
 			IdleTimeout3:      time.Duration(defInt(int(cc.T3), 20)) * time.Second,
 		}
-		// go-iecp5 silently falls back to its default config when the
-		// parameters are invalid (e.g. t2 >= t1, or w above two thirds of k)
+		// go-iecp5 falls back to its default config when the parameters are
+		// invalid (out of range, or t2 >= t1), logging it only at debug level
 		chk := srvCfg
 		if err := chk.Valid(); err != nil {
 			jslog.Log(jslog.LevelBasic, "%s - Invalid k/w/t0..t3 parameters (%s): library defaults will be used instead.",
 				cc.Name, err.Error())
+		} else if 3*int(chk.RecvUnAckLimitW) > 2*int(chk.SendUnAckLimitK) {
+			// allowed, but the standard recommends w <= 2/3 k
+			jslog.Log(jslog.LevelBasic, "%s - Warning: w (%d) exceeds two thirds of k (%d), throughput may drop to one window per t2.",
+				cc.Name, chk.RecvUnAckLimitW, chk.SendUnAckLimitK)
 		}
 		server.SetConfig(srvCfg)
 		server.SetInfoObjTimeZone(time.Local)
