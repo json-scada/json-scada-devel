@@ -42,10 +42,16 @@ On Windows, `build.bat` does the same. The platform build scripts
 (`platform-linux/build.sh`, `platform-mac/build.sh`, `platform-windows/build.bat`) build both
 binaries automatically.
 
-> **Rebuild any binary built against go-dnp3 before v0.5.3.** Those releases had the CROB close
-> and trip codes transposed. The client sent a **trip where a close was meant** (and the reverse)
-> for command durations 11, 13, 21 and 23, and the server read a close from any other master as 0.
-> Plain pulse and latch commands (durations 1 to 4) were not affected.
+> **Rebuild any binary built against go-dnp3 before v0.5.5.** Earlier releases had two command
+> faults:
+>
+> - Before v0.5.3 the CROB close and trip codes were transposed. The client sent a **trip where a
+>   close was meant** (and the reverse) for command durations 11, 13, 21 and 23, and the server read
+>   a close from any other master as 0. Plain pulse and latch commands (durations 1 to 4) were not
+>   affected.
+> - Before v0.5.4 the client wrote every command's point index in one octet: **a command for a
+>   point above 255 operated point index mod 256** (300 operated 44). Commands to points 0–255 were
+>   not affected.
 
 ## Running
 
@@ -187,7 +193,7 @@ driver reports the whole block for every type instead, empty ones included, so a
 `TestAttributesCoverDerived` checks that every variation the library derives is one the driver
 answers, so the two are never mixed in one response. go-dnp3 releases before v0.5.2 used an older
 numbering for the derived attributes (the binary input count as 226, "frozen counters supported"
-in IEEE 1815); this module needs v0.5.3 or later.
+in IEEE 1815); this module needs v0.5.5 or later.
 
 **List of attributes (variation 255).** A master asking which attributes exist gets one list of
 every variation the server reports, none of them writable.

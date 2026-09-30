@@ -14,7 +14,7 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 ## Local Contracts
 
 - **Language:** Go 1.26, module `dnp3-go`, `cmd/` + `internal/` layout as in `src/iec60870-5`
-- **Library:** `github.com/dscsystems/go-dnp3` v0.5.3 (GPLv3+, pure Go) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-dnp3` v0.5.5 (GPLv3+, pure Go) — **pin the version**,
   the API is pre-1.0 and the SKILL.md in that repo says so explicitly. JSON-SCADA is GPL-3.0, so
   the copyleft is not a problem; note it rather than re-litigating it.
   - Used beyond the basics: device attributes (group 0) on the server, `multidrop.Bus` everywhere.
@@ -33,6 +33,15 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
     for close** on durations 11/13/21/23 and read a standard close as 0. It also clears the request
     error IIN bits (NO_FUNC_CODE_SUPPORT, OBJECT_UNKNOWN, PARAMETER_ERROR, ALREADY_EXECUTING) once
     a response has reported them, and widened `decoder.Value.Index` to `uint32`.
+  - v0.5.4/v0.5.5 fixed the master's command encoding, which wrote every index with a one-octet
+    prefix: **builds on earlier releases operated point index mod 256** for any command above
+    255 (300 operated 44). They keep periodic tasks across the startup sequence each connection
+    runs (see the class scan rule below), stop an unsolicited response from deleting the events
+    that did not fit in it, apply queued updates before answering a request, and read clock writes
+    with an index prefix correctly. Additive API: command events (groups 13/43,
+    `PointConfig.CommandEventClass`, default none), `Session.SetIndication`, master
+    `FreezeCounters`/`FreezeAtTime`/`SyncTimeRecorded`, and `dnp3.ErrRejected` (returned only
+    by those new calls).
   - Stats counters available if the stats document ever wants them:
     `outstation.Stats.RepeatedRequests`/`IncompleteRequests`, `master.Stats.FragmentsDiscarded`.
   - Before the next bump, diff the API of the packages this module imports rather than trusting
@@ -63,10 +72,11 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 - **Do not set a client-level `Timeout` on the MongoDB client.** It applies to every operation
   including a change stream's `Next`, so the watchers get torn down and rebuilt on each expiry.
   Every call that needs a bound passes its own context deadline.
-- **Periodic class scans must be re-registered on every connection.** `master.Session.Run` calls
-  its startup sequence on each connect, and that begins by clearing the task scheduler — a scan
-  registered once is dropped, and the session then polls nothing but its own startup integrity
-  read. `classScanLoop` watches `Connected()` and re-registers on each rising edge.
+- **Periodic class scans are registered once**, when the session first connects. From go-dnp3
+  v0.5.4 the startup sequence each connection runs keeps periodic tasks, so registering again on
+  every reconnection multiplies the polls. `TestClassScansSurviveReconnection` cuts the link
+  three times and checks the poll rate is unchanged; it only catches this when the outage lasts
+  long enough for `Connected()` to drop, so keep its outage.
 - **Configure the analog variations explicitly.** go-dnp3 defaults analogs to the 32-bit integer
   variations, so an unconfigured point truncates 123.5 to 123. The server applies g30v5/g32v7 to
   every analog and g40v3/g42v7 to every analog output status, as the C++ server does.
@@ -85,7 +95,8 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 - **CROB tests pin raw octets, never library constants.** `TestCROBWireCodes` (client) and
   `TestCROBValueWireCodes` (server) compare against the bytes opendnp3 sends; a test written
   against `dnp3.ControlClose`/`ControlTrip` agreed with the transposed constants of go-dnp3
-  before v0.5.3 and could not catch a trip sent for a close.
+  before v0.5.3 and could not catch a trip sent for a close. Likewise `TestCommandsReachTheirIndex`
+  operates points above 255, which no test did while go-dnp3 wrapped them onto 0–255.
 - `outstation.Session.Update` queues the change for the session loop; it is not applied when the
   call returns. A test that changes a value and then scans must poll until the change is reported.
 - `Database.Configure` replaces the whole `PointConfig`, so every call is a read-modify-write: a

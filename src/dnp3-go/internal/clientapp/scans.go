@@ -33,7 +33,8 @@ import (
 )
 
 // startScans starts the goroutines that keep a connection's polls running: one
-// that registers the class scans on every connection, and one per range scan.
+// that registers the class scans once the session first connects, and one per
+// range scan.
 func (e *Engine) startScans(ctx context.Context, conn *Connection, session *master.Session) {
 	go classScanLoop(ctx, conn, session)
 
@@ -45,31 +46,28 @@ func (e *Engine) startScans(ctx context.Context, conn *Connection, session *mast
 	}
 }
 
-// classScanLoop registers the periodic class polls each time the session
+// classScanLoop registers the periodic class polls once the session first
 // connects.
 //
-// They cannot be registered once: the stack runs its startup sequence on every
-// connection, and that begins by clearing the task scheduler — so a scan
-// registered beforehand is dropped, and after the first reconnection the
-// session would poll nothing but its own startup integrity read. Registering on
-// each rising edge of Connected() is what keeps the configured intervals in
-// force for the life of the driver.
+// Once is enough, and more is harmful: from go-dnp3 v0.5.4 the startup
+// sequence each connection runs keeps periodic tasks, so a scan registered
+// again on every reconnection adds another copy of itself each time
+// (TestClassScansSurviveReconnection). The scans wait for the first connection
+// only because AddPeriodicScan hands the task to the running session.
 func classScanLoop(ctx context.Context, conn *Connection, session *master.Session) {
 	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
 
-	wasConnected := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
-		connected := session.Connected()
-		if connected && !wasConnected {
+		if session.Connected() {
 			registerClassScans(ctx, conn, session)
+			return
 		}
-		wasConnected = connected
 	}
 }
 
