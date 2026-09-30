@@ -14,7 +14,7 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
 ## Local Contracts
 
 - **Language:** Go 1.26, module `dnp3-go`, `cmd/` + `internal/` layout as in `src/iec60870-5`
-- **Library:** `github.com/dscsystems/go-dnp3` v0.5.5 (GPLv3+, pure Go) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-dnp3` v0.6.0 (GPLv3+, pure Go) — **pin the version**,
   the API is pre-1.0 and the SKILL.md in that repo says so explicitly. JSON-SCADA is GPL-3.0, so
   the copyleft is not a problem; note it rather than re-litigating it.
   - Used beyond the basics: device attributes (group 0) on the server, `multidrop.Bus` everywhere.
@@ -42,6 +42,13 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
     `PointConfig.CommandEventClass`, default none), `Session.SetIndication`, master
     `FreezeCounters`/`FreezeAtTime`/`SyncTimeRecorded`, and `dnp3.ErrRejected` (returned only
     by those new calls).
+  - v0.6.0 is additive and opt-in: DNP3 secure authentication (SAv5), writable device
+    attributes, datasets, virtual terminal, frozen analogs, time-and-interval, self-address
+    discovery, file authentication. None is used here. `master.Update` gained `FrozenAnalog`; a
+    handler without `FrozenAnalogHandler` still receives frozen analogs through `HandleAnalog`.
+    Behaviour changes that do apply: UDP sends each application fragment as one datagram (a
+    loss drops the whole fragment), event reads are answered by event group, and pattern control
+    (g12v2/v3) is refused rather than operated as a CROB. Nothing in this module changed.
   - Stats counters available if the stats document ever wants them:
     `outstation.Stats.RepeatedRequests`/`IncompleteRequests`, `master.Stats.FragmentsDiscarded`.
   - Before the next bump, diff the API of the packages this module imports rather than trusting
