@@ -350,33 +350,35 @@ func commandVariant(asdu string, value float64, valueString string) (v *ua.Varia
 		return arrayVariant(asdu, valueString)
 	}
 
+	// Integer commands are rounded half to even and refused when they do not
+	// fit the type, like .NET's Convert.ToXxx; see commandconv.go.
 	switch strings.ToLower(strings.TrimSpace(asdu)) {
 	case "boolean":
 		v, err = ua.NewVariant(value != 0.0)
 	case "sbyte":
-		v, err = ua.NewVariant(int8(value))
+		v, err = variantOf(toInteger[int8](value, "SByte", -128, 128))
 	case "byte":
-		v, err = ua.NewVariant(byte(value))
+		v, err = variantOf(toInteger[uint8](value, "Byte", 0, 256))
 	case "int16":
-		v, err = ua.NewVariant(int16(value))
+		v, err = variantOf(toInteger[int16](value, "Int16", -32768, 32768))
 	case "uint16":
-		v, err = ua.NewVariant(uint16(value))
+		v, err = variantOf(toInteger[uint16](value, "UInt16", 0, 65536))
 	case "integer", "int32":
-		v, err = ua.NewVariant(int32(value))
+		v, err = variantOf(toInteger[int32](value, "Int32", -2147483648, 2147483648))
 	case "uint32":
-		v, err = ua.NewVariant(uint32(value))
+		v, err = variantOf(toInteger[uint32](value, "UInt32", 0, 4294967296))
 	case "int64":
-		v, err = ua.NewVariant(int64(value))
+		v, err = variantOf(toInteger[int64](value, "Int64", -9223372036854775808, 9223372036854775808))
 	case "uint64":
-		v, err = ua.NewVariant(uint64(value))
+		v, err = variantOf(toInteger[uint64](value, "UInt64", 0, 18446744073709551616))
 	case "float":
-		v, err = ua.NewVariant(float32(value))
+		v, err = variantOf(toFloat32(value))
 	case "double":
 		v, err = ua.NewVariant(value)
 	case "datetime":
 		// Acquisition publishes datetimes as Unix milliseconds; convert
 		// back the same way.
-		v, err = ua.NewVariant(time.UnixMilli(int64(value)).UTC())
+		v, err = variantOf(toDateTime(value))
 	case "string", "bytestring", "localizedtext", "qualifiedname",
 		"nodeid", "guid", "expandednodeid", "xmlelement":
 		v, err = ua.NewVariant(valueString)
@@ -393,22 +395,16 @@ func arrayVariant(asdu, valueString string) (*ua.Variant, string, error) {
 	if valueString == "" {
 		return nil, "empty array json error", nil
 	}
-	var raw []any
-	if err := json.Unmarshal([]byte(valueString), &raw); err != nil {
+	raw, ok := decodeJSONArray(valueString)
+	if !ok {
 		return nil, "array invalid json format error", nil
 	}
 
 	elemType := strings.ToLower(strings.TrimSpace(strings.Split(asdu, "[")[0]))
 
-	num := func(i int) (float64, error) {
-		f, ok := raw[i].(float64)
-		if !ok {
-			return 0, fmt.Errorf("element %d of the array is %T, not a number", i, raw[i])
-		}
-		return f, nil
-	}
-
-	var v *ua.Variant
+	// Integer elements must be plain in-range integers and are never
+	// rounded; see signedArray.
+	var x any
 	var err error
 	switch elemType {
 	case "datetime":
@@ -416,8 +412,8 @@ func arrayVariant(asdu, valueString string) (*ua.Variant, string, error) {
 		// datetime travels as Unix milliseconds.
 		a := make([]time.Time, len(raw))
 		for i := range raw {
-			s, ok := raw[i].(string)
-			if !ok {
+			s, isString := raw[i].(string)
+			if !isString {
 				return nil, "", fmt.Errorf("element %d of the array is %T, not a timestamp", i, raw[i])
 			}
 			t, perr := time.Parse(time.RFC3339Nano, s)
@@ -426,111 +422,51 @@ func arrayVariant(asdu, valueString string) (*ua.Variant, string, error) {
 			}
 			a[i] = t
 		}
-		v, err = ua.NewVariant(a)
+		x = a
 	case "int16":
-		a := make([]int16, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = int16(f)
-		}
-		v, err = ua.NewVariant(a)
+		x, err = signedArray[int16](raw, 16, "Int16")
 	case "uint16":
-		a := make([]uint16, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = uint16(f)
-		}
-		v, err = ua.NewVariant(a)
-	case "uint32":
-		a := make([]uint32, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = uint32(f)
-		}
-		v, err = ua.NewVariant(a)
-	case "int64":
-		a := make([]int64, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = int64(f)
-		}
-		v, err = ua.NewVariant(a)
-	case "uint64":
-		a := make([]uint64, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = uint64(f)
-		}
-		v, err = ua.NewVariant(a)
-	case "float":
-		a := make([]float32, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = float32(f)
-		}
-		v, err = ua.NewVariant(a)
-	case "double":
-		a := make([]float64, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = f
-		}
-		v, err = ua.NewVariant(a)
+		x, err = unsignedArray[uint16](raw, 16, "UInt16")
 	case "int32", "integer":
-		a := make([]int32, len(raw))
-		for i := range raw {
-			f, e := num(i)
-			if e != nil {
-				return nil, "", e
-			}
-			a[i] = int32(f)
-		}
-		v, err = ua.NewVariant(a)
+		x, err = signedArray[int32](raw, 32, "Int32")
+	case "uint32":
+		x, err = unsignedArray[uint32](raw, 32, "UInt32")
+	case "int64":
+		x, err = signedArray[int64](raw, 64, "Int64")
+	case "uint64":
+		x, err = unsignedArray[uint64](raw, 64, "UInt64")
+	case "float":
+		x, err = floatArray[float32](raw, 32, "Float")
+	case "double":
+		x, err = floatArray[float64](raw, 64, "Double")
 	case "boolean":
 		a := make([]bool, len(raw))
 		for i := range raw {
-			b, ok := raw[i].(bool)
-			if !ok {
+			b, isBool := raw[i].(bool)
+			if !isBool {
 				return nil, "", fmt.Errorf("element %d of the array is %T, not a boolean", i, raw[i])
 			}
 			a[i] = b
 		}
-		v, err = ua.NewVariant(a)
+		x = a
 	case "string", "bytestring", "localizedtext", "qualifiedname",
 		"nodeid", "guid", "expandednodeid", "xmlelement":
 		a := make([]string, len(raw))
 		for i := range raw {
-			s, ok := raw[i].(string)
-			if !ok {
+			s, isString := raw[i].(string)
+			if !isString {
 				return nil, "", fmt.Errorf("element %d of the array is %T, not a string", i, raw[i])
 			}
 			a[i] = s
 		}
-		v, err = ua.NewVariant(a)
+		x = a
 	default:
 		return nil, "", fmt.Errorf("unsupported array type: %s", elemType)
 	}
+	if err != nil {
+		return nil, "", err
+	}
+	v, err := ua.NewVariant(x)
 	return v, "", err
 }
 

@@ -1,0 +1,45 @@
+// Probe that produced csharp_convert.golden. To regenerate: put this in the
+// Program.cs of a net8.0 console project that references MongoDB.Bson 3.4.2,
+// run it, and keep the lines starting with SCALAR and ARRAY.
+using System;
+using System.Text.Json.Nodes;
+using MongoDB.Bson;
+
+string Try(Func<object> f) { try { return Convert.ToString(f(), System.Globalization.CultureInfo.InvariantCulture) + " (" + f().GetType().Name + ")"; } catch (Exception e) { return "EXC " + e.GetType().Name; } }
+
+double[] vals = { 300, -1, 200, 255, 256, 127, 128, -128, -129, 32767, 32768, 40000, -32768, -32769, 65535, 65536, -5,
+  2147483647, 2147483647.4, 2147483647.5, 2147483648, -2147483648, -2147483648.5, -2147483649, 3e9, 4294967295, 4294967296,
+  2.5, 3.5, -2.5, -3.5, 0.5, 1.5, -0.4, -0.5, 0.4999,
+  9223372036854775807.0, 9.3e18, -9223372036854775808.0, 1.8446744073709552e19, 1e30, double.NaN, double.PositiveInfinity, double.NegativeInfinity };
+string[] types = { "sbyte", "byte", "int16", "uint16", "int32", "uint32", "int64", "uint64", "float" };
+
+foreach (var t in types) {
+  foreach (var v in vals) {
+    BsonDouble b = v;
+    string r = t switch {
+      "sbyte" => Try(() => Convert.ToSByte(b)),
+      "byte" => Try(() => Convert.ToByte(b)),
+      "int16" => Try(() => Convert.ToInt16(b)),
+      "uint16" => Try(() => Convert.ToUInt16(b)),
+      "int32" => Try(() => Convert.ToInt32(b)),
+      "uint32" => Try(() => Convert.ToUInt32(b)),
+      "int64" => Try(() => Convert.ToInt64(b)),
+      "uint64" => Try(() => Convert.ToUInt64(b)),
+      _ => Try(() => Convert.ToSingle(b)),
+    };
+    Console.WriteLine($"SCALAR {t} {v.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} -> {r}");
+  }
+}
+double[] dts = { 0, 1788457923489, -62135596800000, -62135596800001, 253402300799999, 253402300800000, 1e30, double.NaN, 2.5 };
+foreach (var v in dts) {
+  BsonDouble b = v;
+  Console.WriteLine($"SCALAR datetime {v.ToString("R", System.Globalization.CultureInfo.InvariantCulture)} -> " +
+    Try(() => DateTimeOffset.FromUnixTimeMilliseconds(Convert.ToInt64(b)).UtcDateTime));
+}
+string[] elems = { "2", "2.0", "2.5", "1e2", "-1", "40000", "300", "127", "128", "4294967295", "4294967296", "9223372036854775807",
+                   "9223372036854775808", "18446744073709551615", "18446744073709551616", "1e30", "\"2\"", "true", "null" };
+foreach (var e in elems) {
+  var node = JsonNode.Parse("[" + e + "]")![0];
+  string G<T>() { try { return node!.GetValue<T>()!.ToString() + " ok"; } catch (Exception x) { return "EXC " + x.GetType().Name; } }
+  Console.WriteLine($"ARRAY elem {e} -> short:{G<short>()} | ushort:{G<ushort>()} | int:{G<int>()} | uint:{G<uint>()} | long:{G<long>()} | ulong:{G<ulong>()} | float:{G<float>()}");
+}

@@ -22,7 +22,7 @@
 // application configuration, certificates kept in the OPC Foundation store
 // layout, and a validator that can be told to accept anything. gopcua has
 // none of that, so the equivalent is done here from plain files —
-// deviations D1 to D4 in README.md.
+// deviations D1 to D4 in DEVIATIONS.md.
 
 package main
 

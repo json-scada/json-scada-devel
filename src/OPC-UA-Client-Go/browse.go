@@ -138,7 +138,7 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 		// list. The C# driver used to collect them into a list it never read,
 		// dropping every reference past the first kMaxReferencesPerNode; that
 		// was fixed in src/OPC-UA-Client (MergeContinuedReferences), so the
-		// two drivers now agree. See D15 in README.md.
+		// two drivers now agree. See D15 in DEVIATIONS.md.
 		cps := continuationPoints(results)
 		for len(cps) > 0 {
 			jslog.Log(jslog.LevelDetailed, "%s - BrowseNext %d continuation points.", conn.Name, len(cps))

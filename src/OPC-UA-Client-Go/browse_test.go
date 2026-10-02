@@ -89,7 +89,7 @@ func TestContinuationPoints(t *testing.T) {
 // References arriving through BrowseNext are merged back onto the result
 // they continue. Losing them costs every reference past the first 1000 of a
 // wide node — the bug this test guards against, which the C# driver had too
-// until MergeContinuedReferences was added there. See D15 in README.md.
+// until MergeContinuedReferences was added there. See D15 in DEVIATIONS.md.
 func TestMergeContinued(t *testing.T) {
 	refA := &ua.ReferenceDescription{BrowseName: &ua.QualifiedName{Name: "A"}}
 	refB := &ua.ReferenceDescription{BrowseName: &ua.QualifiedName{Name: "B"}}
