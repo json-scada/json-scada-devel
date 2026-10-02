@@ -67,6 +67,18 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
   - `internal/serverapp` — the outstation driver (← `Dnp3Server`)
 - **Build:** `build.bat`, or `go build -ldflags="-s -w" -o ../../bin/dnp3-client ./cmd/dnp3client`
 - **Config:** `conf/json-scada.json` plus MongoDB documents; CLI `<instance> <logLevel> <configFile>`
+- **Documentation:**
+  - `cmd/dnp3client/README.md` and `cmd/dnp3server/README.md` are the **standalone operator
+    references** of the two drivers: configuration, tag setup, behaviour, statistics,
+    troubleshooting. They must stand on their own — never link to or defer to the C++ drivers'
+    documentation in `src/dnp3`.
+  - `README.md` (this directory) keeps what spans both: build, deviations from the C++ drivers
+    (D-numbers), reproduced quirks (Q-numbers), engineering notes and testing. Describe a driver's
+    behaviour in that driver's README and not here.
+  - Every configuration key the code reads must be documented in the matching driver README;
+    `TestReadmeDocumentsEveryConfigKey` (in both `internal/clientapp` and `internal/serverapp`)
+    fails otherwise. A changed default, statistic, command result or log line is a README change
+    in the same commit.
 
 ## Work Guidance
 
@@ -104,6 +116,10 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
   against `dnp3.ControlClose`/`ControlTrip` agreed with the transposed constants of go-dnp3
   before v0.5.3 and could not catch a trip sent for a close. Likewise `TestCommandsReachTheirIndex`
   operates points above 255, which no test did while go-dnp3 wrapped them onto 0–255.
+- **Only `origin: supervised` tags are data**, at startup (`tagsFor`) and for changes
+  (`Engine.distribute`). A command tag's destination is in group 12 or 41, which `familyOf` sends to
+  the analog family, so applying one overwrites the supervised analog at that index.
+  `TestCommandTagChangeDoesNotTouchSuppliedPoints` pins it.
 - `outstation.Session.Update` queues the change for the session loop; it is not applied when the
   call returns. A test that changes a value and then scans must poll until the change is reported.
 - `Database.Configure` replaces the whole `PointConfig`, so every call is a read-modify-write: a
@@ -155,6 +171,8 @@ documents, same MongoDB semantics, no opendnp3, mongo-cxx-driver, OpenSSL, vcpkg
   and over a real mutually authenticated TLS socket. No MongoDB and no hardware needed; the TLS
   tests generate their own certificates into `t.TempDir()`.
 - `go vet ./...` and `gofmt -l .` must be clean; `go test -race ./...` for the concurrency.
+- `TestReadmeDocumentsEveryConfigKey` keeps the driver READMEs complete: it reads the key names out
+  of `config.go` (and `model.go` for the server) and fails on any that the README does not name.
 - End to end: a temporary `mongod` as a single-node replica set (change streams need one), seeded
   with an instance, connections and tags, then both drivers against each other on port 20000.
   Check `sourceDataUpdate`, `stats.isConnected`, the auto-created tags, and that a document
