@@ -29,5 +29,5 @@ SQL scripts for PostgreSQL/TimescaleDB database setup, maintenance, and data pro
 
 ## Verification
 
-- Validate `.sql` files with `psql --file <script>` dry run
+- Validate `.sql` files with `psql --file <script>`
 - Test on PostgreSQL 16+ with TimescaleDB extension

@@ -2,11 +2,11 @@
 
 ## Purpose
 
-Node.js service that consumes MongoDB Change Streams and writes processed data to the real-time database. Acts as the persistence layer for protocol driver outputs.
+One-way data replication receiver for air-gapped environments. Receives secure real-time data replication across network boundaries (e.g., via data diode or tap device).
 
 ## Ownership
 
-- mongowr owns the MongoDB write path from Change Streams
+- mongowr owns the MongoDB write path from received data packets.
 
 ## Local Contracts
 

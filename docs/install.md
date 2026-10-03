@@ -117,7 +117,7 @@ Execute commands below for scripted installation:
 
     # next, clone the json-scada repo
 
-    sudo dnf -y install git
+    sudo apt install git
     cd /home/jsonscada
     git clone --recurse-submodules https://github.com/riclolsen/json-scada --config core.autocrlf=input
     cd json-scada/platform-ubuntu-2404

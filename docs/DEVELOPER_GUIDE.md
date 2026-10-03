@@ -696,8 +696,7 @@ When creating a new tag document, the driver should populate it with as much rel
 *   `protocolSourceASDU` (String): The data type, if discoverable from the protocol.
 *   `description` (String): A description of the tag, if available from the source.
 *   `type` (String): The JSON SCADA data type (e.g., "analog", "digital", "string", "json"). This should be inferred from the `protocolSourceASDU`.
-*   `origin` (String): Typically set to something like "auto-created" or the driver's name.
-*   `enabled` (Boolean): Usually `true` by default for auto-created tags.
+*   `origin` (String): `supervised` or `command`.
 *   `value`, `valueString`, `timeTag`, `invalid`: Initialize with sensible default values (e.g., 0, empty string, current time, `true` for invalid until first update).
 *   **Default Configuration for Acquisition:**
     *   `kconv1`: 1.0

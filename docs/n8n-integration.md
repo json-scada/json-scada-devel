@@ -3,16 +3,12 @@
 This guide covers the bidirectional integration between JSON-SCADA and the
 [n8n](https://n8n.io) workflow-automation platform, on both Linux and Windows.
 
-The design rationale and full component breakdown are in
-[N8N_INTEGRATION_PLAN.md](N8N_INTEGRATION_PLAN.md). This document is the hands-on setup
-guide.
-
 ## Components
 
 | Component | Location | Role |
 |-----------|----------|------|
 | `N8N` protocol driver | [src/n8n-client](../src/n8n-client) | Pushes real-time notifications to n8n (webhooks) and runs an HTTP listener for inbound values/commands |
-| `n8n-nodes-jsonscada` | [src/n8n-nodes-jsonscada](../src/n8n-nodes-jsonscada) | n8n community nodes: an action node (read/browse/command/ack/send-values) and a webhook trigger node |
+| `n8n-nodes-jsonscada` | [JSON-SCADA n8n Nodes](https://github.com/json-scada/n8n-nodes-jsonscada) | n8n community nodes: an action node (read/browse/command/ack/send-values) and a webhook trigger node |
 
 ## Architecture
 
@@ -135,7 +131,7 @@ docker compose up -d
 Services `n8n` (port 5678) and `n8n-client` start alongside the demo. Enable the demo
 **N8N1** connection in the AdminUI (it ships disabled), point its `endpointURLs` at your
 n8n webhook, and import an example workflow from
-[src/n8n-nodes-jsonscada/examples](../src/n8n-nodes-jsonscada/examples).
+[examples](https://github.com/json-scada/n8n-nodes-jsonscada/tree/main/examples).
 
 ## No-code quick paths
 

@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Node.js HTTP listener that receives data from Telegraf outputs and writes it to MongoDB. Acts as the bridge between Telegraf data collection and the JSON-SCADA real-time database.
+Node.js UDP listener that receives data from Telegraf outputs and writes it to MongoDB. Acts as the bridge between Telegraf data collection and the JSON-SCADA real-time database.
 
 ## Ownership
 
