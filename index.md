@@ -112,6 +112,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [IEC60870-5-104 Client Driver (Go)](src/iec60870-5/cmd/iec104client/README.md)
 - [IEC60870-5-101 Server Driver (Go)](src/iec60870-5/cmd/iec101server/README.md)
 - [IEC60870-5-101 Client Driver (Go)](src/iec60870-5/cmd/iec101client/README.md)
+- [ICCP TASE2 Client Driver](src/iccp/iccp-client/README.md)
 - [ICCP TASE2 Server Driver](src/iccp/iccp-server/README.md)
 - [DNP3 Client Driver (Go)](src/dnp3-go/cmd/dnp3client/README.md)
 - [DNP3 Server Driver (Go)](src/dnp3-go/cmd/dnp3server/README.md)
@@ -123,17 +124,13 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [OPC-UA Server Driver](src/OPC-UA-Server/README.md)
 - [OPC-DA Client Driver](src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](src/OPC-DA-Server/README.md)
-- [PLC4X-GO Modbus Client Driver](src/plc4x-client/README.md)
-- [PLC4J Client Driver (Java alternative for the PLC4X driver)](src/plc4j-client/README.md)
-- [CIP Ethernet/IP PLCTags Client Driver](src/libplctag/PLCTagsClient/README.md)
+- [PLC4J Client Driver](src/plc4j-client/README.md)
 - [Calculations](src/calculations/README.md)
 - [Change Stream Data Processor](src/cs_data_processor/README.md)
 - [Custom Data Processor](src/cs_custom_processor/README.md)
 - [Custom Developments](src/custom-developments/README.md)
 - [Realtime Data Server](src/server_realtime_auth/README.md)
-- [OSHMI2JSON Tool](src/oshmi2json/README.md)
 - [Report Generators](docs/report_generators.md)
-- [I104M Client Driver](src/i104m/README.md)
 - [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
 
 ## Protocols Roadmap
@@ -150,7 +147,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] DNP3 Server TCP/UDP/TLS/Serial
 - [x] Modbus Client TCP/TLS/Serial
 - [x] Modbus Server TCP/TLS/Serial
-- [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java/Go
+- [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java
 - [x] ICCP Client TCP/TLS
 - [x] ICCP Server TCP/TLS
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
@@ -161,7 +158,6 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] OPC UA Historical Data Server
 - [x] OPC DA Client (Windows)
 - [x] OPC DA Server (Windows)
-- [x] CIP Ethernet/IP (libplctag, experimental)
 - [x] ONVIF Camera control and streaming
 
 ## Features Roadmap

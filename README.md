@@ -112,6 +112,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [IEC60870-5-104 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec104client/README.md)
 - [IEC60870-5-101 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec101server/README.md)
 - [IEC60870-5-101 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/iec60870-5/cmd/iec101client/README.md)
+- [ICCP TASE2 Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/iccp/iccp-client/README.md)
 - [ICCP TASE2 Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/iccp/iccp-server/README.md)
 - [DNP3 Client Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/dnp3-go/cmd/dnp3client/README.md)
 - [DNP3 Server Driver (Go)](https://github.com/riclolsen/json-scada/blob/master/src/dnp3-go/cmd/dnp3server/README.md)
@@ -123,19 +124,15 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [OPC-UA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-UA-Server/README.md)
 - [OPC-DA Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](https://github.com/riclolsen/json-scada/blob/master/src/OPC-DA-Server/README.md)
-- [PLC4X-GO Modbus Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/plc4x-client/README.md)
-- [PLC4J Client Driver (Java alternative for the PLC4X driver)](https://github.com/riclolsen/json-scada/blob/master/src/plc4j-client/README.md)
+- [PLC4J Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/plc4j-client/README.md)
 - [Modbus Client Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](https://github.com/riclolsen/json-scada/blob/master/src/modbus/README-client.md)
 - [Modbus Server Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](https://github.com/riclolsen/json-scada/blob/master/src/modbus/README-server.md)
-- [CIP Ethernet/IP PLCTags Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/libplctag/PLCTagsClient/README.md)
 - [Calculations](https://github.com/riclolsen/json-scada/blob/master/src/calculations/README.md)
 - [Change Stream Data Processor](https://github.com/riclolsen/json-scada/blob/master/src/cs_data_processor/README.md)
 - [Custom Data Processor](https://github.com/riclolsen/json-scada/blob/master/src/cs_custom_processor/README.md)
 - [Custom Developments](https://github.com/riclolsen/json-scada/blob/master/src/custom-developments/README.md)
 - [Realtime Data Server](https://github.com/riclolsen/json-scada/blob/master/src/server_realtime_auth/README.md)
-- [OSHMI2JSON Tool](https://github.com/riclolsen/json-scada/blob/master/src/oshmi2json/README.md)
 - [Report Generators](https://github.com/riclolsen/json-scada/blob/master/docs/report_generators.md)
-- [I104M Client Driver](https://github.com/riclolsen/json-scada/blob/master/src/i104m/README.md)
 - [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
 ## Protocols Roadmap
 
@@ -151,7 +148,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] DNP3 Server TCP/UDP/TLS/Serial
 - [x] Modbus Client TCP/TLS/Serial
 - [x] Modbus Server TCP/TLS/Serial
-- [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java/Go
+- [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java
 - [x] Modbus Client (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
 - [x] Modbus Server (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
 - [x] ICCP Client TCP/TLS
@@ -164,7 +161,6 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] OPC UA Historical Data Server
 - [x] OPC DA Client (Windows)
 - [x] OPC DA Server (Windows)
-- [x] CIP Ethernet/IP (libplctag, experimental)
 - [x] ONVIF Camera control and streaming
 
 ## Features Roadmap
