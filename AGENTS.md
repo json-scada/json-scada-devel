@@ -78,6 +78,8 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Literal JSON examples in docs, READMEs and skills (fenced `json` blocks, inline `{...}` snippets) must be strict JSON that parses as written: no trailing commas, comments or unquoted keys. Parse them after editing.
+
 ## Child DOX Index
 
 ### Source Code — [src/](src/AGENTS.md)
@@ -156,7 +158,9 @@ Docker Compose setup for full JSON-SCADA demo stack.
 ### Others
 
 - `compile-docker/` — Docker compilation projects (.NET)
+- `README.md` — authoritative project front page; `index.md` is generated from it by `node docs/sync-index.mjs` (never edit `index.md` by hand). After changing either file or any heading they link to, run `node docs/sync-index.mjs --check` (fails on a stale `index.md` or a broken link/anchor)
 - `Dockerfile` — Main Docker image build
 - `supervisord.conf` — Process manager config
 - `.idx/` — IDX development environment config
+- `.agents/skills/` — agent skills; `svg-scada` has an identical copy under `svg/.agents/skills/` (see [svg/AGENTS.md](svg/AGENTS.md))
 - `.github/` — GitHub CI templates

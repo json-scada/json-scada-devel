@@ -1,3 +1,4 @@
+<!-- Generated from README.md by docs/sync-index.mjs. Edit README.md, then run: node docs/sync-index.mjs -->
 <a href="https://github.com/riclolsen/json-scada/">
     <img src="https://github.com/riclolsen/json-scada/raw/master/src/AdminUI/public/images/json-scada.svg" alt="JSON:SCADA Logo" title="JSON:SCADA" align="right" height="60" />
 </a>
@@ -7,7 +8,7 @@
 A portable and scalable SCADA/IIoT-I4.0 platform centered on the MongoDB database server.
 
 ![](https://img.shields.io/badge/nodejs-20-green 'Node.js 20+')
-![](https://img.shields.io/badge/golang-.21-green 'Go 1.21+')
+![](https://img.shields.io/badge/golang-1.26-green 'Go 1.26+')
 ![](https://img.shields.io/badge/dotnet-8.0-green 'Dotnet 8.0')
 
 ![](https://img.shields.io/badge/mongodb-6.0-green 'MongoDB 6.0+')
@@ -49,7 +50,7 @@ To provide an easy to use, fully-featured, scalable, and portable SCADA/IIoT-I4.
 
 Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See details here: [Docker Image](docs/docker_image.md). Other installation options and instructions are available in the [Installation Guide](docs/install.md).
 
-## Major features and characteristics
+## Major features
 
 - Standard IT tools applied to SCADA/IoT (MongoDB, PostgreSQL/TimescaleDB, Node.js, C#, Golang, Grafana, etc.).
 - MongoDB as the real-time core database, persistence layer, config store, SOE historian.
@@ -98,15 +99,14 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 
 - [Generic Install Guide](docs/install.md)
 - [Windows Installer](https://github.com/riclolsen/json-scada/releases/latest)
-- [RedHat/Rocky/Alma Linux Installer Script](docs/install.md#rhel94-and-compatible-systems-automated-installation)
-- [Ubuntu Linux Installer Script](docs/install.md#ubuntu-2404-scripted-installation)
-- [Generic Install Guide](docs/install.md)
+- [RHEL/Rocky/Alma/Oracle Linux 9/10 Installer Script](docs/install.md#rhel-910-and-compatible-systems-rockyalmaoracle-linux-scripted-installation)
+- [Ubuntu Linux 24.04/26.04 Installer Script](docs/install.md#ubuntu-24042604-scripted-installation)
 - [Docker Image](docs/docker_image.md)
 - [Docker Compose Demo](demo-docker/README.md)
 - [Schema Documentation](docs/schema.md)
 - [Config File](conf/README.md)
 - [SVG Synoptic Display Editor](src/svg-display-editor/README.md)
-- [IEC61850 Client Driver (Go)](src/iec61850/iec61850_client/README.md)
+- [IEC61850 Client Driver (GO)](src/iec61850/iec61850_client/README.md)
 - [IEC61850 Server Driver (Go)](src/iec61850/iec61850_server/README.md)
 - [IEC60870-5-104 Server Driver (Go)](src/iec60870-5/cmd/iec104server/README.md)
 - [IEC60870-5-104 Client Driver (Go)](src/iec60870-5/cmd/iec104client/README.md)
@@ -125,6 +125,8 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [OPC-DA Client Driver](src/OPC-DA-Client/README.md)
 - [OPC-DA Server Driver](src/OPC-DA-Server/README.md)
 - [PLC4J Client Driver](src/plc4j-client/README.md)
+- [Modbus Client Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](src/modbus/README-client.md)
+- [Modbus Server Driver (native TCP/TLS/RTU/RTU-over-TCP, all byte orders)](src/modbus/README-server.md)
 - [Calculations](src/calculations/README.md)
 - [Change Stream Data Processor](src/cs_data_processor/README.md)
 - [Custom Data Processor](src/cs_custom_processor/README.md)
@@ -132,7 +134,6 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Realtime Data Server](src/server_realtime_auth/README.md)
 - [Report Generators](docs/report_generators.md)
 - [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
-
 ## Protocols Roadmap
 
 - [x] IEC 60870-5-104 Server TCP/TLS
@@ -148,10 +149,12 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [x] Modbus Client TCP/TLS/Serial
 - [x] Modbus Server TCP/TLS/Serial
 - [x] Various protocols (Modbus, S7, etc.) via PLC4X-Java
+- [x] Modbus Client (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
+- [x] Modbus Server (native) TCP/TLS/RTU/RTU-over-TCP, all byte orders
 - [x] ICCP Client TCP/TLS
 - [x] ICCP Server TCP/TLS
 - [x] Telegraf Client (many data sources available such as MQTT, MODBUS, SNMP, ...)
-- [x] MQTT/Sparkplug-B PUB/SUB TCP/TLS
+- [x] MQTT/Sparkplug-B Pub/Sub TCP/TLS
 - [x] OPC UA PubSub over MQTT with JSON payloads client
 - [x] OPC UA Client TCP/Secure
 - [x] OPC UA Server TCP/Secure
@@ -203,7 +206,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 
 ## Enterprise Services (available on request)
 
-- [x] Customizations
+- [x] Customizations 
 - [x] Linux Image / VM
 - [x] Managed Cloud Service
 - [x] Supported LTS versions

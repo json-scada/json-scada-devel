@@ -7,7 +7,7 @@
 A portable and scalable SCADA/IIoT-I4.0 platform centered on the MongoDB database server.
 
 ![](https://img.shields.io/badge/nodejs-20-green 'Node.js 20+')
-![](https://img.shields.io/badge/golang-1.21-green 'Go 1.21+')
+![](https://img.shields.io/badge/golang-1.26-green 'Go 1.26+')
 ![](https://img.shields.io/badge/dotnet-8.0-green 'Dotnet 8.0')
 
 ![](https://img.shields.io/badge/mongodb-6.0-green 'MongoDB 6.0+')
@@ -98,9 +98,8 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 
 - [Generic Install Guide](https://github.com/riclolsen/json-scada/blob/master/docs/install.md)
 - [Windows Installer](https://github.com/riclolsen/json-scada/releases/latest)
-- [RedHat/Rocky/Alma Linux Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#rhel94-and-compatible-systems-automated-installation)
-- [Ubuntu Linux Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#ubuntu-2404-scripted-installation)
-- [Generic Install Guide](https://github.com/riclolsen/json-scada/blob/master/docs/install.md)
+- [RHEL/Rocky/Alma/Oracle Linux 9/10 Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#rhel-910-and-compatible-systems-rockyalmaoracle-linux-scripted-installation)
+- [Ubuntu Linux 24.04/26.04 Installer Script](https://github.com/riclolsen/json-scada/blob/master/docs/install.md#ubuntu-24042604-scripted-installation)
 - [Docker Image](https://github.com/riclolsen/json-scada/blob/master/docs/docker_image.md)
 - [Docker Compose Demo](https://github.com/riclolsen/json-scada/blob/master/demo-docker/README.md)
 - [Schema Documentation](https://github.com/riclolsen/json-scada/blob/master/docs/schema.md)

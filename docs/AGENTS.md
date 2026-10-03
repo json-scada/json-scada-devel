@@ -23,6 +23,7 @@ Project documentation: installation guides, architecture descriptions, schema do
   - `JSON-SCADA_Arquitecture.txt` — PlantUML architecture diagram
   - `JSON-SCADA_ARCHITECTURE.drawio` — Draw.io architecture diagram
   - `JSON-SCADA_Connections.drawio` — Connections diagram
+  - `sync-index.mjs` — regenerates root `index.md` from `README.md` and validates their links/anchors
 
 ## Work Guidance
 
@@ -30,3 +31,8 @@ Project documentation: installation guides, architecture descriptions, schema do
 - Architecture diagrams should be updated when protocol drivers or major services change
 - Screenshots go in `screenshots/` subdirectory
 - Use relative links to reference other docs and source files
+- Renaming a heading changes its anchor: search for links to it (`grep -rn '#old-anchor'`) and update them; for README/index links `node docs/sync-index.mjs --check` catches it
+
+## Verification
+
+- `node docs/sync-index.mjs --check` — root `index.md` matches `README.md`; their links and heading anchors resolve

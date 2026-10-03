@@ -474,7 +474,8 @@ first-class citizen, wire it into (grep for an existing name like `"N8N"` or
 8. **Log viewer** — add the driver's log file to `conf-templates/log.io-file.json`.
 9. **Docs** — write `src/<my-driver>/README.md` documenting every connection parameter
    (copy the structure of an existing driver README), link it from the main `README.md`
-   protocol list and `index.md`.
+   protocol list, then regenerate `index.md` with `node docs/sync-index.mjs` (never edit
+   `index.md` by hand).
 10. **Release notes** — mention the driver in `platform-windows/release_notes.txt`.
 
 ## Conventions

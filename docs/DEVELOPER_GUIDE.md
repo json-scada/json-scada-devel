@@ -76,17 +76,18 @@ To link a tag to your driver for **data acquisition**:
 *   Other fields like `kconv1`, `kconv2` (for scaling), and protocol-specific polling/subscription parameters might also be used by the driver if relevant.
 
 When your driver reads a new value for a tag, it should update the `sourceDataUpdate` sub-document within the tag's document in `realtimeData`. This sub-document typically includes:
-    *   `valueAtSource` (appropriate BSON type for the value)
-    *   `valueStringAtSource` (String representation)
-    *   `valueJsonAtSource` (JSON representation)
-    *   `timeTagAtSource` (Date, timestamp from the source, if available)
-    *   `timeTagAtSourceOk` (Boolean, true if `timeTagAtSource` is reliable)
-    *   `invalidAtSource` (Boolean, true if the value is considered invalid by the source)
-    *   `timeTag` (Date, timestamp when the driver processed the update)
-    *   `originator` (String, identifies the source, e.g., "MY_DRIVER|conn_123")
-    *   `causeOfTransmissionAtSource` (String, specify the cause of transmission, e.g. "3"=Spontaneous in IEC60870-5-101/104.
-    *   `asduAtSource` (String, type representation of the data as detected by the protocol driver, e.g. "M_ME_NC_1".
-    *   Other quality flags like `notTopicalAtSource`, `substitutedAtSource`, `blockedAtSource` as relevant.
+
+*   `valueAtSource` (appropriate BSON type for the value)
+*   `valueStringAtSource` (String representation)
+*   `valueJsonAtSource` (JSON representation)
+*   `timeTagAtSource` (Date, timestamp from the source, if available)
+*   `timeTagAtSourceOk` (Boolean, true if `timeTagAtSource` is reliable)
+*   `invalidAtSource` (Boolean, true if the value is considered invalid by the source)
+*   `timeTag` (Date, timestamp when the driver processed the update)
+*   `originator` (String, identifies the source, e.g., "MY_DRIVER|conn_123")
+*   `causeOfTransmissionAtSource` (String, specify the cause of transmission, e.g. "3" = spontaneous in IEC 60870-5-101/104).
+*   `asduAtSource` (String, type representation of the data as detected by the protocol driver, e.g. "M_ME_NC_1").
+*   Other quality flags like `notTopicalAtSource`, `substitutedAtSource`, `blockedAtSource` as relevant.
 
 To link a tag for **command execution**:
 
@@ -789,10 +790,10 @@ node /path/to/json-scada/src/MyNodeDriver/index.js 1 1 ../conf/json-scada.json
 
 ```batch
 REM For a C# driver
-C:\path	o\json-scadain\MyCustomDriver.exe 1 1 ..\conf\json-scada.json
+C:\path\to\json-scada\bin\MyCustomDriver.exe 1 1 ..\conf\json-scada.json
 
 REM For a Node.js driver
-node C:\path	o\json-scada\src\MyNodeDriver\index.js 1 1 ..\conf\json-scada.json
+node C:\path\to\json-scada\src\MyNodeDriver\index.js 1 1 ..\conf\json-scada.json
 ```
 
 **Process Management:**
