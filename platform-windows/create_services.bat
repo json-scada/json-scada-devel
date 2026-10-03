@@ -339,7 +339,7 @@ REM c:\json-scada\platform-windows\telegraf-runtime\telegraf --service-display-n
 REM service for MCP Server
 nssm install JSON_SCADA_mcp_server "C:\json-scada\platform-windows\nodejs-runtime\node.exe" "C:\json-scada\src\mcp-json-scada-db\dist\mcp-server.js" 1 1 "c:\json-scada\conf\json-scada.json"
 nssm set JSON_SCADA_mcp_server AppDirectory "C:\json-scada\src\mcp-json-scada-db"
-nssm set JSON_SCADA_mcp_server AppEnvironmentExtra MCP_TRANSPORT=http BIND=127.0.0.1 PORT=6001
+nssm set JSON_SCADA_mcp_server AppEnvironmentExtra JS_MCPJSDB_TRANSPORT=http JS_MCPJSDB_IP_BIND=127.0.0.1 JS_MCPJSDB_HTTP_PORT=6001 JS_MCPJSDB_ADMIN_USERNAME=admin JS_MCPJSDB_ADMIN_PASSWORD=jsonscada
 nssm set JSON_SCADA_mcp_server Start SERVICE_DEMAND_START
 
 REM OPC-DA Server

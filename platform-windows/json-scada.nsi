@@ -21,8 +21,8 @@ RequestExecutionLevel admin
 
 ;--------------------------------
 
-!define VERSION "v.0.65"
-!define VERSION_ "0.65.0.0"
+!define VERSION "v.0.66"
+!define VERSION_ "0.66.0.0"
 
 Function .onInit
  System::Call 'keexrnel32::CreateMutexA(p0, i1, t "MutexJsonScadaInstall")?e'
@@ -684,10 +684,10 @@ Section "Uninstall"
   ExecWait `"${SC}" delete "JSON_SCADA_alarm_beep"`
   ClearErrors
 
-  ExecWait `"${SC}" stop "JSON_SCADA_shell_api"`
-  Sleep 50
-  ExecWait `"${SC}" delete "JSON_SCADA_shell_api"`
-  ClearErrors
+  ;ExecWait `"${SC}" stop "JSON_SCADA_shell_api"`
+  ;Sleep 50
+  ;ExecWait `"${SC}" delete "JSON_SCADA_shell_api"`
+  ;ClearErrors
 
   ExecWait `"${SC}" stop "JSON_SCADA_php"`
   Sleep 50
@@ -699,10 +699,10 @@ Section "Uninstall"
   ExecWait `"${SC}" delete "JSON_SCADA_nginx"`
   ClearErrors
 
-  ExecWait `"${SC}" stop "JSON_SCADA_i104m"`
-  Sleep 50
-  ExecWait `"${SC}" delete "JSON_SCADA_i104m"`
-  ClearErrors
+  ;ExecWait `"${SC}" stop "JSON_SCADA_i104m"`
+  ;Sleep 50
+  ;ExecWait `"${SC}" delete "JSON_SCADA_i104m"`
+  ;ClearErrors
 
   ; ExecWait `"${SC}" stop "JSON_SCADA_plctags"`
   ; Sleep 50

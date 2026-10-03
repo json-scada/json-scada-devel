@@ -20,10 +20,10 @@ import Log from './logger.js'
 import { ReadPreference, MongoClientOptions } from 'mongodb'
 import packageInfo from '../../package.json' with { type: 'json' };
 
-const ENV_PREFIX = packageInfo.config.envPrefix || 'JS_CSCUSTOMPROC_'
-const MSG = packageInfo.description || '{json:scada} - Change Stream Custom Processor.'
-const VERSION = packageInfo.version || '0.0.0'
-const NAME = (packageInfo.name || 'cs_custom_processor').toUpperCase()
+const ENV_PREFIX = packageInfo.config.envPrefix || 'JS_MCPJSDB_'
+const MSG = packageInfo.description || '{json:scada} - MCP JSONSCADA DB.'
+const VERSION = packageInfo.version || '0.0.1'
+const NAME = (packageInfo.name || 'mcp_jsonscada_db').toUpperCase()
 
 export interface IConfig {
   mongoConnectionString: string

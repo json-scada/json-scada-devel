@@ -18,7 +18,7 @@ Vue.js single-page application (SPA) for the JSON-SCADA web administration inter
 - **Build output:** `dist/` directory
 - **Dev server:** `npx vite` for local development
 - **Production build:** `npm run build`
-- All API calls go through the realtime data server (WebSocket + JWT auth)
+- All API calls go through the realtime data server (JWT auth)
 - Vue component naming: PascalCase. Single-file components with `<script setup>` preferred
 - Styles: scoped CSS. Global styles in `src/` root
 

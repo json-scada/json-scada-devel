@@ -16,7 +16,7 @@
  */
 
 import { z } from 'zod'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { ConnectionManager } from '../jsonscada/connection-manager.js'
 import {
   errorResult,
@@ -31,7 +31,7 @@ export function registerHistoryTools(server: McpServer, mgr: ConnectionManager) 
     {
       description:
         'Get historical values for a point from the hist collection, newest first',
-      inputSchema: {
+      inputSchema: z.object({
         tag: z.string().describe('The tag name of the point'),
         from: z
           .string()
@@ -39,7 +39,7 @@ export function registerHistoryTools(server: McpServer, mgr: ConnectionManager) 
           .describe('Start time, ISO 8601 (default: 24 hours ago)'),
         to: z.string().optional().describe('End time, ISO 8601 (default: now)'),
         limit: z.number().int().min(1).max(1000).optional().default(100),
-      },
+      }),
     },
     async ({ tag, from, to, limit }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()
@@ -73,7 +73,7 @@ export function registerHistoryTools(server: McpServer, mgr: ConnectionManager) 
     {
       description:
         'Get Sequence of Events (SOE) records for digital points, newest first',
-      inputSchema: {
+      inputSchema: z.object({
         filter: z
           .string()
           .optional()
@@ -87,7 +87,7 @@ export function registerHistoryTools(server: McpServer, mgr: ConnectionManager) 
           .describe('Start time, ISO 8601 (default: 24 hours ago)'),
         to: z.string().optional().describe('End time, ISO 8601 (default: now)'),
         limit: z.number().int().min(1).max(500).optional().default(50),
-      },
+      }),
     },
     async ({ filter, group1, from, to, limit }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()

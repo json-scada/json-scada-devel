@@ -18,7 +18,6 @@
 import { MongoClient, Db } from 'mongodb'
 import Log from './logger.js'
 import LoadConfig, { IConfig } from './config.js'
-import Redundancy from './redundancy.js'
 import {
   CollectionNames,
   IRealtimeData,
@@ -33,17 +32,15 @@ import {
   IHist,
 } from './types.js'
 
+// The MCP server has no redundancy control: it is always active and can run
+// on every node at the same time (it does not register in processInstances).
 export class ConnectionManager {
   public status = { HintMongoIsConnected: false }
   public jsConfig!: IConfig
   public db!: Db
   public client: MongoClient | null = null
-  public redundancy = Redundancy
-  private manageRedundancy: boolean = false
 
-  constructor(options?: { manageRedundancy?: boolean }) {
-    this.manageRedundancy = options?.manageRedundancy || false
-    Redundancy.ProcessActive = !this.manageRedundancy
+  constructor() {
     const args = process.argv.slice(2)
     let inst: number | undefined = undefined
     if (args.length > 0) inst = parseInt(args[0]!)
@@ -68,9 +65,6 @@ export class ConnectionManager {
           this.status.HintMongoIsConnected = true
           this.db = this.client.db(this.jsConfig.mongoDatabaseName)
           Log.log('Connected correctly to MongoDB server')
-          if (this.manageRedundancy) {
-            this.redundancy.Start(5000, this)
-          }
           onConnect(this.client, this.db)
         } catch (err) {
           if (this.client) (this.client as MongoClient).close()

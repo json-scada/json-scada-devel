@@ -43,7 +43,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 
 - [AdminUI](AdminUI/AGENTS.md) — Vue.js web admin interface (SPA)
 - [iccp](iccp/AGENTS.md) — ICCP TASE2 client/server protocol drivers (Go)
-- [mcp-json-scada-db](mcp-json-scada-db/AGENTS.md) — MCP server for AI-assisted JSON-SCADA development (TypeScript)
+- [mcp-json-scada-db](mcp-json-scada-db/AGENTS.md) — MCP server for AI access to data, commands, configuration and driver processes (TypeScript)
 - [lib60870.netcore](lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 client/server (.NET Core)
 - [dnp3](dnp3/AGENTS.md) — DNP3 client/server (C++/C# with opendnp3 submodule)
 - [dnp3-go](dnp3-go/AGENTS.md) — DNP3 client/server on go-dnp3 (Go, drop-in alternative)
