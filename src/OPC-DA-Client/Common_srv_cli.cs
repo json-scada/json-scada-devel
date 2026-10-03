@@ -181,8 +181,8 @@ namespace OPCDAClientDriver
             public BsonObjectId id { get; set; }
             [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
             public BsonDouble protocolSourceConnectionNumber { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
-            public BsonDouble protocolSourceCommonAddress { get; set; }
+            // OPC-DA commands carry the branch name as a string; numeric addressing arrives as a double
+            public BsonValue protocolSourceCommonAddress { get; set; } = BsonString.Empty;
             [BsonDefaultValue("")]
             public BsonString protocolSourceObjectAddress { get; set; }
             [BsonDefaultValue("")]
@@ -212,8 +212,8 @@ namespace OPCDAClientDriver
             public BsonObjectId id { get; set; }
             [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
             public BsonDouble protocolSourceConnectionNumber { get; set; }
-            [BsonSerializer(typeof(BsonDoubleSerializer)), BsonDefaultValue(0.0)]
-            public BsonDouble protocolSourceCommonAddress { get; set; }
+            // OPC-DA commands carry the branch name as a string; numeric addressing arrives as a double
+            public BsonValue protocolSourceCommonAddress { get; set; } = BsonString.Empty;
             [BsonDefaultValue("")]
             public BsonString protocolSourceObjectAddress { get; set; }
             [BsonDefaultValue("")]
