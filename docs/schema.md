@@ -8,6 +8,28 @@ The JSON-SCADA MongoDB database is comprised of the following collections.
 * _commandsQueue_ - Queue for commands.
 * _soeData_ - Sequence of Events data. This is a Capped Collection, it has a limited size.
 * _processInstances_ - Configuration and information about JSON-SCADA instances of processes.
+* _hist_ - MongoDB time series historian (secondary to the PostgreSQL historian). See [_hist_ collection](#hist-collection).
+* _users_ - User accounts. See [_users_ collection](#users-collection).
+* _roles_ - RBAC roles (rights and group filters). See [_roles_ collection](#roles-collection).
+* _userActions_ - Audit log of user actions. See [_userActions_ collection](#useractions-collection).
+* _systemSettings_ - Single document (`key: "global"`) with runtime toggles (`autoManageServices`, `autoRestartOnConnectionChange`), created on demand by _server_realtime_auth_; not created by the seed script.
+
+Collections, validation and indexes are created by [mongo_seed/b_create-db.js](../mongo_seed/b_create-db.js), which is the authoritative definition when this document and the script differ:
+
+| Collection | Type / retention | Validation | Indexes |
+|---|---|---|---|
+| realtimeData | normal | none | `tag` (unique, `tagIndex`); `protocolSourceConnectionNumber + protocolSourceCommonAddress + protocolSourceObjectAddress`; `group1 + group2`; `invalid + alarmed` |
+| protocolDriverInstances | normal | `$jsonSchema`, `validationLevel: strict`, `validationAction: error` | `protocolDriver + protocolDriverInstanceNumber` (unique) |
+| protocolConnections | normal | `$jsonSchema`, strict / error | `protocolConnectionNumber` (unique) |
+| processInstances | normal | `$jsonSchema`, strict / error | `processName + processInstanceNumber` (unique) |
+| commandsQueue | normal, no automatic expiry | none | none (watched by change streams) |
+| soeData | capped, 2 GB circular buffer | none | `timeTag`; `timeTagAtSource`; `group1`; `ack` |
+| hist | time series (`timeField: timeTag`, `metaField: tag`, 1 h buckets), `expireAfterSeconds` = 60 days | none | none created by the seed |
+| users | normal | none (mongoose model in _server_realtime_auth_) | `username` (unique, `userNameIndex`) |
+| roles | normal | none (mongoose model) | `name` (unique, `roleNameIndex`) |
+| userActions | normal, no automatic expiry | none (mongoose model) | `timeTag` (`actionsTimeTagIndex`); for expiry replace it with a TTL index, e.g. `{ timeTag: 1 }, { expireAfterSeconds: 2592000 }` |
+
+Writes that violate a validator on the strict/error collections are rejected by MongoDB, so new required fields must also be added to the validators in `b_create-db.js`.
 
 Please notice that all numeric fields from the schema is recorded as BSON Doubles (64 bit floating point). However, some numeric fields are expected to contain only integer values. When numbers are updated by the Mongo Shell manually, all numeric data is converted to BSON Doubles by default. Some languages like Node.js can cause values to be stored as integers or doubles depending on the current value. It is important that values are always stored as BSON Doubles as otherwise problems may be encountered by protocol drivers, specially those programmed in C#/DotNet Core.
 
@@ -145,13 +167,13 @@ Example document.
 * _**_commandOfSupervised_**_ [Double] - Key (\_id) pointing to the command point related to a supervised point. Only meaningful for _origin=supervised_ points (put zero here for other origins). Put value zero for this parameter when the supervised point does not have a related command. **Mandatory parameter**.
 * _**_supervisedOfCommand_**_ [Double] - Key (\_id) pointing to a supervised point related to a command point (tag where the command feedback manifests). Only meaningful for _origin=command_ points (put zero here for other origins). Put value zero for this parameter when the command point does not have a related supervised (not recommended as this is a blind command with no feedback for the user). **Mandatory parameter**.
 * _**_location_**_ [GeoJSON] - Reserved for location coordinates. Currently not in use. Can be null. **Mandatory parameter**.
-* _**_isEvent_**_ [Boolean] - Flag meaning that only transitions OFF->ON for _type=digital_ matters for alarms and SOE (commonly used for electrical protection events). For _type=analog_ values it means that all valid changes of values should be recorded as SOE (future use). **Mandatory parameter**.
+* _**_isEvent_**_ [Boolean] - Flag meaning that only transitions OFF->ON for _type=digital_ matters for alarms and SOE (commonly used for electrical protection events). For _type=analog_ values it means that every valid (not invalid) value change is recorded as an SOE event by _cs_data_processor_ (event text is the value plus unit and an ↑/↓ trend arrow; source timestamp is used when available); not recorded when _alarmDisabled=true_. **Mandatory parameter**.
 * _**_unit_**_ [String] - Unit of measurement when _type=analog_. **Mandatory parameter**.
 * _**_alarmState_**_ [Double] - Considered state for alarm (0=off=false, 1=on=true, 2=both states, 3=state OFF->ON transition, -1=no state produces alarms but alarms can be signaled by other means) when _type=digital_. **Mandatory parameter**.
 * _**_stateTextTrue_**_ [String] - Text for state true (numeric value not zero) when _type=digital_. Normally expressed as present tense (e.g. "ON"). **Mandatory parameter**.
 * _**_stateTextFalse_**_ [String] - Text for state false (numeric value zero) when _type=digital_. Normally expressed as present tense (e.g. "OFF").  **Mandatory parameter**.
 * _**_eventTextTrue_**_ [String] - Text for state change false to true when _type=digital_. Normally expressed as past tense (e.g. "Switched ON"). **Mandatory parameter**.
-* _**_eventTextFalse_**_ [String] - Text for state change true to false when _type=digital_. Normally expressed as present tense (e.g. "Switched ON").  **Mandatory parameter**.
+* _**_eventTextFalse_**_ [String] - Text for state change true to false when _type=digital_. Normally expressed as past tense (e.g. "Switched OFF").  **Mandatory parameter**.
 * _**_formula_**_ [Double] - A formula code for calculation of value. See the [Calculations](../src/calculations/README.md) section for documentation. Only meaningful when _origin=calculated_. Can be null for other origins. **Mandatory parameter**.
 * _**_parcels_**_ [Array of Double] - Numeric key references to parcel points for calculations. Only meaningful when _origin=calculated_. Can be null for other origins. **Mandatory parameter**.
 * _**_kconv1_**_ [Double] - Conversion factor 1 (multiplier). Applied when _origin=supervised_, _origin=command_ or _origin=calculated_. Use -1 to invert states of digital values and commands. **Mandatory parameter**.
@@ -365,7 +387,7 @@ Example document for the _CS_DATA_PROCESSOR_ module. Currently, this process sup
 
 * _**__id_**_ [ObjectId] - MongoDB document id.
 * _**_processName_**_ [String] - Process name ("CS_DATA_PROCESSOR" or "CALCULATIONS")
-* _**_instanceNumber_**_ [Double] - Process instance number.
+* _**_processInstanceNumber_**_ [Double] - Process instance number.
 * _**_enabled_**_ [Boolean] - When true, this instance is enabled.
 * _**_logLevel_**_ [Double] - Log level (0=min, 3=max).
 * _**_nodeNames_**_ [Array of String] - Names of allowed nodes. If null or empty any node is allowed.
@@ -397,7 +419,7 @@ Example document for the _CALCULATIONS_ module. Currently, this process supports
 
 * _**__id_**_ [ObjectId] - MongoDB document id.
 * _**_processName_**_ [String] - Process name ("CS_DATA_PROCESSOR" or "CALCULATIONS")
-* _**_instanceNumber_**_ [Double] - Process instance number.
+* _**_processInstanceNumber_**_ [Double] - Process instance number.
 * _**_enabled_**_ [Boolean] - When true, this instance is enabled.
 * _**_logLevel_**_ [Double] - Log level (0=min, 3=max).
 * _**_nodeNames_**_ [Array of String] - Names of allowed nodes. If null or empty any node is allowed.
@@ -405,6 +427,82 @@ Example document for the _CALCULATIONS_ module. Currently, this process supports
 * _**_activeNodeKeepAliveTimeTag_**_ [Date] - Keep-alive for the active node.
 * _**_softwareVersion_**_ [String] - Software version of the process.
 * _**_periodOfCalculation_**_ [Double] - Period in seconds to run the calculation cycle.
+
+## _hist_ collection
+
+MongoDB time series collection written by _cs_data_processor_ (and the Go _cs_data_processor-go_) with the same records and filters (`historianPeriod`, `historianDeadBand`, `isNotForHistorical`) as the PostgreSQL historian. Inserts are unacknowledged (`w: 0`) bulk writes, so this historian is best-effort. Records older than `expireAfterSeconds` (60 days as seeded) are removed automatically; change it with `db.runCommand({ collMod: "hist", expireAfterSeconds: N })`.
+
+    {
+        tag: "KAW2AL-21MTWT",
+        timeTag: ISODate("2026-10-03T12:00:00.123Z"),
+        value: 123.4,
+        invalid: false,
+        timeTagAtSource: ISODate("2026-10-03T12:00:00.100Z"),
+        timeTagAtSourceOk: true,
+        cot: 3
+    }
+
+* _**_tag_**_ [String] - Tag name (time series _metaField_).
+* _**_timeTag_**_ [Date] - Time the value was processed by the server (time series _timeField_).
+* _**_value_**_ [Double | String | Object] - Value: Double for analog/digital, the string for _type=string_, the JSON value for _type=json_.
+* _**_invalid_**_ [Boolean] - Value invalid flag.
+* _**_timeTagAtSource_**_ [Date] - Field timestamp. Omitted when not available.
+* _**_timeTagAtSourceOk_**_ [Boolean] - Field timestamp quality. Omitted when not available.
+* _**_cot_**_ [Any] - Cause of transmission at source, as sent by the driver. Omitted when not available.
+
+### MongoDB _hist_ versus PostgreSQL _hist_
+
+| | MongoDB `hist` collection | PostgreSQL/TimescaleDB `hist` table |
+|---|---|---|
+| Role | Secondary historian, needs no extra database | Primary historian |
+| Written by | _cs_data_processor_ directly (`insertMany`, `w: 0`) | _cs_data_processor_ writes SQL files, `sql/process_pg_hist.sh`/`.bat` loads them |
+| Retention | `expireAfterSeconds` (60 days as seeded) | TimescaleDB `add_retention_policy('hist', INTERVAL '45 days')` in `sql/create_tables.sql` (`sql/delete_old.sql` for manual pruning) |
+| Quality fields | `invalid`, `timeTagAtSource`, `timeTagAtSourceOk`, `cot` | `time_tag_at_source`, `flags` bit mask |
+| Read by | _OPC-UA-Server_ HistoryRead (default backend, `historian: "mongodb"`) | _server_realtime_auth_ `/Invoke` HistoryRead and GraphQL, Grafana, Metabase, _OPC-UA-Server_ with `historian: "postgresql"` |
+
+## _users_ collection
+
+User accounts used by _server_realtime_auth_ (model `app/models/user.model.js`). Managed from the AdminUI; the seed creates `admin` (see `mongo_seed/users.json`).
+
+* _**__id_**_ [ObjectId] - Document id.
+* _**_username_**_ [String] - Login name. Unique (`userNameIndex`).
+* _**_email_**_ [String] - E-mail address.
+* _**_password_**_ [String] - bcrypt hash (cost 8), never plain text. Not used for LDAP users, who authenticate against the directory.
+* _**_roles_**_ [Array of ObjectId] - References to _roles_ documents. Effective rights combine all roles (see below).
+* _**_isLDAPUser_**_ [Boolean] - User is authenticated and synchronized via LDAP.
+* _**_ldapDN_**_ [String] - LDAP distinguished name.
+* _**_lastLDAPSync_**_ [Date] - Last LDAP synchronization, null when never.
+
+Authentication: `POST /Invoke/auth/signin` with `{username, password}` returns the JWT in the httpOnly `x-access-token` cookie (also accepted as an `x-access-token` header on later requests) plus a readable `json-scada-user` cookie with the user's rights. The JWT carries the combined rights and expires after the largest `maxSessionDays` of the user's roles.
+
+## _roles_ collection
+
+RBAC roles (model `app/models/role.model.js`); seed in `mongo_seed/roles.json`. When a user has several roles, boolean rights are OR-ed, list fields are concatenated and `maxSessionDays` is the maximum. For `group1List`, an empty list in any role means no restriction.
+
+* _**__id_**_ [ObjectId] - Document id.
+* _**_name_**_ [String] - Role name. Unique (`roleNameIndex`).
+* _**_isAdmin_**_ [Boolean] - Administration access (configuration, users, roles).
+* _**_changePassword_**_ [Boolean] - May change own password.
+* _**_sendCommands_**_ [Boolean] - May send commands.
+* _**_enterAnnotations_**_, _**_enterNotes_**_, _**_enterManuals_**_, _**_enterLimits_**_ [Boolean] - May edit annotations, notes, manual values and alarm limits.
+* _**_substituteValues_**_ [Boolean] - May substitute values.
+* _**_ackEvents_**_, _**_ackAlarms_**_, _**_disableAlarms_**_ [Boolean] - May acknowledge events, acknowledge alarms, disable alarms.
+* _**_group1List_**_ [Array of String] - _group1_ values the role can see. Empty = all.
+* _**_group1CommandList_**_ [Array of String] - _group1_ values the role can command.
+* _**_displayList_**_ [Array of String] - Displays the role can open.
+* _**_maxSessionDays_**_ [Double] - Session (JWT) lifetime in days. Default 3.
+
+## _userActions_ collection
+
+Audit log written by _server_realtime_auth_ through a queue (model `app/models/userAction.model.js`): sign-in, user/role/configuration changes, commands, acknowledgements, blocks, substitutions, limits, notes and similar operator actions. Passwords are removed from logged request bodies. No automatic expiry; see the index table above for a TTL option.
+
+* _**__id_**_ [ObjectId] - Document id.
+* _**_username_**_ [String] - User who performed the action (the login name supplied, for sign-in attempts).
+* _**_action_**_ [String] - Action name (e.g. `signin`, `Remove All Events`).
+* _**_pointKey_**_ [Double] - Affected point key, when the action targets a tag.
+* _**_tag_**_ [String] - Affected tag name, when the action targets a tag.
+* _**_properties_**_ [Object] - Action details (e.g. the request body without password, the command value).
+* _**_timeTag_**_ [Date] - When the action happened. Indexed (`actionsTimeTagIndex`).
 
 ## Extending the Database Schema
 
@@ -442,10 +540,14 @@ In this table historical data is written. Local and source timestamps are record
 
     -- timescaledb hypertable, partitioned by day
     SELECT create_hypertable('hist', 'time_tag', chunk_time_interval=>86400000000);
+    -- data retention policy (older data will be deleted)
+    SELECT add_retention_policy('hist', INTERVAL '45 days');
+
+Rows are queued by _cs_data_processor_ as SQL files and loaded by `sql/process_pg_hist.sh` (or `.bat`). See [MongoDB _hist_ versus PostgreSQL _hist_](#mongodb-hist-versus-postgresql-hist) for the differences from the MongoDB time series collection. Authoritative DDL: [sql/create_tables.sql](../sql/create_tables.sql).
 
 ## Realtime Data Table
 
-This table is updated with all fields and values changed from the realtimeData collection from the MongoDB database. It is a helper for apps that can use only the PostgreSQL historian. The internal structure of the realtimeData collection is reflected in the _json_data_ field that has _bson_ type, so when this internal schema change it will be automatically updated here without changing the PostgreSQL table schema. The application should select the the data fields it needs from this JSON object structure. This table only has the latest snapshots for tags, it does not grow with time, so it does not need to be converted to be managed by TimescaleDB.
+This table is updated with all fields and values changed from the realtimeData collection from the MongoDB database. It is a helper for apps that can use only the PostgreSQL historian. The internal structure of the realtimeData collection is reflected in the _json_data_ field that has _jsonb_ type (PostgreSQL binary JSON), so when this internal schema change it will be automatically updated here without changing the PostgreSQL table schema. The application should select the the data fields it needs from this JSON object structure. This table only has the latest snapshots for tags, it does not grow with time, so it does not need to be converted to be managed by TimescaleDB.
 
     CREATE TABLE realtime_data (
         tag text not null,
