@@ -12,7 +12,7 @@ To configure the driver it is necessary to create one or more driver instances a
 
 ## Configure a driver instance
 
-To create a new OPC-UA client instance, insert a new document in the _protocolDriverInstances_ collection using a command like this:
+To create a new OPC-UA server instance, insert a new document in the _protocolDriverInstances_ collection using a command like this:
 
     use json_scada_db_name
     db.protocolDriverInstances.insert({
@@ -23,7 +23,7 @@ To create a new OPC-UA client instance, insert a new document in the _protocolDr
             nodeNames: [],
         });
 
-- _**protocolDriver**_ [String] - Name of the protocol driver, must be "OPC-UA". **Mandatory parameter**.
+- _**protocolDriver**_ [String] - Name of the protocol driver, must be "OPC-UA_SERVER". **Mandatory parameter**.
 - _**protocolDriverInstanceNumber**_ [Double] - Number of the instance. Use 1 to N to number instances. For the same driver instance numbers should be unique. The instance number makes possible to run use multiple processes of the driver, each one with a distinct configuration. **Mandatory parameter**.
 - _**enabled**_ [Boolean] - Controls the enabling of the instance. Use false here to disable the instance. **Mandatory parameter**.
 - _**logLevel**_ [Double] - Number code for log level (0=minimum,1=basic,2=detailed,3=debug). Too much logging (levels 2 and 3) can affect performance. **Mandatory parameter**.

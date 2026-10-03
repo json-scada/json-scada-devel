@@ -57,7 +57,7 @@ The system is preconfigured to connect to a online demo simulation via IEC60870-
 
 To issue a command, open the Display Viewer, click on a breaker and push the "Command" button then choose an action like "open" or "close" and push the action button.
 
-The SVG display files are in "c:\json-scada\src\htdocs\svg\". The configuration files are in "c:\json-scada\conf\".
+The SVG display files are in "c:\json-scada\svg\". The configuration files are in "c:\json-scada\conf\".
 
 To edit and create new SVG displays, use the Inkscape+SAGE (shortcut in the JSON-SCADA folder). 
 
@@ -185,7 +185,7 @@ If certificates are configured for PostgreSQL connections to the server, it must
 
 ### 5. Golang
 
-* Golang version 1.23.x or later. Previous versions may work, but are not tested or supported.
+* Golang version 1.26.x or later. Previous versions may work, but are not tested or supported.
 * https://golang.org/dl/
 
 ### 6. DotNet
@@ -222,7 +222,7 @@ Build the code using the adequate script for the host platform:
 
 * https://github.com/riclolsen/json-scada/blob/master/platform-windows/build.bat
 
-Configure the conf/json-scada.json file to define the node name and to point to the MongoDB server. Processes will look for the config file on the ../conf/ folder.
+Configure the conf/json-scada.json file to define the node name and to point to the MongoDB server. Processes will look for the config file on the _APPDIR_/conf/ folder.
 
 * [Config File Documentation](../conf/README.md)
 
@@ -421,7 +421,7 @@ Use the tool to create necessary services. See "C:\json-scada\platform-windows\c
     nssm install JSON_SCADA_iec104server "C:\json-scada\bin\iec104server.exe"
     nssm install JSON_SCADA_iec104client "C:\json-scada\bin\iec104client.exe"
     nssm install JSON_SCADA_cs_data_processor <PATH_TO_NODEJSEXE>\node "C:\json-scada\src\cs_data_processor\cs_data_processor.js"
-    nssm install JSON_SCADA_server_realtime <PATH_TO_NODEJSEXE>\node "C:\json-scada\src\server_realtime\index.js"
+    nssm install JSON_SCADA_server_realtime_auth <PATH_TO_NODEJSEXE>\node "C:\json-scada\src\server_realtime_auth\index.js"
 
     ... and so on ...
 

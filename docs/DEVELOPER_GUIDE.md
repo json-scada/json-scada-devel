@@ -98,7 +98,7 @@ When a user or another process in JSON SCADA wants to send a command to a device
 
 Key fields in a `commandsQueue` document that your driver will use:
 
-*   `protocolSourceConnectionNumber` (Double/Int): Your driver should only process commands matching one of its active connections.
+*   `protocolSourceConnectionNumber` (Double): Your driver should only process commands matching one of its active connections. Current producers (`server_realtime_auth`, its GraphQL server, the Modbus server driver, `cs_custom_processor`) write a BSON Double (e.g. `61.0`). Older tools or hand-inserted documents may store Int32/Int64, so read the field as any numeric BSON type and convert it explicitly to a double before comparing; never assume an integer BSON type.
 *   `protocolSourceObjectAddress` (String): The protocol-specific address of the target point for the command.
 *   `protocolSourceASDU` (String): The data type of the value to be written.
 *   `value` (appropriate BSON type): The value to be written to the device.
@@ -315,8 +315,12 @@ When developing a protocol driver in C#, you'll typically use the official Mongo
     //     foreach (var change in cursor.ToEnumerable())
     //     {
     //         var commandDoc = change.FullDocument;
-    //         int cmdConnNumber = commandDoc["protocolSourceConnectionNumber"].AsInt32;
-    //         // If cmdConnNumber matches one of this driver's active connections...
+    //         // Producers write a BSON Double; accept any numeric type (Double/Int32/Int64/Decimal128).
+    //         // AsInt32 would throw InvalidCastException on a BsonDouble.
+    //         var connVal = commandDoc.GetValue("protocolSourceConnectionNumber", BsonNull.Value);
+    //         if (!connVal.IsNumeric) continue; // missing or non-numeric: not a valid command
+    //         double cmdConnNumber = connVal.ToDouble();
+    //         // If cmdConnNumber == connection.protocolConnectionNumber (both doubles) for an active connection...
     //         // Process command...
     //         // Update commandDoc in commandsQueueCollection with status
     //         // e.g., Builders<BsonDocument>.Update.Set("delivered", true).Set("ackTimeTag", DateTime.UtcNow)
@@ -506,9 +510,23 @@ Go is well-suited for protocol driver development due to its concurrency feature
     //     if err := cmdChangeStream.Decode(&changeDoc); err != nil { log.Println(err); continue }
     //
     //     commandDoc := changeDoc.FullDocument
-    //     cmdConnNumber, ok := commandDoc["protocolSourceConnectionNumber"].(int32) // Or appropriate type
-    //     if !ok { continue }
-    //     // If cmdConnNumber matches one of this driver's active connections...
+    //     // Producers write a BSON Double (decoded as float64 into bson.M); a bare .(int32)
+    //     // assertion would fail and silently skip every valid command. Convert explicitly:
+    //     var cmdConnNumber float64
+    //     switch v := commandDoc["protocolSourceConnectionNumber"].(type) {
+    //     case float64:
+    //         cmdConnNumber = v
+    //     case int32:
+    //         cmdConnNumber = float64(v)
+    //     case int64:
+    //         cmdConnNumber = float64(v)
+    //     default:
+    //         log.Printf("command %v: invalid protocolSourceConnectionNumber %T", commandDoc["_id"], v)
+    //         continue
+    //     }
+    //     // Alternatively, decode FullDocument into a struct with a float64 field
+    //     // (`bson:"protocolSourceConnectionNumber"`); the Go driver converts Int32/Int64 into float64.
+    //     // If cmdConnNumber == connection.ProtocolConnectionNumber (float64) for an active connection...
     //     // Process command...
     //     // Update commandDoc in commandsQueueCollection with status
     //     // e.g., cmdUpdate := bson.M{"$set": bson.M{"delivered": true, "ackTimeTag": time.Now()}}
@@ -655,8 +673,11 @@ Node.js is suitable for I/O-bound protocol drivers due to its asynchronous, even
     // cmdChangeStream.on('change', async (change) => {
     //     const commandDoc = change.fullDocument;
     //     if (commandDoc) {
-    //         const cmdConnNumber = commandDoc.protocolSourceConnectionNumber;
-    //         // If cmdConnNumber matches one of this driver's active connections...
+    //         // With default promoteValues, BSON Double/Int32/Int64 all arrive as JS numbers.
+    //         // Number() also unwraps Double/Long/Decimal128 wrapper objects if promoteValues is off.
+    //         const cmdConnNumber = Number(commandDoc.protocolSourceConnectionNumber);
+    //         if (!Number.isFinite(cmdConnNumber)) return; // missing or non-numeric
+    //         // If cmdConnNumber === connection.protocolConnectionNumber for an active connection...
     //         // Process command...
     //         // Update commandDoc in commandsQueueCollection with status
     //         // await commandsQueueCollection.updateOne({ _id: commandDoc._id }, { $set: { delivered: true, ackTimeTag: new Date() } });
@@ -691,7 +712,7 @@ When auto-tag creation is enabled for a specific connection (usually via a boole
 When creating a new tag document, the driver should populate it with as much relevant information as possible:
 
 *   `tag` (String): A unique tag name. This can be derived from the discovered point name or address. It might need sanitization or a prefix/suffix to ensure uniqueness within JSON SCADA. Some systems use the `protocolSourceObjectAddress` itself or a variation of it as the tag name if a human-friendly name isn't readily available.
-*   `protocolSourceConnectionNumber` (Double/Int): The `protocolConnectionNumber` of the current connection being processed.
+*   `protocolSourceConnectionNumber` (Double): The `protocolConnectionNumber` of the current connection being processed. Write it as a BSON Double (Node.js: `new Double(n)`, C#: `new BsonDouble(n)`, Go: `float64(n)`); a plain integer JS number is stored as Int32 by the Node.js driver.
 *   `protocolSourceObjectAddress` (String): The address of the point as discovered from the protocol.
 *   `protocolSourceASDU` (String): The data type, if discoverable from the protocol.
 *   `description` (String): A description of the tag, if available from the source.

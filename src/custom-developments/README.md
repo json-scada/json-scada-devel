@@ -64,11 +64,11 @@ Use the example templates to create your own custom developments.
 7. Restart the realtime server to create a new route for the project.
 
     ```bash
-    sudo supervisorctl restart server_realtime_auth
+    sudo supervisorctl restart JSON_SCADA_server_realtime_auth
     ```
 
     ```cmd
-    net restart server_realtime_auth
+    nssm restart JSON_SCADA_server_realtime_auth
     ```
 8. Access the app in your browser under 'Custom Developments', reload the page to see the changes.
 

@@ -37,7 +37,7 @@ To create a new display
 
 2. Markup the animations you want in the graphics using the Synoptic Editor. For this, select the SVG object you want to animate and access the SCADA extension from the "Extensions" menu. Then choose from the SCADA dialog the properties you want to animate. Use the key ESC to exit the SCADA dialog after the modification is done. Follow the documentation below to understand the parameters of animations. Always use JSON-SCADA TAGs as identifiers of values to animate the graphics at runtime in the web browser. Finally, save the file always using the default native Inkscape SVG format. To access the SCADA extension subsequently, use ALT+Q. 
 
-3. If you are editing on the JSON-SCADA server, save the file to "C:\json-scada\src\htdocs\svg" or equivalent folder. Add the file to display lists in the "C:\json-scada\src\htdocs\svg\screen_list.js" file. Open the Display Viewer web browser. The viewer can be also directly opened with a URL like this "http://127.0.0.1:8080/display?SVGFILE=filename.svg".
+3. If you are editing on the JSON-SCADA server, save the file to "C:\json-scada\svg" or equivalent folder. Add the file to display lists in the "C:\json-scada\svg\screen_list.js" file. Open the Display Viewer web browser. The viewer can be also directly opened with a URL like this "http://127.0.0.1:8080/display?SVGFILE=filename.svg".
 
 ## Tag naming
 

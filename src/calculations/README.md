@@ -103,7 +103,7 @@ The available formulas are listed below.
 
 ## Compilation
 
-This module should be compiled with the Golang compiler 1.12 or later.
+This module should be compiled with the Golang compiler.
 
 ```
 go get go.mongodb.org/mongo-driver/bson go.mongodb.org/mongo-driver/mongo go.mongodb.org/mongo-driver/mongo/options
