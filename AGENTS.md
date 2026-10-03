@@ -78,6 +78,7 @@ Default section order:
 
 When the user requests a durable behavior change, record it here or in the relevant child AGENTS.md
 
+- Markdown links (including Child DOX Index entries) may only point to files committed to the repository: not untracked, gitignored (`*_PLAN.md`, `/conf`, `/demo-docker/*`) or local-only material. Run `node docs/check-links.mjs` after editing Markdown or renaming files/headings.
 - Literal JSON examples in docs, READMEs and skills (fenced `json` blocks, inline `{...}` snippets) must be strict JSON that parses as written: no trailing commas, comments or unquoted keys. Parse them after editing.
 
 ## Child DOX Index
@@ -114,15 +115,6 @@ All protocol drivers, web UI, data processors, and tools. Contains its own child
 - [src/camera-onvif/](src/camera-onvif/AGENTS.md) — ONVIF camera (Node.js)
 - Plus tools & utilities detailed in [src/AGENTS.md](src/AGENTS.md) (Node.js, Go, C#, C, Python, PHP)
 
-Deprecated drivers:
-- [src/lib60870.netcore/](src/lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 (.NET Core)
-- [src/dnp3/](src/dnp3/AGENTS.md) — DNP3 client/server (C++/C#)
-- [src/OPC-UA-Client/](src/OPC-UA-Client/AGENTS.md) — OPC UA client (.NET Core)
-- [src/i104m/](src/i104m/AGENTS.md) — I104M adapter (Go)
-- [src/libplctag/](src/libplctag/AGENTS.md) — CIP Ethernet/IP (.NET Core)
-- [src/plc4x-client/](src/plc4x-client/AGENTS.md) — Modbus client via PLC4X (Go)
-- [src/iec61850_client/](src/iec61850_client/AGENTS.md) — IEC 61850 MMS client (.NET Core)
-
 
 ### Platform Configurations
 
@@ -136,7 +128,7 @@ Deprecated drivers:
 ### Configuration
 
 - [conf-templates/](conf-templates/AGENTS.md) — template config files for all services: Nginx, MongoDB, PostgreSQL, Node.js apps, protocol drivers, Supervisor, TLS certs, Grafana dashboards
-- [conf/](conf/AGENTS.md) — central application configuration: `json-scada.json`, OPC UA TLS certs in `conf/opcua/`
+- `conf/` — central application configuration: `json-scada.json`, OPC UA TLS certs in `conf/opcua/` (see [conf/README.md](conf/README.md); no committed AGENTS.md, root rules apply)
 
 ### Documentation — [docs/](docs/AGENTS.md)
 
@@ -151,7 +143,7 @@ Installation guides, architecture docs, schemas, developer guides.
 
 SVG synoptic display files with embedded SCADA JSON markup for real-time visualization.
 
-### Docker Demo — [demo-docker/](demo-docker/AGENTS.md)
+### Docker Demo — `demo-docker/` (see [demo-docker/README.md](demo-docker/README.md); no committed AGENTS.md, root rules apply)
 
 Docker Compose setup for full JSON-SCADA demo stack.
 

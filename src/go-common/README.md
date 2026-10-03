@@ -7,8 +7,6 @@ Each Go driver used to carry its own copy of the `{json:scada}` plumbing: readin
 accessors, the driver-instance document, the redundancy loop, the statistics writer. That is what
 lives here now.
 
-Plan and rationale: [`docs/GO_DRIVERS_UNIFICATION_PLAN.md`](../../docs/GO_DRIVERS_UNIFICATION_PLAN.md).
-
 ## The contract
 
 **This library must not change any driver's observable behaviour.** Same MongoDB collections, fields

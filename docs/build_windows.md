@@ -1,4 +1,4 @@
-# Build Intructions for Windows Platform
+# Build Instructions for Windows Platform
 
 ## Introduction
 

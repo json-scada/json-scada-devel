@@ -24,6 +24,7 @@ Project documentation: installation guides, architecture descriptions, schema do
   - `JSON-SCADA_ARCHITECTURE.drawio` — Draw.io architecture diagram
   - `JSON-SCADA_Connections.drawio` — Connections diagram
   - `sync-index.mjs` — regenerates root `index.md` from `README.md` and validates their links/anchors
+  - `check-links.mjs` — checks relative links and `#anchors` in all tracked Markdown against the committed tree
 
 ## Work Guidance
 
@@ -36,3 +37,4 @@ Project documentation: installation guides, architecture descriptions, schema do
 ## Verification
 
 - `node docs/sync-index.mjs --check` — root `index.md` matches `README.md`; their links and heading anchors resolve
+- `node docs/check-links.mjs` — every relative link/anchor in tracked Markdown resolves to a committed file (exit 1 otherwise)

@@ -659,8 +659,7 @@ The visible differences are: certificates are plain files; numbers in `valueStri
 use a decimal point; commands write only the value; discovery is more complete on large servers
 (it follows continuation points and survives servers that drop the connection on large reads);
 the JSON of structured values has a different shape; and a standby node needs consecutive missed
-keep-alives before taking over. The numbered list, with the reasons and the measurements behind
-them, is in [DEVIATIONS.md](DEVIATIONS.md).
+keep-alives before taking over.
 
 ## Building and testing
 

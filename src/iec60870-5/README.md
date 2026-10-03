@@ -2,8 +2,8 @@
 
 Go reimplementation of the JSON-SCADA IEC 60870-5 protocol drivers, built
 on the [go-iecp5](https://github.com/riclolsen/go-iecp5) library. The 101/104
-drivers are **drop-in replacements** for the legacy C# drivers in
-[`../lib60870.netcore`](../lib60870.netcore): same protocol driver names, same
+drivers are **drop-in replacements** for the legacy C# drivers (lib60870.netcore,
+no longer in this repository): same protocol driver names, same
 MongoDB collections and field semantics, same command-line contract and same
 binary names, so AdminUI, the service definitions and the demo configurations
 work unchanged. The 103 client is a new driver (no C# predecessor).

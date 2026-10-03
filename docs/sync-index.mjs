@@ -52,6 +52,7 @@ function slugsOf(markdown) {
       .replace(/\[([^\]]*)\]\([^)]*\)/g, '$1')
       .replace(/<[^>]+>/g, '')
       .replace(/[`*]/g, '')
+      .replace(/(^|[^\p{L}\p{N}_])_([^_]+)_(?=[^\p{L}\p{N}_]|$)/gu, '$1$2') // _emphasis_
     let slug = text
       .toLowerCase()
       .replace(/[^\p{L}\p{M}\p{N}\p{Pc} -]/gu, '')

@@ -13,11 +13,39 @@ https://github.com/metabase/metabase
 
 ### Grafana
 
-Free Grafana plugin to generate reports from dashboards.
-https://grafana.com/grafana/dashboards/11365
+Grafana OSS (bundled with JSON-SCADA, 13.2.x) has no built-in PDF reporting. Options:
 
-Grafana paid options (Enterprise or Cloud) can do reporting.
-https://grafana.com/docs/grafana/latest/enterprise/reporting/
+- **Grafana Dashboard Reporter** (free, Apache-2.0) — app plugin `mahendrapaipuri-dashboardreporter-app`,
+  v1.13.1 (2026-09-30), requires Grafana >= 10.0.3. Renders a dashboard to PDF through a Grafana API
+  endpoint, using Grafana's own authentication.
+  https://github.com/mahendrapaipuri/grafana-dashboard-reporter-app
+  - Not published in the Grafana plugin catalog (Grafana does not list plugins that overlap with
+    Enterprise reporting), so it is installed from the GitHub release and must be allowed as an
+    unsigned plugin:
+
+    ```bash
+    VERSION=1.13.1; grafana cli --pluginUrl "https://github.com/mahendrapaipuri/grafana-dashboard-reporter-app/releases/download/v${VERSION}/mahendrapaipuri-dashboardreporter-app-${VERSION}.zip" plugins install mahendrapaipuri-dashboardreporter-app
+    ```
+
+    ```ini
+    [plugins]
+    allow_loading_unsigned_plugins = mahendrapaipuri-dashboardreporter-app
+    ```
+
+  - Requires [grafana-image-renderer](https://github.com/grafana/grafana-image-renderer) to render
+    panels, plus a recent `chromium` on the Grafana host when the renderer runs as an external service
+    (the renderer-as-plugin form is deprecated; versions after 4.0.16 of it are known not to work with
+    this reporter).
+  - Report URL: `<grafana-url>/api/plugins/mahendrapaipuri-dashboardreporter-app/resources/report?dashUid=<dashboard UID>`
+    (options such as `&theme=dark`, `&layout=grid`, `&orientation=landscape`). See the plugin's
+    [documentation](https://github.com/mahendrapaipuri/grafana-dashboard-reporter-app/blob/main/src/README.md)
+    for configuration.
+- **Grafana Enterprise / Grafana Cloud** (paid) — built-in reporting (scheduled PDF reports, export as PDF).
+  https://grafana.com/docs/grafana/latest/visualizations/dashboards/create-reports/
+
+The community dashboard https://grafana.com/grafana/dashboards/11365 ("Grafana Reports") is not a
+reporting plugin: it is a panel that calls the separate [IzakMarais/reporter](https://github.com/IzakMarais/reporter)
+service (Go + LaTeX, last release v2.3.1 in 2019). Grafana Dashboard Reporter above is its maintained successor.
 
 ### Eclipse Streamsheets
 
@@ -39,9 +67,10 @@ https://github.com/Budibase/budibase
 https://github.com/ToolJet/ToolJet
 Open-source extensible low-code platform. Supports MongoDB, PostgreSQL and other data sources.
 
-### Apache superset
+### Apache Superset
 
-Java-based BI tool.
+Open-source BI and data exploration tool with a Python (Flask) server and a React/TypeScript web UI.
+Connects to PostgreSQL/TimescaleDB through SQLAlchemy.
 https://github.com/apache/superset
 
 ### Redash
@@ -61,7 +90,7 @@ https://github.com/widestage/widestage
 
 ### Jasper Reports
 
-This is a very poplar report solution. I have encountered problems with MongoDB Java JDBC driver.
+This is a very popular report solution. I have encountered problems with MongoDB Java JDBC driver.
 https://community.jaspersoft.com/community-download
 
 ### Knowage
