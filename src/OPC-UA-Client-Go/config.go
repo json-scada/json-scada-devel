@@ -38,7 +38,7 @@ import (
 const (
 	CopyrightMessage   = "{json:scada} OPC-UA Client Driver (Go) - Copyright 2020-2026 Ricardo L. Olsen"
 	ProtocolDriverName = "OPC-UA"
-	DriverVersion      = "0.1.0"
+	DriverVersion      = "0.2.0"
 	LibraryVersion     = "gopcua v0.9.1"
 )
 
@@ -60,6 +60,7 @@ const (
 var (
 	CntNotificEvents   atomic.Uint64
 	CntLostDataUpdates atomic.Uint64
+	CntFloodDropped    atomic.Uint64
 )
 
 // NodeDetails is what browsing learned about a node, kept so the MongoDB
@@ -90,6 +91,12 @@ type monItem struct {
 	SamplingMs  float64
 	QueueSize   uint32
 	Handle      uint32
+
+	// Flood protection state (deviation D24), owned by the one pump
+	// goroutine of the item's subscription; Flooded is read by the stats.
+	windowStart time.Time
+	windowCount int
+	Flooded     atomic.Uint64
 }
 
 // OPCUAConnection is a document of protocolConnections plus the runtime

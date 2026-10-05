@@ -323,6 +323,13 @@ objects (folders), variables and methods. Properties of a variable are discovere
 own, but their children are not expanded. Types, views and anything outside `Objects` are not
 browsed.
 
+**What is skipped.** The server's own bookkeeping about its clients: `SessionsDiagnosticsSummary`
+(with everything below it), `SessionDiagnosticsArray`, `SessionSecurityDiagnosticsArray` and
+`SubscriptionDiagnosticsArray`. They describe sessions that come and go, so tags made from them are
+dead by the next run, and on some servers they change on every request and would flood the driver.
+Tags of these nodes left by an earlier run (or by the .NET driver) stay in the database but are not
+monitored. `ServerDiagnosticsSummary` and the other `Server` nodes are discovered as usual.
+
 **Names.** For a variable with browse path `/Objects/Boiler/Drum/Level` and display name `Level`
 on connection `PLC1`:
 
@@ -559,9 +566,14 @@ nodes write the same data.
 The active node's log line shows the health of acquisition:
 
 ```
-Redundancy - This node is active. - Notification events: 183250 - Lost updates: 0
+Redundancy - This node is active. - Notification events: 183250 - Lost updates: 0 - Flood-dropped: 0
 ```
 
+`Lost updates` counts values dropped because the 50,000-entry queue was full. `Flood-dropped`
+counts values dropped because a single point reported more than 200 values in one second: that
+cap keeps one misbehaving node from filling the queue and starving every other point. The first
+time a point trips it the log says which one (`NAME - ns=2;s=X Y reports more than 200 values per
+second; the excess is dropped`). Fix the node or move it out of the subscription.
 ## Reconnection and recovery
 
 | Situation | What the driver does |
@@ -587,7 +599,9 @@ UTC offset. A service definition sends them to a log file.
 | `NAME - Session created successfully.` | Connected. |
 | `NAME - BrowseFullAddressSpace found N references on server in Xms.` | Discovery has browsed the namespace. |
 | `NAME -  Autotag - Read 500 nodes at offset 0 from a total of 4316` | Discovery progress. |
-| `NAME - N variables added to monitoring.` / `N Monitored items` | What is subscribed. The two should agree; if the second is lower, some items were rejected (a line each at level 1). |
+| `NAME - N variables added to monitoring.` / `N Monitored items` | What is subscribed. The two should agree; if the second is lower, some items were rejected. |
+| `NAME - N monitored items rejected: BadNodeIDUnknown - e.g. ns=2;s=A, ns=2;s=B and 1195 more` | The server refused those items, one line per status code with a few example addresses. Every address is listed at level 2. Usually tags of nodes that no longer exist. |
+| `NAME - Skipped N per-session/per-subscription server diagnostics nodes.` | Discovery left out the server's session and subscription diagnostics (see [Automatic tag creation](#automatic-tag-creation)). |
 | `NAME - Running...` | Acquiring. |
 | `MongoDB - Bulk written N documents in X ms, updates per second: N` | Data reaching the database. |
 | `NAME - Connection lost (...), reconnecting...` | The session was torn down and is being rebuilt. |
@@ -641,6 +655,8 @@ public servers this driver was tried against.
   changing them.
 - `giInterval` (periodic reads of points that are not subscribed) is accepted but does nothing.
 - The server certificate's host name is not checked, and only RSA certificates are supported.
+- A point reporting more than 200 values per second has the excess dropped; the newest value of
+  such a burst can be lost.
 - Redundant nodes both acquire and write (see [Redundancy](#redundancy)).
 
 ## Moving from the .NET driver

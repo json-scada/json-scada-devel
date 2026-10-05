@@ -23,6 +23,9 @@ package main
 
 import (
 	"context"
+	"fmt"
+	"sort"
+	"strings"
 	"time"
 
 	"github.com/riclolsen/json-scada/src/go-common/jslog"
@@ -47,7 +50,28 @@ const (
 	// refused CreateSubscription.
 	subscribeAttempts   = 3
 	subscribeRetryPause = 500 * time.Millisecond
+
+	// maxItemEventsPerSecond caps what one monitored item may deliver in a
+	// second; the excess is dropped (deviation D24). A healthy item reports
+	// a few values per publish at most, so this only ever trips for a node
+	// that changes on every server request and would otherwise fill the
+	// shared queue and starve every other tag.
+	maxItemEventsPerSecond = 200
 )
+
+// allow reports whether the item may deliver another value now. first is
+// true on the first value refused in a one-second window.
+func (it *monItem) allow(now time.Time) (ok, first bool) {
+	if now.Sub(it.windowStart) >= time.Second {
+		it.windowStart = now
+		it.windowCount = 0
+	}
+	it.windowCount++
+	if it.windowCount <= maxItemEventsPerSecond {
+		return true, false
+	}
+	return false, it.windowCount == maxItemEventsPerSecond+1
+}
 
 // setupSubscriptions creates the connection's subscriptions on a fresh
 // session.
@@ -132,6 +156,7 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 	}
 
 	created := 0
+	rejected := map[string][]string{}
 	for start := 0; start < len(requests); start += monitorChunk {
 		end := min(start+monitorChunk, len(requests))
 		chunk := requests[start:end]
@@ -146,17 +171,46 @@ func createSubscription(ctx context.Context, cli *opcua.Client, conn *OPCUAConne
 		// would otherwise cost every other point.
 		for i, res := range resp.Results {
 			if !statusIsGood(res.StatusCode) {
-				jslog.Log(jslog.LevelBasic, "%s - Monitored item rejected: %s - %s",
-					conn.Name, chunk[i].ItemToMonitor.NodeID, statusCodeName(res.StatusCode))
+				name := statusCodeName(res.StatusCode)
+				rejected[name] = append(rejected[name], chunk[i].ItemToMonitor.NodeID.String())
 				continue
 			}
 			created++
 		}
 	}
+	logRejected(conn, rejected)
 
 	jslog.Log(jslog.LevelNoLog, "%s - %d Monitored items", conn.Name, created)
 
 	go notificationPump(ctx, conn, notifyCh)
+}
+
+// logRejected reports the monitored items the server refused, one line per
+// status code instead of one per item: a namespace of stale tags otherwise
+// writes thousands of lines on every start (deviation D25). The first few
+// addresses are named at the basic level, all of them at the detailed one.
+func logRejected(conn *OPCUAConnection, rejected map[string][]string) {
+	const sample = 3
+	names := make([]string, 0, len(rejected))
+	for name := range rejected {
+		names = append(names, name)
+	}
+	sort.Strings(names)
+	for _, name := range names {
+		addrs := rejected[name]
+		shown := addrs[:min(sample, len(addrs))]
+		more := ""
+		if len(addrs) > sample {
+			more = fmt.Sprintf(" and %d more", len(addrs)-sample)
+		}
+		jslog.Log(jslog.LevelBasic, "%s - %d monitored items rejected: %s - e.g. %s%s",
+			conn.Name, len(addrs), name, strings.Join(shown, ", "), more)
+		if jslog.Level() >= jslog.LevelDetailed {
+			for _, a := range addrs {
+				jslog.Log(jslog.LevelDetailed, "%s - Monitored item rejected: %s - %s", conn.Name, a, name)
+			}
+		}
+	}
 }
 
 // notificationPump turns published data changes into queued values.
@@ -203,8 +257,21 @@ func handleNotification(conn *OPCUAConnection, item *ua.MonitoredItemNotificatio
 		return
 	}
 
-	tp, dbl, str, jsonStr, isArray := convertOPCValue(item.Value)
 	CntNotificEvents.Add(1)
+
+	// deviation D24: one item cannot take the whole queue.
+	if ok, first := it.allow(time.Now()); !ok {
+		it.Flooded.Add(1)
+		CntFloodDropped.Add(1)
+		if first {
+			jslog.Log(jslog.LevelBasic,
+				"%s - %s %s reports more than %d values per second; the excess is dropped",
+				conn.Name, it.NodeID, it.DisplayName, maxItemEventsPerSecond)
+		}
+		return
+	}
+
+	tp, dbl, str, jsonStr, isArray := convertOPCValue(item.Value)
 
 	// parity: the queue is bounded here and only here; the autotag read
 	// pass enqueues unconditionally.

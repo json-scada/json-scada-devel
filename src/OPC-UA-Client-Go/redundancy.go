@@ -58,8 +58,8 @@ func initRedundancy(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConn
 			db.Collection(jsmongo.ProtocolConnectionsCollectionName), cfg, conns)
 	}
 	redundancy.StatusSuffix = func() string {
-		return fmt.Sprintf(" - Notification events: %d - Lost updates: %d",
-			CntNotificEvents.Load(), CntLostDataUpdates.Load())
+		return fmt.Sprintf(" - Notification events: %d - Lost updates: %d - Flood-dropped: %d",
+			CntNotificEvents.Load(), CntLostDataUpdates.Load(), CntFloodDropped.Load())
 	}
 }
 
