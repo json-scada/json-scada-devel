@@ -16,8 +16,8 @@ MongoDB semantics, no native library dependency.
 - **Language:** Go 1.26, module `iec61850_client`, flat `package main`
 - **Library:** `github.com/dscsystems/go-iec61850` v0.3.1 (pure Go, GPLv3) — **pin the version**,
   the API is pre-v1
-- **Binary:** `iec61850-client(.exe)` — must differ from the C# `iec61850_client(.exe)` so both can
-  live in `bin/`
+- **Binary:** `iec61850_client(.exe)` in `bin/`, as `platform-windows/build.bat` and
+  `platform-linux/build.sh` build it
 - **Files** (one per C# file, to keep them diffable):
   - `main.go` — startup, instance and connection loading (← `Main.cs`)
   - `config.go` — documents, permissive BSON decoding, MongoDB connect (← `Common_srv_cli.cs`)
@@ -32,7 +32,7 @@ MongoDB semantics, no native library dependency.
   - `mongo_commands.go` — command change stream and dispatch (← `MongoCommands.cs`)
   - `redundancy.go` — active/standby arbitration (← `Redundancy.cs`)
   - `tlsconf.go` — TLS configuration
-- **Build:** `go build -o ../../../bin/iec61850-client`
+- **Build:** `go build -ldflags="-s -w" -o ../../../bin/iec61850_client`
 - **Config:** `conf/json-scada.json` plus MongoDB documents; CLI `<instance> <logLevel> <configFile>`
 
 ## Work Guidance
@@ -45,7 +45,11 @@ MongoDB semantics, no native library dependency.
 - `Iec61850Entry.AutoPublish` marks a point the driver discovered itself (browse or report); only those carry the self-publish flag, so a point configured in realtimeData never gets a second tag.
 - Command tags are created by the MongoDB writer, not the value path: a control object carries no value, so `createCommandTags` inserts it and links it to its supervised twin (`supervisedOfCommand` / `commandOfSupervised`). It waits for the twin to exist, up to `commandLinkAttempts` writer cycles.
 - All numbers written to MongoDB must be Go `float64` so they land as BSON doubles.
-- Report callbacks run on the association's reader goroutine: never block them, only enqueue.
+- Report callbacks run on the association's reader goroutine: never block them, only enqueue, and
+  never let them panic — a panic there takes the whole driver down.
+- Connection fields come from a document decoded into `bson.M`, where sub-documents arrive as
+  `bson.D`: read them through the `jsmongo` helpers, and test new fields through a real BSON round
+  trip (`config_test.go`), not a hand-built `bson.M`.
 - Report entries are identified from the data set members, and reports are matched to their
   subscription by `RptID` — see the RptID handling in `reports.go` before touching that path.
 - `TrgOps` must include GI: the driver requests a GI right after enabling a block, and a
@@ -53,8 +57,9 @@ MongoDB semantics, no native library dependency.
 
 ## Verification
 
-- `go test ./...` — conversions, tag documents, and a loopback run against an in-process IEC 61850
-  server from `testdata/simpleIO_direct_control.cid` (no MongoDB or device needed)
+- `go test ./...` — conversions, tag documents, connection documents decoded from BSON, and a
+  loopback run against an in-process IEC 61850 server from `testdata/simpleIO_direct_control.cid`
+  (no MongoDB or device needed)
 - `go vet ./...`
 - `go list -deps ./... | grep charm` must be empty — the library's TUI dependencies must not be
   linked in

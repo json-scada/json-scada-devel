@@ -125,6 +125,11 @@ type Iec61850Connection struct {
 // SetLastReportID records a buffered report's EntryID for resync.
 func (c *Iec61850Connection) SetLastReportID(rcbRef string, entryID []byte) {
 	c.mu.Lock()
+	// This runs on the report reader goroutine, where a panic would take
+	// the whole driver down: never write into a nil map.
+	if c.LastReportIds == nil {
+		c.LastReportIds = map[string][]byte{}
+	}
 	c.LastReportIds[rcbRef] = entryID
 	c.BrcbCount++
 	c.mu.Unlock()
