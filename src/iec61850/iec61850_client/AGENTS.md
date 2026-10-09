@@ -2,19 +2,20 @@
 
 ## Purpose
 
-Pure-Go IEC 61850 MMS client driver for JSON-SCADA. Drop-in alternative to the C# driver in
+Pure-Go IEC 61850 MMS client driver for JSON-SCADA. Replaces the C# driver that lived in
 `src/iec61850_client`: same `protocolDriver` name (`IEC61850`), same configuration documents, same
 MongoDB semantics, no native library dependency.
 
 ## Ownership
 
 - iec61850/iec61850_client owns the Go implementation of the IEC 61850 MMS client driver
-- `src/iec61850_client` (C#) remains the reference implementation; behaviour is matched to it
+- The C# driver remains the behavioural reference. It was removed from the tree in commit
+  `8a3f80de`; read it with `git show 8a3f80de^:src/iec61850_client/<file>`
 
 ## Local Contracts
 
 - **Language:** Go 1.26, module `iec61850_client`, flat `package main`
-- **Library:** `github.com/dscsystems/go-iec61850` v0.3.1 (pure Go, GPLv3) — **pin the version**,
+- **Library:** `github.com/dscsystems/go-iec61850` v0.3.2 (pure Go, GPLv3) — **pin the version**,
   the API is pre-v1
 - **Binary:** `iec61850_client(.exe)` in `bin/`, as `platform-windows/build.bat` and
   `platform-linux/build.sh` build it
@@ -37,8 +38,8 @@ MongoDB semantics, no native library dependency.
 
 ## Work Guidance
 
-- The C# driver is the specification. Before changing behaviour, check what
-  `src/iec61850_client` does; quirks are reproduced on purpose and are marked `parity:` in
+- The C# driver is the specification. Before changing behaviour, check what it does (see
+  Ownership); quirks are reproduced on purpose and are marked `parity:` in
   comments. Intentional differences are explained in a comment where the code diverges (older ones
   are tagged `deviation Dn`) — never diverge silently.
 - Only `sourceDataUpdate` is written for data; never tag `value`, alarms or history.
@@ -54,14 +55,25 @@ MongoDB semantics, no native library dependency.
   subscription by `RptID` — see the RptID handling in `reports.go` before touching that path.
 - `TrgOps` must include GI: the driver requests a GI right after enabling a block, and a
   conformant server ignores GI when its trigger is off.
+- A buffered block resumes after the last EntryID the driver saw (`resyncEntryID`). With none
+  saved, no EntryID is written — never all zeros, which some IEDs refuse. An EntryID the IED
+  refuses (`entryIDRefused`, e.g. after an IED restart) is forgotten and the block is enabled
+  without resync; retrying the same ID would never succeed.
+- An MMS write answers per item: check the item results of `MMS().Write`, not only the call error
+  (`disableRCB`). A block another client holds refuses even `RptEna=false`.
+- Stop the driver gracefully (SIGINT/SIGTERM, Ctrl+C/Ctrl+Break): it disables its report blocks on
+  the way out. A forced kill leaves BRCBs enabled, and some IEDs keep them owned by the dead
+  association, refusing every other client, until the IED restarts.
 
 ## Verification
 
-- `go test ./...` — conversions, tag documents, connection documents decoded from BSON, and a
-  loopback run against an in-process IEC 61850 server from `testdata/simpleIO_direct_control.cid`
-  (no MongoDB or device needed)
+- `go test ./...` — conversions, tag documents, connection documents decoded from BSON, report
+  block recovery (stale EntryID, block held by another client), and a loopback run against an
+  in-process IEC 61850 server from `testdata/simpleIO_direct_control.cid` (no MongoDB or device
+  needed)
+- `go test -race ./...`
 - `go vet ./...`
 - `go list -deps ./... | grep charm` must be empty — the library's TUI dependencies must not be
   linked in
-- End-to-end: seed an instance and connection, run against a real IED or the C# driver's usual
-  device, and diff the resulting `realtimeData` documents against the C# driver's
+- End-to-end: seed an instance and connection, run against a real IED, and stop the driver
+  gracefully (see Work Guidance) so it leaves no report block enabled on the device

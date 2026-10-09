@@ -37,7 +37,7 @@ const (
 	CopyrightMessage   = "{json:scada} IEC61850 Client Driver (Go) - Copyright 2020-2026 Ricardo Olsen"
 	ProtocolDriverName = "IEC61850"
 	DriverVersion      = "0.2.0"
-	LibraryVersion     = "v0.3.1"
+	LibraryVersion     = "v0.3.2"
 )
 
 // Queue and key-allocation limits, same values as the C# driver.
@@ -132,6 +132,14 @@ func (c *Iec61850Connection) SetLastReportID(rcbRef string, entryID []byte) {
 	}
 	c.LastReportIds[rcbRef] = entryID
 	c.BrcbCount++
+	c.mu.Unlock()
+}
+
+// ForgetLastReportID drops an RCB's EntryID, so the next save no longer
+// carries one the IED refused.
+func (c *Iec61850Connection) ForgetLastReportID(rcbRef string) {
+	c.mu.Lock()
+	delete(c.LastReportIds, rcbRef)
 	c.mu.Unlock()
 }
 
