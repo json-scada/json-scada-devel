@@ -108,8 +108,8 @@ type Iec61850Connection struct {
 	mu            sync.Mutex
 	LastReportIds map[string][]byte // rcb reference -> last seen EntryID
 	Entries       map[string]*Iec61850Entry
-	EntryOrder    []string // stable iteration order for the polling sweep
-	InsertedTags  map[string]bool
+	EntryOrder    []string        // stable iteration order for the polling sweep
+	InsertedTags  map[string]bool // points that have a tag, by pointKey (not by tag name)
 	// TagKeys allocates _id values inside this connection's partition.
 	TagKeys      jstags.KeyAllocator
 	Cli          *client.Client

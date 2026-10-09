@@ -387,7 +387,13 @@ func TestLoopbackOneSubscriptionPerDataSet(t *testing.T) {
 	// A change is reported once, not once per instance over the data set.
 	drainQueue()
 	srv.Update(func(tx *server.Tx) { tx.SetBool("DUPIED/GGIO1.Ind1.stVal", true) })
-	values := waitForValues(t, 5*time.Second, func(v []IECValue) bool { return len(v) > 0 })
+	// Wait for the change itself, not for any value: a late GI report of the
+	// other data set may arrive first. Then keep collecting briefly, so a
+	// second copy of the change would still be counted.
+	values := waitForValues(t, 5*time.Second, func(v []IECValue) bool {
+		return hasAddressPrefix(v, "DUPIED/GGIO1.Ind1")
+	})
+	values = append(values, waitForValues(t, 500*time.Millisecond, func([]IECValue) bool { return false })...)
 	count := 0
 	for _, iv := range values {
 		if strings.HasSuffix(iv.Address, "GGIO1.Ind1") {
@@ -491,7 +497,7 @@ func TestLoopbackAutoCreateFromBrowse(t *testing.T) {
 	}
 	// And each one names a tag the writer can create.
 	iv := values[0]
-	if tag := TagFromParameters(iv); !strings.HasPrefix(tag, "IEC61850;TESTIED;") {
+	if tag := TagFromParameters(iv); !strings.HasPrefix(tag, "TESTIED;") {
 		t.Errorf("tag name = %q", tag)
 	}
 }
@@ -544,7 +550,7 @@ func TestLoopbackAutoCreateCommands(t *testing.T) {
 		if ct.ConnName != "TESTIED" || ct.ConnNumber != 9999 {
 			t.Errorf("%s: connection identity missing", ref)
 		}
-		if want := "IEC61850;TESTIED;" + ref + "[CO]"; ct.Tag() != want {
+		if want := "TESTIED;" + ref + "[CO]"; ct.Tag() != want {
 			t.Errorf("%s: tag = %q, want %q", ref, ct.Tag(), want)
 		}
 		// The sample model uses direct control, so no select is needed.

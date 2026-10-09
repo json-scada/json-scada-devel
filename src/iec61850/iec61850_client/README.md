@@ -172,7 +172,20 @@ A controllable object is registered as soon as it is discovered, so it can be co
 
 Settings, configuration and description attributes are not points and are not created.
 
-Automatically created tags are named `IEC61850;<connection>;<object reference>[<FC>]`, and are allocated `_id`s from the range `protocolConnectionNumber * 1000000`. Points already configured in `realtimeData` keep their own tag and are never duplicated.
+Automatically created tags are named `<connection>;<object reference>[<FC>]` and grouped by the device hierarchy:
+
+| Field | Value | Example |
+|---|---|---|
+| `tag` | `<connection>;<object reference>[<FC>]` | `IED1;DemoProtCtrl/Obj1XCBR1.Pos[ST]` |
+| `group1` | connection `name` | `IED1` |
+| `group2` | logical device | `DemoProtCtrl` |
+| `group3` | logical node | `Obj1XCBR1` |
+| `ungroupedDescription` | the rest of the reference (data object and attributes) | `Pos` |
+| `description` | `group1~group2~group3~ungroupedDescription` | `IED1~DemoProtCtrl~Obj1XCBR1~Pos` |
+
+A command tag ends in `[CO]` and its descriptions in ` command`. Tags are allocated `_id`s from the range `protocolConnectionNumber * 1000000`.
+
+A point that already has a tag, configured by hand or created earlier, is never duplicated: tags are matched by object reference and functional constraint (`protocolSourceObjectAddress` and `protocolSourceCommonAddress`), not by name. Tags created by earlier versions of the driver, named `IEC61850;<connection>;…` with `group1` `IEC61850`, keep their name and groups; delete them to have them recreated in the new form.
 
  On a large IED this creates a tag per data object. The driver logs the count per logical device (`N browsed object(s) registered for tag creation`). Leave `autoCreateTags` off and configure the points manually instead.
 

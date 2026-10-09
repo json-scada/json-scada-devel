@@ -43,6 +43,12 @@ MongoDB semantics, no native library dependency.
   comments. Intentional differences are explained in a comment where the code diverges (older ones
   are tagged `deviation Dn`) — never diverge silently.
 - Only `sourceDataUpdate` is written for data; never tag `value`, alarms or history.
+- Automatically created tags (`tags_creation.go`): `tag` is `<connection>;<object reference>[<FC>]`
+  with no driver prefix; `group1` the connection name, `group2` the logical device, `group3` the
+  logical node (`splitRef`); `description` is `group1~group2~group3~ungroupedDescription`, starting
+  with `group1` because viewers strip it. Documented in `README.md` (autoCreateTags).
+- A point's tag is found by object reference + FC (`pointKey`, kept in `InsertedTags`), never by tag
+  name, so a renamed scheme never duplicates the tags already in `realtimeData`.
 - `Iec61850Entry.AutoPublish` marks a point the driver discovered itself (browse or report); only those carry the self-publish flag, so a point configured in realtimeData never gets a second tag.
 - Command tags are created by the MongoDB writer, not the value path: a control object carries no value, so `createCommandTags` inserts it and links it to its supervised twin (`supervisedOfCommand` / `commandOfSupervised`). It waits for the twin to exist, up to `commandLinkAttempts` writer cycles.
 - All numbers written to MongoDB must be Go `float64` so they land as BSON doubles.

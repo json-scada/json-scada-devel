@@ -16,9 +16,13 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-// Automatic tag creation. Port of TagsCreation.cs: the documents inserted
-// here must match what the C# driver inserts, field for field, so that a
-// database seeded by one driver works with the other.
+// Automatic tag creation. Port of TagsCreation.cs, with one deliberate
+// difference: tags are named and grouped by the connection and the IEC 61850
+// object hierarchy (group1 connection, group2 logical device, group3 logical
+// node) instead of under a fixed "IEC61850" group, so they sort and filter
+// like the device they come from. The C# driver named them
+// "IEC61850;<connection>;..." with group1 "IEC61850", group2 the connection
+// and group3 the functional constraint.
 
 package main
 
@@ -30,9 +34,33 @@ import (
 	"go.mongodb.org/mongo-driver/v2/bson"
 )
 
-// TagFromParameters builds the tag name of an automatically created point.
+// TagFromParameters builds the tag name of an automatically created point:
+// "<connection>;<object reference>[<FC>]".
 func TagFromParameters(iv IECValue) string {
-	return "IEC61850;" + iv.ConnName + ";" + iv.Address + "[" + iv.CommonAddress + "]"
+	return iv.ConnName + ";" + iv.Address + "[" + iv.CommonAddress + "]"
+}
+
+// pointKey identifies a point by object reference and functional
+// constraint, the same identity entryKey gives a configured point. Tags are
+// matched on it, never on their name, so a point keeps one tag whatever
+// naming scheme created it.
+func pointKey(ref, fc string) string {
+	return strings.TrimSpace(ref) + strings.ToUpper(strings.TrimSpace(fc))
+}
+
+// splitRef splits an object reference "LD/LN.DO.DA" into the logical device,
+// the logical node and the rest ("DO.DA"): group2, group3 and the ungrouped
+// description of the tag. Whatever cannot be split stays in rest.
+func splitRef(ref string) (ld, ln, rest string) {
+	ld, path, ok := strings.Cut(ref, "/")
+	if !ok {
+		return "", "", ref
+	}
+	ln, rest, ok = strings.Cut(path, ".")
+	if !ok {
+		return ld, "", path
+	}
+	return ld, ln, rest
 }
 
 // CommandTag describes a controllable object found while browsing, waiting
@@ -49,14 +77,14 @@ type CommandTag struct {
 
 // Tag is the name of the command tag.
 func (c CommandTag) Tag() string {
-	return "IEC61850;" + c.ConnName + ";" + c.Ref + "[CO]"
+	return c.ConnName + ";" + c.Ref + "[CO]"
 }
 
 // newCommandDoc builds the realtimeData document of a command point.
 // supervisedID is the key of the point where the command's effect shows,
 // zero when the device exposes no status for the controllable object.
 func newCommandDoc(ct CommandTag, id, supervisedID float64) bson.M {
-	const group1 = "IEC61850"
+	ld, ln, rest := splitRef(ct.Ref)
 
 	doc := jstags.BaseDoc()
 	maps.Copy(doc, bson.M{
@@ -67,11 +95,11 @@ func newCommandDoc(ct CommandTag, id, supervisedID float64) bson.M {
 		"protocolSourceObjectAddress":    ct.Ref,
 		"protocolSourceCommandUseSBO":    ct.UseSBO,
 		"protocolSourceCommandDuration":  0.0,
-		"description":                    group1 + "~" + ct.ConnName + "~" + ct.Ref + " command",
-		"ungroupedDescription":           ct.Ref + " command",
-		"group1":                         group1,
-		"group2":                         ct.ConnName,
-		"group3":                         "CO",
+		"description":                    ct.ConnName + "~" + ld + "~" + ln + "~" + rest + " command",
+		"ungroupedDescription":           rest + " command",
+		"group1":                         ct.ConnName,
+		"group2":                         ld,
+		"group3":                         ln,
 		"origin":                         "command",
 		"tag":                            ct.Tag(),
 		// The two ends of the pair: this command acts on that supervised
@@ -105,7 +133,13 @@ func newCommandDoc(ct CommandTag, id, supervisedID float64) bson.M {
 
 // newRealtimeDoc builds the realtimeData document for a discovered point.
 func newRealtimeDoc(iv IECValue, id float64) bson.M {
-	const group1 = "IEC61850"
+	// The groups come from the object reference, as the tag name does. A
+	// display name of its own, distinct from the reference, is kept as the
+	// ungrouped description.
+	ld, ln, rest := splitRef(iv.Address)
+	if iv.DisplayName != "" && iv.DisplayName != iv.Address {
+		rest = iv.DisplayName
+	}
 
 	doc := jstags.BaseDoc()
 	maps.Copy(doc, bson.M{
@@ -116,11 +150,11 @@ func newRealtimeDoc(iv IECValue, id float64) bson.M {
 		"protocolSourceObjectAddress":    iv.Address,
 		"protocolSourceCommandUseSBO":    false,
 		"protocolSourceCommandDuration":  0.0,
-		"description":                    group1 + "~" + iv.ConnName + "~" + iv.DisplayName,
-		"ungroupedDescription":           iv.DisplayName,
-		"group1":                         group1,
-		"group2":                         iv.ConnName,
-		"group3":                         iv.CommonAddress,
+		"description":                    iv.ConnName + "~" + ld + "~" + ln + "~" + rest,
+		"ungroupedDescription":           rest,
+		"group1":                         iv.ConnName,
+		"group2":                         ld,
+		"group3":                         ln,
 		"origin":                         "supervised",
 		"tag":                            TagFromParameters(iv),
 		"commandOfSupervised":            0.0,

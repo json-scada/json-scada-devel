@@ -180,11 +180,11 @@ func preloadEntries(ctx context.Context, collRTD *mongo.Collection, conn *Iec618
 		tag := jsmongo.GetString(doc, "tag", "")
 		objAddr := strings.TrimSpace(jsmongo.GetString(doc, "protocolSourceObjectAddress", ""))
 		commonAddr := strings.ToUpper(strings.TrimSpace(jsmongo.GetString(doc, "protocolSourceCommonAddress", "")))
-		if conn.AutoCreateTags {
-			conn.InsertedTags[tag] = true
-		}
 		if objAddr == "" {
 			continue
+		}
+		if conn.AutoCreateTags {
+			conn.InsertedTags[pointKey(objAddr, commonAddr)] = true
 		}
 		entry := &Iec61850Entry{
 			Path:  objAddr,
