@@ -190,9 +190,10 @@ function normalizePoint(element, cfg) {
   const descr =
     (prop.group2 || '') +
     ' | ' +
-    (prop.ungroupedDescription !== '' && prop.ungroupedDescription != null
-      ? prop.ungroupedDescription
-      : prop.description || '')
+    ((prop.group3 || '') === '' ? '' : prop.group3 + ' | ') +
+    (prop.ungroupedDescription !== '' && prop.ungroupedDescription != null ?
+      prop.ungroupedDescription
+    : prop.description || '')
 
   return {
     key,
