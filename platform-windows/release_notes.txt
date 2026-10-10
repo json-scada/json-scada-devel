@@ -145,6 +145,11 @@ Notes for version 0.66:
 * Improved IEC61850 client and server drivers.
 * Improved ICCP client and server drivers.
 * Improved MCP server, new functionality and updated protocol.
+* Grafana updated to version 13.2.3.
+* Metabase updated to version 0.64.1.
+* Nodejs updated to version 26.10.0.
+* MongoDB Community Server updated to version 9.0.2.
+* MongoDB Compass updated to 1.52.0.
 
 To quickly run the system after installed, open the JSON-SCADA desktop folder and:
 
