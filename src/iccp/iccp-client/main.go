@@ -80,6 +80,7 @@ func main() {
 
 	cfg, instanceNumber, instLogLevel := readConfigFile()
 	currentLogLevel = instLogLevel
+	configureTASE2Logging(currentLogLevel)
 	maxTPDUSizeParam := readTuningInt(EnvPrefix+"MAX_TPDU_SIZE_PARAM", cfg.ICCPMaxTPDUSizeParam, 16)
 	if maxTPDUSizeParam < 7 || maxTPDUSizeParam > 16 {
 		LogMsg(LogLevelMin, "Config - Invalid max TPDU size parameter %d, using 16", maxTPDUSizeParam)
@@ -227,6 +228,8 @@ func runICCPConnection(conn protocolConnection, collectionRtData *mongo.Collecti
 		ep.SetLocalAPTitle(localAP, localAE)
 		ep.SetRemoteAPTitle(remoteAP, remoteAE)
 		ep.SetMaxTPDUSizeParam(maxTPDUSizeParam)
+		// Set before Connect so the handshake is attributed to the connection.
+		ep.SetLogHandler(tase2LogHandler(conn.Name))
 		if conn.Password != "" {
 			ep.SetAuthenticationPassword(conn.Password)
 		}
@@ -619,37 +622,34 @@ func dataValueToUpdate(dv *tase2.DataValue, m tagMapping, now time.Time, hoursSh
 
 	if dp.Quality != nil {
 		switch dp.Quality.Validity {
-		case "invalid":
+		case tase2.QualityInvalid:
 			upd.invalid = true
-		case "questionable":
+		case tase2.QualityHeld, tase2.QualitySuspect:
 			upd.notTopical = true
 		}
-		if dp.Quality.Source == "substituted" || dp.Quality.Source == "calculated" {
+		// Any current source other than telemetered means the value did not come
+		// straight from the process: entered (manually substituted), calculated
+		// or estimated all map to substitutedAtSource.
+		switch dp.Quality.Source {
+		case tase2.SourceEntered, tase2.SourceCalculated, tase2.SourceEstimated:
 			upd.substituted = true
 		}
 	}
 
-	if dp.TimeTag != nil {
-		upd.timeTagAtSource = iccpTimeTagToTime(*dp.TimeTag, now, hoursShift)
+	if t, ok := dp.Time(); ok {
+		upd.timeTagAtSource = iccpTimeStampToTime(t, hoursShift)
 		upd.timeTagAtSourceOk = true
 	}
 
 	return upd
 }
 
-// iccpTimeTagToTime converts an ICCP time tag (milliseconds since midnight, as
-// decoded by the tase2 library) to an absolute time. The date is taken from the
-// current UTC day; hoursShift (connection config) compensates a peer sending
-// local time instead of UTC. A result ahead of now by more than an hour is
-// assumed to be from just before a midnight rollover and shifted back one day.
-func iccpTimeTagToTime(ms int64, now time.Time, hoursShift float64) time.Time {
-	midnight := now.UTC().Truncate(24 * time.Hour)
-	t := midnight.Add(time.Duration(ms) * time.Millisecond)
-	t = t.Add(time.Duration(hoursShift * float64(time.Hour)))
-	if t.After(now.Add(time.Hour)) {
-		t = t.AddDate(0, 0, -1)
-	}
-	return t
+// iccpTimeStampToTime applies the connection's hoursShift to a decoded ICCP
+// time stamp. The time is already absolute (GMTBasedS seconds, plus
+// milliseconds for the 802 Ed.2 QTimeTagExtended types); hoursShift only
+// compensates a peer that stamps local time instead of UTC.
+func iccpTimeStampToTime(t time.Time, hoursShift float64) time.Time {
+	return t.Add(time.Duration(hoursShift * float64(time.Hour)))
 }
 
 // updateConnectionStats updates the stats field on the protocol connection document.

@@ -1,6 +1,7 @@
 package serverapp
 
 import (
+	"fmt"
 	"testing"
 
 	dnp3 "github.com/dscsystems/go-dnp3"
@@ -37,17 +38,18 @@ func TestVariationsFor(t *testing.T) {
 		static uint8
 		event  uint8
 	}{
-		// Analog input: g30/g32.
-		{famAnalog, 1, 1, 1},
-		{famAnalog, 2, 2, 2},
+		// Analog input: g30/g32. The event is always a timed variation
+		// (deviation D27).
+		{famAnalog, 1, 1, 3},
+		{famAnalog, 2, 2, 4},
 		{famAnalog, 3, 3, 3},
 		{famAnalog, 4, 4, 4},
-		{famAnalog, 5, 5, 5},
-		{famAnalog, 6, 6, 6},
+		{famAnalog, 5, 5, 7},
+		{famAnalog, 6, 6, 8},
 		{famAnalog, 7, 5, 7},
 		{famAnalog, 8, 6, 8},
-		{famAnalog, 0, 5, 5},  // default
-		{famAnalog, 99, 5, 5}, // default
+		{famAnalog, 0, 5, 7},  // default
+		{famAnalog, 99, 5, 7}, // default
 
 		// Counter: g20/g22.
 		{famCounter, 1, 1, 5},
@@ -134,6 +136,38 @@ func TestDefaultClasses(t *testing.T) {
 	for fam := famBinary; fam < famTimeAndInterval; fam++ {
 		if _, ok := defaultClasses[fam]; !ok {
 			t.Errorf("family %v has no default class", fam)
+		}
+	}
+}
+
+// timedEvents lists, per family, the event variations that carry an absolute
+// time: g2v2, g4v2, g11v2, g22v5/6, g23v5/6, g32v3/4/7/8 and g42v3/4/7/8.
+var timedEvents = map[family][]uint8{
+	famBinary:             {2},
+	famDoubleBit:          {2},
+	famBinaryOutputStatus: {2},
+	famCounter:            {5, 6},
+	famFrozenCounter:      {5, 6},
+	famAnalog:             {3, 4, 7, 8},
+	famAnalogOutputStatus: {3, 4, 7, 8},
+}
+
+// TestEveryEventCarriesTime checks that no ASDU selects an event variation
+// without time, for the defaults and for every per-point choice, so a changed
+// value always reaches the master with the moment it changed.
+func TestEveryEventCarriesTime(t *testing.T) {
+	for fam, allowed := range timedEvents {
+		check := func(what string, ev uint8) {
+			for _, a := range allowed {
+				if ev == a {
+					return
+				}
+			}
+			t.Errorf("family %d %s: event variation %d carries no time", fam, what, ev)
+		}
+		check("default", defaultVariations[fam].event)
+		for asdu := 0; asdu <= 20; asdu++ {
+			check(fmt.Sprintf("ASDU %d", asdu), variationsFor(fam, asdu).event)
 		}
 	}
 }

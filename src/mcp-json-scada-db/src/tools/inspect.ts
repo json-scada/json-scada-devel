@@ -16,7 +16,7 @@
  */
 
 import { z } from 'zod'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { ConnectionManager } from '../jsonscada/connection-manager.js'
 import {
   errorResult,
@@ -31,9 +31,9 @@ export function registerInspectTools(server: McpServer, mgr: ConnectionManager) 
     {
       description:
         'Get estimated document count and sample documents from a collection',
-      inputSchema: {
+      inputSchema: z.object({
         collection: z.string().describe('The name of the collection to describe'),
-      },
+      }),
     },
     async ({ collection }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()
@@ -86,9 +86,9 @@ export function registerInspectTools(server: McpServer, mgr: ConnectionManager) 
     'get_collection_fields',
     {
       description: 'Inspect a collection to find all unique top-level fields',
-      inputSchema: {
+      inputSchema: z.object({
         collection: z.string().describe('The name of the collection to inspect'),
-      },
+      }),
     },
     async ({ collection }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()

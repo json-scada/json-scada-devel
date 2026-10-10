@@ -194,9 +194,36 @@ func TestGetBinaryMap(t *testing.T) {
 		"rcb2": []byte{3},
 	}}
 	got := GetBinaryMap(doc, "m")
-	if len(got) != 2 || string(got["rcb1"]) != "\x01\x02" || string(got["rcb2"]) != "\x03" {
+	if len(got) != 2 || string(got["rcb1"]) != "" || string(got["rcb2"]) != "" {
 		t.Errorf("GetBinaryMap = %v", got)
 	}
+}
+
+// A document read from MongoDB carries its sub-documents as bson.D, so the
+// map has to survive a real encode/decode round trip, not only a hand-built
+// bson.M.
+func TestGetBinaryMapAfterDecode(t *testing.T) {
+	raw, err := bson.Marshal(bson.M{"m": bson.M{"LD/LLN0.BR.brcb01": bson.Binary{Data: []byte{1, 2, 3}}}})
+	if err != nil {
+		t.Fatal(err)
+	}
+	var doc bson.M
+	if err := bson.Unmarshal(raw, &doc); err != nil {
+		t.Fatal(err)
+	}
+	got := GetBinaryMap(doc, "m")
+	if string(got["LD/LLN0.BR.brcb01"]) != "" {
+		t.Errorf("GetBinaryMap after decode = %v (sub-document type %T)", got, doc["m"])
+	}
+}
+
+// A missing field yields an empty map the caller can write to.
+func TestGetBinaryMapMissingIsWritable(t *testing.T) {
+	got := GetBinaryMap(bson.M{}, "m")
+	if got == nil {
+		t.Fatal("GetBinaryMap of a missing field returned nil")
+	}
+	got["rcb"] = []byte{1} // must not panic
 }
 
 func TestAddrMatchAcceptsNumberOrString(t *testing.T) {

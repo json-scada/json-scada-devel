@@ -27,15 +27,15 @@ func TestServerLoopback(t *testing.T) {
 	domA := dataModel.AddDomain("SUB_A")
 	tagA := rtData{Tag: "KAW2TR1-0MTRP", Type: "analog", Value: 55.5, Group1: "SUB_A"}
 	pointA := sanitizePointName(tagA.Tag)
-	ipA := domA.AddDataPoint(pointA, tase2.ICCPTypeRealQTimeTag)
-	ipA.UpdateValue(convertToICCPValue(tagA, tase2.ICCPTypeRealQTimeTag), nil)
+	ipA := domA.AddDataPoint(pointA, tase2.ICCPTypeRealQTimeTagExtended)
+	ipA.UpdateValue(convertToICCPValue(tagA, tase2.ICCPTypeRealQTimeTagExtended), nil)
 	domA.AddDSTransferSet("DSTrans").AttachDataSet("SUB_A", "SUB_A_DataSet")
 
 	domB := dataModel.AddDomain("SUB_B")
 	tagB := rtData{Tag: "HIDDEN-POINT", Type: "analog", Value: 99.9, Group1: "SUB_B"}
 	pointB := sanitizePointName(tagB.Tag)
-	ipB := domB.AddDataPoint(pointB, tase2.ICCPTypeRealQTimeTag)
-	ipB.UpdateValue(convertToICCPValue(tagB, tase2.ICCPTypeRealQTimeTag), nil)
+	ipB := domB.AddDataPoint(pointB, tase2.ICCPTypeRealQTimeTagExtended)
+	ipB.UpdateValue(convertToICCPValue(tagB, tase2.ICCPTypeRealQTimeTagExtended), nil)
 	domB.AddDSTransferSet("DSTrans").AttachDataSet("SUB_B", "SUB_B_DataSet")
 
 	datasetDefs := []datasetDef{
@@ -68,18 +68,9 @@ func TestServerLoopback(t *testing.T) {
 	}
 	defer srvEP.Disconnect()
 
-	// Serve exactly as main() does: ServeClients with registry bookkeeping in
-	// the build callback and the post-disconnect hook.
-	go srvEP.ServeClients(
-		func(ce *tase2.Endpoint) *tase2.Server {
-			srv := buildServer(dataModel, ce, cfg, conn, datasetDefs, nil)
-			registry.add(srv, ce, conn)
-			return srv
-		},
-		func(ce *tase2.Endpoint, srv *tase2.Server, serveErr error) {
-			registry.remove(srv)
-		},
-	)
+	// Serve exactly as main() does: registry bookkeeping, the event observer
+	// and statistics come from the same callbacks.
+	go srvEP.ServeClients(serveClientCallbacks(registry, dataModel, cfg, conn, datasetDefs, nil))
 
 	// ---- Client (peer identity matching the BLT) ----
 	cliEP := tase2.NewEndpoint(tase2.EndpointActive)
@@ -147,6 +138,8 @@ func TestServerLoopback(t *testing.T) {
 
 	// Buffer an update exactly as watchRealtimeDataChanges does, then flush.
 	tagA.Value = 66.25
+	srcTime := time.Date(2026, 9, 26, 8, 53, 7, 123000000, time.UTC)
+	tagA.TimeTagAtSource, tagA.TimeTagAtSourceOk = &srcTime, true
 	newVal := convertToICCPValue(tagA, ipA.ICCPType)
 	pendingChangesMu.Lock()
 	for _, entry := range servers {
@@ -174,6 +167,12 @@ func TestServerLoopback(t *testing.T) {
 				d := tase2.DecodeICCP(rv.Value)
 				if d.Real != nil && *d.Real > 66.2 && *d.Real < 66.3 {
 					found = true
+					if d.Type != tase2.ICCPTypeRealQTimeTagExtended {
+						t.Errorf("DSTS report type = %v, want RealQTimeTagExtended", d.Type)
+					}
+					if got, ok := d.Time(); !ok || !got.Equal(srcTime) {
+						t.Errorf("DSTS report time = %v (ok=%v), want %v (ms resolution)", got, ok, srcTime)
+					}
 				}
 			}
 		}
@@ -183,6 +182,22 @@ func TestServerLoopback(t *testing.T) {
 	}
 
 	// Disconnect and verify the post-disconnect hook drains the registry.
+	// Live statistics: this association's requests, traffic, report and
+	// the peer identity recorded by the AssociationAccepted event.
+	live, clients := registry.connectionStats(conn.ProtocolConnectionNumber)
+	if live.requests["read"] == 0 || live.requests["getNameList"] == 0 {
+		t.Errorf("live requests = %v, want read and getNameList counted", live.requests)
+	}
+	if live.bytesRx == 0 || live.bytesTx == 0 {
+		t.Errorf("live bytes rx/tx = %d/%d, want both > 0", live.bytesRx, live.bytesTx)
+	}
+	if live.reportsSent == 0 {
+		t.Error("live reportsSent = 0, want the DSTS change report counted")
+	}
+	if len(clients) != 1 || clients[0].apTitle != "1.1.999.2" || clients[0].remoteAddress == "" {
+		t.Errorf("live clients = %+v, want one peer 1.1.999.2 with a remote address", clients)
+	}
+
 	client.Close()
 	drained := false
 	for i := 0; i < 50; i++ {
@@ -194,5 +209,18 @@ func TestServerLoopback(t *testing.T) {
 	}
 	if !drained {
 		t.Errorf("registry still has %d server(s) after client disconnect; post-disconnect hook did not fire", len(registry.snapshot()))
+	}
+
+	// The ended association's counters are kept in the connection totals.
+	closed, clients := registry.connectionStats(conn.ProtocolConnectionNumber)
+	if len(clients) != 0 || closed.associations != 1 {
+		t.Errorf("after disconnect: %d client(s), %d association(s); want 0 and 1", len(clients), closed.associations)
+	}
+	if closed.requests["read"] < live.requests["read"] || closed.bytesRx < live.bytesRx || closed.reportsSent < live.reportsSent {
+		t.Errorf("after disconnect: totals %+v dropped below live %+v", closed, live)
+	}
+	doc := statsDocument("NODE", time.Now(), closed, clients)
+	if doc["clientConnections"] != 0 || doc["associations"] != int64(1) || doc["nodeName"] != "NODE" {
+		t.Errorf("stats document = %v", doc)
 	}
 }

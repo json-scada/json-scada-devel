@@ -307,6 +307,57 @@ func TestAutotagTopicFilter(t *testing.T) {
 	}
 }
 
+// A topic is matched against whole segments of the browse path, so these are
+// the forms the user documentation tells people to write. The one that looks
+// natural but does not work is a leading slash.
+func TestAutotagTopicForms(t *testing.T) {
+	cases := []struct {
+		name       string
+		topics     []string
+		wantLevel  bool // Boiler/Drum/Level
+		wantText   bool // Boiler/Text
+		wantDirect bool // directly under Objects
+	}{
+		{"one segment", []string{"Boiler"}, true, true, false},
+		{"a deeper segment", []string{"Drum"}, true, false, false},
+		{"several segments", []string{"Boiler/Drum"}, true, false, false},
+		{"starting at Objects", []string{"Objects/Boiler"}, true, true, false},
+		// Each topic is tried in turn; the last segment of a path counts.
+		{"more than one topic", []string{"Drum", "Text"}, true, true, false},
+		{"a partial segment name does not match", []string{"Boil"}, false, false, false},
+		{"a leading slash matches nothing", []string{"/Objects/Boiler"}, false, false, false},
+	}
+
+	for _, c := range cases {
+		t.Run(c.name, func(t *testing.T) {
+			cli, objects, _ := startTestServer(t)
+			conn := testConn()
+			conn.Topics = c.topics
+
+			ctx, cancel := context.WithTimeout(context.Background(), 30*time.Second)
+			defer cancel()
+
+			drainQueue()
+			browsed, err := browseFullAddressSpace(ctx, cli, conn, objects)
+			if err != nil {
+				t.Fatalf("browse: %v", err)
+			}
+			autotagPass(ctx, cli, conn, browsed)
+			queued := drainQueue()
+
+			for addr, want := range map[string]bool{
+				"ns=1;s=Boiler.Drum.Level": c.wantLevel,
+				"ns=1;s=Boiler.Text":       c.wantText,
+				"ns=1;s=Direct":            c.wantDirect,
+			} {
+				if _, got := queued[addr]; got != want {
+					t.Errorf("topics %v: %s discovered = %v, want %v", c.topics, addr, got, want)
+				}
+			}
+		})
+	}
+}
+
 // Methods are only discovered when the connection allows commands.
 func TestAutotagSkipsMethodsWhenCommandsDisabled(t *testing.T) {
 	cli, objects, _ := startTestServer(t)

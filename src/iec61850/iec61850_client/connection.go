@@ -252,12 +252,12 @@ func pollSweep(ctx context.Context, conn *Iec61850Connection) error {
 			if isAssociationDown(cli, err) {
 				return fmt.Errorf("%s Connection error detected! %v", conn.Name, err)
 			}
-			jslog.Log(jslog.LevelBasic, "%s READED  %s %s\n    Read error: %v", conn.Name, p.entry.Path, tag, err)
+			jslog.Log(jslog.LevelBasic, "%s READ  %s %s\n    Read error: %v", conn.Name, p.entry.Path, tag, err)
 			continue
 		}
 		var log strings.Builder
 		if jslog.Level() > jslog.LevelNoLog {
-			fmt.Fprintf(&log, "%s READED  %s %s", conn.Name, p.entry.Path, tag)
+			fmt.Fprintf(&log, "%s READ  %s %s", conn.Name, p.entry.Path, tag)
 		}
 		// A point the driver discovered itself publishes its tag; a point
 		// configured in realtimeData already has one.

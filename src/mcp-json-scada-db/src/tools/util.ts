@@ -21,6 +21,7 @@ const SENSITIVE_FIELDS = [
   'passphrase',
   'tlsClientKeyPassword',
   'privateKeyFilePath',
+  'privateKeyPassphrase',
 ]
 
 export function textResult(text: string, isError = false) {
@@ -29,6 +30,9 @@ export function textResult(text: string, isError = false) {
     ...(isError ? { isError: true } : {}),
   }
 }
+
+export const jsonResult = (data: unknown) =>
+  textResult(JSON.stringify(data, null, 2))
 
 export function errorResult(prefix: string, e: unknown) {
   const msg = e instanceof Error ? e.message : String(e)

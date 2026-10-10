@@ -387,7 +387,13 @@ func TestLoopbackOneSubscriptionPerDataSet(t *testing.T) {
 	// A change is reported once, not once per instance over the data set.
 	drainQueue()
 	srv.Update(func(tx *server.Tx) { tx.SetBool("DUPIED/GGIO1.Ind1.stVal", true) })
-	values := waitForValues(t, 5*time.Second, func(v []IECValue) bool { return len(v) > 0 })
+	// Wait for the change itself, not for any value: a late GI report of the
+	// other data set may arrive first. Then keep collecting briefly, so a
+	// second copy of the change would still be counted.
+	values := waitForValues(t, 5*time.Second, func(v []IECValue) bool {
+		return hasAddressPrefix(v, "DUPIED/GGIO1.Ind1")
+	})
+	values = append(values, waitForValues(t, 500*time.Millisecond, func([]IECValue) bool { return false })...)
 	count := 0
 	for _, iv := range values {
 		if strings.HasSuffix(iv.Address, "GGIO1.Ind1") {
@@ -491,7 +497,7 @@ func TestLoopbackAutoCreateFromBrowse(t *testing.T) {
 	}
 	// And each one names a tag the writer can create.
 	iv := values[0]
-	if tag := TagFromParameters(iv); !strings.HasPrefix(tag, "IEC61850;TESTIED;") {
+	if tag := TagFromParameters(iv); !strings.HasPrefix(tag, "TESTIED;") {
 		t.Errorf("tag name = %q", tag)
 	}
 }
@@ -544,7 +550,7 @@ func TestLoopbackAutoCreateCommands(t *testing.T) {
 		if ct.ConnName != "TESTIED" || ct.ConnNumber != 9999 {
 			t.Errorf("%s: connection identity missing", ref)
 		}
-		if want := "IEC61850;TESTIED;" + ref + "[CO]"; ct.Tag() != want {
+		if want := "TESTIED;" + ref + "[CO]"; ct.Tag() != want {
 			t.Errorf("%s: tag = %q, want %q", ref, ct.Tag(), want)
 		}
 		// The sample model uses direct control, so no select is needed.
@@ -728,9 +734,24 @@ func TestLoopbackControl(t *testing.T) {
 }
 
 // A plain MMS write is used for any functional constraint other than CO.
+// Status and measurements (ST, MX) are never writable (IEC 61850-7-2), so
+// the write path is exercised on an analogue setting (SP), and a write to a
+// measurement must come back refused rather than applied.
 func TestLoopbackWriteCommand(t *testing.T) {
-	addr, srv := startTestIED(t)
-	conn := newTestConnection(addr)
+	setting := model.NewDataObject("StrVal", model.CDCASG)
+	meas := model.NewDataObject("A", model.CDCMV)
+	ptoc := &model.LogicalNode{Name: "PTOC1", Class: "PTOC", Objects: []*model.DataObject{setting, meas}}
+	lln0 := &model.LogicalNode{Name: "LLN0", Class: "LLN0"}
+	ld := &model.LogicalDevice{Name: "SPIED", Inst: "LD0", Nodes: []*model.LogicalNode{lln0, ptoc}}
+	srv := server.New(&model.Model{Name: "SPIED", Devices: []*model.LogicalDevice{ld}})
+	ln, err := net.Listen("tcp", "127.0.0.1:0")
+	if err != nil {
+		t.Fatal(err)
+	}
+	go func() { _ = srv.Serve(ln) }()
+	t.Cleanup(func() { _ = srv.Close() })
+
+	conn := newTestConnection(ln.Addr().String())
 	redundancy.ForceActive(true)
 	defer redundancy.ForceActive(false)
 
@@ -738,21 +759,25 @@ func TestLoopbackWriteCommand(t *testing.T) {
 	drainQueue()
 	defer drainQueue()
 
-	// A settable point of the sample model: the analogue input's value.
-	entry := &Iec61850Entry{Path: "simpleIOGenericIO/GGIO1.AnIn1.mag.f", FC: model.MX}
-
 	ctx, cancel := context.WithTimeout(context.Background(), 20*time.Second)
 	defer cancel()
 
-	ok, abort := writeValueCommand(ctx, conn, entry, 3.5)
-	if abort {
-		t.Skip("object not writable on this model")
+	const setRef = "SPIED/PTOC1.StrVal.setMag.f"
+	ok, abort := writeValueCommand(ctx, conn, &Iec61850Entry{Path: setRef, FC: model.SP}, 3.5)
+	if abort || !ok {
+		t.Fatalf("setting write: ok=%v abort=%v, want applied", ok, abort)
 	}
-	if !ok {
-		t.Skip("write refused by the server model")
-	}
-	if v := srv.Read("simpleIOGenericIO/GGIO1.AnIn1.mag.f", model.MX); v == nil || v.Float64() != 3.5 {
+	if v := srv.Read(setRef, model.SP); v == nil || v.Float64() != 3.5 {
 		t.Errorf("written value not applied: %v", v)
+	}
+
+	const measRef = "SPIED/PTOC1.A.mag.f"
+	ok, abort = writeValueCommand(ctx, conn, &Iec61850Entry{Path: measRef, FC: model.MX}, 7)
+	if ok || abort {
+		t.Errorf("measurement write: ok=%v abort=%v, want refused without aborting", ok, abort)
+	}
+	if v := srv.Read(measRef, model.MX); v != nil && v.Float64() == 7 {
+		t.Error("a write to a measurement was applied")
 	}
 }
 

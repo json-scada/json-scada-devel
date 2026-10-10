@@ -136,7 +136,14 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 
 	group := jsmongo.GetInt(cmd, "protocolSourceCommonAddress", 0)
 	variation := jsmongo.GetInt(cmd, "protocolSourceASDU", 0)
-	index := uint16(jsmongo.GetInt(cmd, "protocolSourceObjectAddress", 0))
+	address := jsmongo.GetInt(cmd, "protocolSourceObjectAddress", 0)
+	if !validPointIndex(address) {
+		// Narrowing to 16 bits would wrap onto a different point: a command
+		// for 65541 would operate point 5.
+		cancelCommand(ctx, coll, id, "invalid_address")
+		return
+	}
+	index := uint16(address)
 	useSBO := jsmongo.GetBool(cmd, "protocolSourceCommandUseSBO", false)
 	value := jsmongo.GetDouble(cmd, "value", 0)
 	duration := jsmongo.GetInt(cmd, "protocolSourceCommandDuration", 0)
@@ -186,6 +193,12 @@ func (e *Engine) executeCommand(ctx context.Context, coll *mongo.Collection, cmd
 		jslog.Log(jslog.LevelBasic, "%s - Command result: %s", name, description)
 		ackCommand(context.Background(), e, id, ok, description)
 	}()
+}
+
+// validPointIndex reports whether an object address fits the 16-bit point
+// index the requests this driver sends carry.
+func validPointIndex(address int) bool {
+	return address >= 0 && address <= 0xFFFF
 }
 
 // describeResult maps a command outcome onto the result vocabulary the C++

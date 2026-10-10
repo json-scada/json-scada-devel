@@ -188,11 +188,22 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 	var order []float64
 	subs := map[float64][]*monItem{}
 	addrs := map[string]bool{}
+	skippedDiagnostics := 0
 
 	for _, doc := range docs {
 		addr := jsmongo.GetString(doc, "protocolSourceObjectAddress", "")
 
-		if jsmongo.GetString(doc, "origin", "") == "supervised" {
+		// deviation D23: tags of earlier runs that point at per-session or
+		// per-subscription server diagnostics are not monitored. They stay
+		// in the database, registered as inserted so they are not recreated.
+		storedPath := jsmongo.GetString(doc, "protocolSourceBrowsePath", "") + "/" +
+			jsmongo.GetString(doc, "ungroupedDescription", "")
+		diagnostic := isEphemeralDiagnostic(addr, storedPath)
+		if diagnostic {
+			skippedDiagnostics++
+		}
+
+		if !diagnostic && jsmongo.GetString(doc, "origin", "") == "supervised" {
 			pub := jsmongo.GetDouble(doc, "protocolSourcePublishingInterval", 0)
 			if _, seen := subs[pub]; !seen {
 				jslog.Log(jslog.LevelNoLog, "%s - Found publishing interval of %v seconds.", conn.Name, pub)
@@ -217,6 +228,11 @@ func preloadTags(ctx context.Context, collRTD *mongo.Collection, conn *OPCUAConn
 		// parity: every tag of the connection registers its address,
 		// including command tags and tags with an empty address.
 		addrs[addr] = true
+	}
+
+	if skippedDiagnostics > 0 {
+		jslog.Log(jslog.LevelBasic, "%s - %d tags of per-session/per-subscription server diagnostics are not monitored.",
+			conn.Name, skippedDiagnostics)
 	}
 
 	conn.CommitPreloadedTags(listMon, subs, order, addrs)

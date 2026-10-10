@@ -151,27 +151,44 @@ Create a regular command tag. Configure the connection number, OPCDA node id (ob
 
 ## Send commands by inserting document into commandsQueue collection
 
-Commands can be also send via code or mongoshell by inserting documents into the into commandsQueue collection.
+Commands can also be sent via code or mongosh by inserting documents into the commandsQueue collection. The driver only executes commands whose `timeTag` is at most 10 seconds old (older ones are marked as expired), so the timestamp must be the current time when the document is inserted.
+
+Runnable mongosh command (`new Date()` creates a BSON Date with the current time; `Double()` keeps numbers as BSON Double, as current command producers write them; mongosh would store plain integers as Int32):
 
     use json_scada_db_name
-    db.commandsQueue.insert(
-    {
-    "protocolSourceConnectionNumber": 5001,
-    "protocolSourceCommonAddress": "Square Waves",
-    "protocolSourceObjectAddress": "Square Waves.Boolean",
-    "protocolSourceASDU": "VT_BOOL",
-    "protocolSourceCommandDuration": 0,
-    "protocolSourceCommandUseSBO": false,
-    "pointKey": 500100000011,
-    "tag": "PLCDA1.Square Waves.Boolean.Cmd",
-    "timeTag": {
-        "$date": "2025-06-15T13:16:53.291Z"
-    },
-    "value": 1,
-    "valueString": "true",
-    "originatorUserName": "admin",
-    "originatorIpAddress": "127.0.0.1"
+    db.commandsQueue.insertOne({
+      protocolSourceConnectionNumber: Double(5001),
+      protocolSourceCommonAddress: "Square Waves",
+      protocolSourceObjectAddress: "Square Waves.Boolean",
+      protocolSourceASDU: "VT_BOOL",
+      protocolSourceCommandDuration: Double(0),
+      protocolSourceCommandUseSBO: false,
+      pointKey: Double(500100000011),
+      tag: "PLCDA1.Square Waves.Boolean.Cmd",
+      timeTag: new Date(),
+      value: Double(1),
+      valueString: "true",
+      originatorUserName: "admin",
+      originatorIpAddress: "127.0.0.1"
     });
+
+The same document in Extended JSON is only valid for tools that parse Extended JSON, such as `mongoimport` or MongoDB Compass "Insert Document". Do not paste it into mongosh: there `{ "$date": ... }` and `{ "$numberDouble": ... }` are plain objects, not BSON Date/Double values. Replace the `$date` value with the current UTC time immediately before importing, or the command will be rejected as expired.
+
+    {
+      "protocolSourceConnectionNumber": { "$numberDouble": "5001" },
+      "protocolSourceCommonAddress": "Square Waves",
+      "protocolSourceObjectAddress": "Square Waves.Boolean",
+      "protocolSourceASDU": "VT_BOOL",
+      "protocolSourceCommandDuration": { "$numberDouble": "0" },
+      "protocolSourceCommandUseSBO": false,
+      "pointKey": { "$numberDouble": "500100000011" },
+      "tag": "PLCDA1.Square Waves.Boolean.Cmd",
+      "timeTag": { "$date": "<current UTC time, e.g. 2026-10-03T13:16:53.291Z>" },
+      "value": { "$numberDouble": "1" },
+      "valueString": "true",
+      "originatorUserName": "admin",
+      "originatorIpAddress": "127.0.0.1"
+    }
 
 ## Command Line Arguments
 

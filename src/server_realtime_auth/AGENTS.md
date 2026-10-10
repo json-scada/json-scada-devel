@@ -2,7 +2,7 @@
 
 ## Purpose
 
-Core realtime WebSocket data server for JSON-SCADA. Handles client connections, JWT authentication, real-time data streaming from MongoDB Change Streams, user session management, and action queue processing. The primary API gateway for the web UI.
+Core realtime data server for JSON-SCADA. Handles client connections, JWT authentication, real-time data streaming from MongoDB Change Streams, user session management, and action queue processing. The primary API gateway for the web UI.
 
 ## Ownership
 
@@ -30,6 +30,7 @@ Core realtime WebSocket data server for JSON-SCADA. Handles client connections, 
     - `middlewares/` — Express middleware (auth, etc.)
     - `config/` — submodule configuration
 - **Config:** INI file via Supervisor or environment variables
+- **API consumers:** the `/Invoke/auth/*` admin routes (sign-in cookie `x-access-token`, `{ error }` responses, driver instance/connection/tag CRUD, process management, system settings, restart scripts) are also called by `src/mcp-json-scada-db` (`jsonscada/admin-api.ts` and the admin tools); keep request/response shapes compatible or update the MCP tools with them
 
 ## Work Guidance
 

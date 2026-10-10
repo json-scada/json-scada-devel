@@ -37,10 +37,9 @@ func TestDataValueToUpdateRealQGood(t *testing.T) {
 func TestDataValueToUpdateRealQTimeTagInvalid(t *testing.T) {
 	now := time.Now()
 	nowUTC := now.UTC()
-	msMidnight := int64(nowUTC.Sub(nowUTC.Truncate(24*time.Hour)) / time.Millisecond)
 
-	q := &tase2.Quality{Validity: "invalid", Source: "process"}
-	dv := tase2.NewRealQTimeTag(42.0, q, msMidnight)
+	q := &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
+	dv := tase2.NewRealQTimeTag(42.0, q, tase2.TimeStampFrom(now))
 	upd := dataValueToUpdate(dv, testMapping("ICCP_RealQTimeTag_01"), now, 0)
 
 	if upd.value < 41.9 || upd.value > 42.1 {
@@ -109,30 +108,26 @@ func TestDataValueToUpdatePlainScalars(t *testing.T) {
 	}
 }
 
-func TestIccpTimeTagToTimeRollover(t *testing.T) {
-	// Report stamped 23:59:50, processed at 00:00:05 the next day: the
-	// reconstructed time must land on the previous day, not ~24h ahead.
-	now := time.Date(2026, 7, 5, 0, 0, 5, 0, time.UTC)
-	ms := int64((23*3600 + 59*60 + 50) * 1000)
-	got := iccpTimeTagToTime(ms, now, 0)
-	want := time.Date(2026, 7, 4, 23, 59, 50, 0, time.UTC)
-	if !got.Equal(want) {
-		t.Errorf("rollover: got %v, want %v", got, want)
+func TestDataValueToUpdateQTimeTagExtended(t *testing.T) {
+	src := time.Date(2026, 9, 26, 8, 53, 7, 123000000, time.UTC)
+	cases := []struct {
+		name string
+		dv   *tase2.DataValue
+	}{
+		{"real", tase2.NewRealQTimeTagExtended(1.5, tase2.QualityGood, src)},
+		{"discrete", tase2.NewDiscreteQTimeTagExtended(7, tase2.QualityGood, src)},
+		{"state", tase2.NewStateQTimeTagExtended(tase2.StateOn, tase2.QualityGood, src)},
+	}
+	for _, c := range cases {
+		upd := dataValueToUpdate(c.dv, testMapping("Ext_01"), time.Now(), 0)
+		if !upd.timeTagAtSourceOk || !upd.timeTagAtSource.Equal(src) {
+			t.Errorf("%s: timeTagAtSource = %v (ok=%v), want %v (ms kept)", c.name, upd.timeTagAtSource, upd.timeTagAtSourceOk, src)
+		}
 	}
 
-	// Normal case: same day.
-	now = time.Date(2026, 7, 5, 12, 0, 0, 0, time.UTC)
-	ms = int64((11*3600 + 30*60) * 1000)
-	got = iccpTimeTagToTime(ms, now, 0)
-	want = time.Date(2026, 7, 5, 11, 30, 0, 0, time.UTC)
-	if !got.Equal(want) {
-		t.Errorf("same day: got %v, want %v", got, want)
-	}
-
-	// HoursShift: peer sends local time 3h ahead of UTC; shift -3 corrects it.
-	got = iccpTimeTagToTime(ms, now, -3)
-	want = time.Date(2026, 7, 5, 8, 30, 0, 0, time.UTC)
-	if !got.Equal(want) {
-		t.Errorf("hoursShift: got %v, want %v", got, want)
+	// HoursShift: peer stamps local time 3h ahead of UTC; shift -3 corrects it.
+	upd := dataValueToUpdate(cases[0].dv, testMapping("Ext_01"), time.Now(), -3)
+	if want := src.Add(-3 * time.Hour); !upd.timeTagAtSource.Equal(want) {
+		t.Errorf("hoursShift: got %v, want %v", upd.timeTagAtSource, want)
 	}
 }

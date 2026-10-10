@@ -43,5 +43,5 @@ and RTU-encapsulated-in-TCP/TLS, with arbitrary byte orders for multi-register v
 
 - `npm install && npm run build` — compiles cleanly.
 - `npm test` — unit (crc/codec/pdu/address) + loopback (client↔server over TCP & RTU).
-- Interop: `diagslave`/`modpoll` for TCP/RTU/RTU-over-TCP; `pymodbus` for TLS.
+- Interop: `diagslave`/`modpoll` for TCP/RTU/RTU-over-TCP; `pymodbus==3.15.0` (pinned; re-run the recipes when bumping it) for TLS and byte-order cross-checks.
   See `test/e2e/README.md`.

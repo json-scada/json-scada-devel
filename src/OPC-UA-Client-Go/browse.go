@@ -72,6 +72,7 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 
 	pending := []*ua.BrowseDescription{browseDescription(start)}
 	duplicates := 0
+	diagnostics := 0
 
 	for searchDepth := 0; len(pending) > 0 && searchDepth < kMaxSearchDepth; searchDepth++ {
 		jslog.Log(jslog.LevelDetailed, "%s - %d: Browse %d nodes after %dms",
@@ -138,7 +139,7 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 		// list. The C# driver used to collect them into a list it never read,
 		// dropping every reference past the first kMaxReferencesPerNode; that
 		// was fixed in src/OPC-UA-Client (MergeContinuedReferences), so the
-		// two drivers now agree. See D15 in README.md.
+		// two drivers now agree. See D15 in DEVIATIONS.md.
 		cps := continuationPoints(results)
 		for len(cps) > 0 {
 			jslog.Log(jslog.LevelDetailed, "%s - BrowseNext %d continuation points.", conn.Name, len(cps))
@@ -176,10 +177,16 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 					continue
 				}
 
-				out.Refs[key] = refEntry{
-					Ref:  ref,
-					Path: strings.TrimRight(parentPath, "/") + "/" + ref.BrowseName.Name,
+				path := strings.TrimRight(parentPath, "/") + "/" + ref.BrowseName.Name
+
+				// deviation D23: neither recorded nor expanded, so the
+				// whole subtree below it is never visited.
+				if isEphemeralDiagnostic(key, path) {
+					diagnostics++
+					continue
 				}
+
+				out.Refs[key] = refEntry{Ref: ref, Path: path}
 				out.Order = append(out.Order, key)
 
 				// Properties are leaves; everything else is expanded.
@@ -197,6 +204,10 @@ func browseFullAddressSpace(ctx context.Context, cli *opcua.Client, conn *OPCUAC
 
 	if duplicates > 0 {
 		jslog.Log(jslog.LevelDetailed, "%s - Browse Result %d duplicate nodes were ignored.", conn.Name, duplicates)
+	}
+	if diagnostics > 0 {
+		jslog.Log(jslog.LevelBasic, "%s - Skipped %d per-session/per-subscription server diagnostics nodes.",
+			conn.Name, diagnostics)
 	}
 	jslog.Log(jslog.LevelNoLog, "%s - BrowseFullAddressSpace found %d references on server in %dms.",
 		conn.Name, len(out.Refs), time.Since(began).Milliseconds())

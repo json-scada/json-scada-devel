@@ -35,8 +35,7 @@ import (
 
 // fcScanNames is the functional constraint list in libiec61850's enum order
 // (values 0..17), which is what the C# driver scanned for in a data
-// reference. It includes SR, which go-iec61850's model.FC does not have,
-// and excludes GO/GS, which it does.
+// reference. It excludes GO/GS, which go-iec61850's model.FC also has.
 var fcScanNames = [...]string{
 	"ST", "MX", "SP", "SV", "CF", "DC", "SG", "SE", "SR",
 	"OR", "BL", "EX", "CO", "US", "MS", "RP", "BR", "LG",
@@ -69,10 +68,8 @@ func getRefFc2(dataRef string) (string, model.FC) {
 	return dataRef, model.FCNone
 }
 
-// fcFromScanIndex maps a position in fcScanNames to a model.FC. SR has no
-// counterpart in go-iec61850; it maps to FCNone, which never matches a
-// configured entry — the same practical outcome as the C# driver, where an
-// SR reference is not a data point either.
+// fcFromScanIndex maps a position in fcScanNames to a model.FC. Every name
+// in the list parses; FCNone is only a guard.
 func fcFromScanIndex(i int) model.FC {
 	fc, err := model.ParseFC(fcScanNames[i])
 	if err != nil {

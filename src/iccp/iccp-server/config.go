@@ -23,6 +23,7 @@ import (
 	"encoding/json"
 	"fmt"
 	"log"
+	"net"
 	"os"
 	"path/filepath"
 	"strconv"
@@ -498,6 +499,38 @@ func kconvToFloat64(v interface{}, def float64) float64 {
 	default:
 		return def
 	}
+}
+
+// defaultListenHost is the listen host when ipAddressLocalBind names none:
+// all interfaces, as the driver always served (the tase2 library itself
+// defaults to loopback).
+const defaultListenHost = "0.0.0.0"
+
+// parseLocalBind splits ipAddressLocalBind ("host:port", ":port", "host" or
+// "[ipv6]:port") into the listen host and port. An empty host means all
+// interfaces; the port defaults to 102.
+func parseLocalBind(s string) (host string, port int, err error) {
+	host, port = defaultListenHost, 102
+	s = strings.TrimSpace(s)
+	if s == "" {
+		return host, port, nil
+	}
+	h, p, splitErr := net.SplitHostPort(s)
+	if splitErr != nil {
+		// No port: the whole value is the host.
+		h, p = strings.Trim(s, "[]"), ""
+	}
+	if h != "" {
+		host = h
+	}
+	if p != "" {
+		n, convErr := strconv.Atoi(p)
+		if convErr != nil || n < 1 || n > 65535 {
+			return "", 0, fmt.Errorf("invalid port %q", p)
+		}
+		port = n
+	}
+	return host, port, nil
 }
 
 // insertCommand inserts a command into the commandsQueue collection.

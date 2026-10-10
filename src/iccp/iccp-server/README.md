@@ -90,7 +90,7 @@ db.protocolConnections.insert({
 - **description** [String] - Description. **Optional**.
 - **enabled** [Boolean] - Enable/disable connection. **Mandatory**.
 - **commandsEnabled** [Boolean] - Enable command forwarding. **Mandatory**.
-- **ipAddressLocalBind** [String] - Listen address and port (e.g. "0.0.0.0:102"). Default port is 102. **Mandatory**.
+- **ipAddressLocalBind** [String] - Listen address and port: `"host:port"`, `":port"`, `"host"` or `"[ipv6]:port"` (e.g. "0.0.0.0:102"). The host must be an IP address or `localhost`; an empty host listens on all interfaces (0.0.0.0), and the port defaults to 102. An invalid value is logged and that connection is not started. **Mandatory**.
 - **ipAddresses** [Array of Strings] - Allowed client IP addresses (not yet enforced!). Empty = allow all. **Optional**.
 - **topics** [Array of Strings] - `group1` filter for exposed tags. Empty = all tags. When `remoteApTitle` is set, topics are enforced on discovery/reads/writes via the bilateral table (only the listed domains are granted); without a `remoteApTitle` (open mode) topics only filter DSTS pushes. **Optional**.
 - **timeoutMs** [Double] - Connection timeout in ms. **Optional**.
@@ -104,10 +104,42 @@ db.protocolConnections.insert({
 - **rootCertFilePath** [String] - CA certificate (PEM) to verify client certificates. **Optional**.
 - **chainValidation** [Boolean] - Require and verify client certificates (mutual TLS) against the CA. Default: false. **Optional**.
 - **password** [String] - ACSE authentication password. Empty = no auth. **Optional**.
-- **stats** [Object] - Protocol statistics (updated by driver). **Mandatory**.
+- **stats** [Object] - Protocol statistics, written by the driver every 10 s (see [Statistics](#statistics)). **Mandatory**.
 
-Note: the host part of `ipAddressLocalBind` is not honored yet (the server
-listens on all interfaces); only the port is used.
+## Logging
+
+Library messages (the `iso`, `mms` and `tase2` layers) go through the driver
+log, filtered by the same `logLevel`: library errors at 0, informational
+messages at 2 (detailed) and protocol debug at 3. Messages about one
+association are prefixed with the connection name and the transport
+context, e.g.
+
+```
+TASE2 ICCP_SRV1 [conn 3 10.0.0.9:40001 1.1.999.2/12] mms - ...
+```
+
+## Statistics
+
+Every 10 seconds the driver writes each listening connection's `stats`.
+Counters are cumulative since the driver started and include associations
+that have already ended:
+
+| Field | Meaning |
+|---|---|
+| `nodeName`, `timeTag` | writing node and time of the update |
+| `clientConnections` | live associations |
+| `clients` | one entry per live association: `remoteAddress`, `apTitle`, `aeQualifier`, `connectedAt` |
+| `associations` | associations accepted |
+| `requests` | confirmed MMS requests answered, per service (`read`, `write`, `getNameList`, ...) |
+| `errors`, `rejects` | requests answered with an error PDU or a reject |
+| `reportsSent`, `reportsDropped` | DSTS reports |
+| `informationMessagesSent` | Information Messages |
+| `bytesRx`, `bytesTx` | MMS PDU octets |
+| `eventsDropped` | server events lost because the observer fell behind |
+
+Server events are logged too: association accepted, released, aborted or
+lost, and dropped reports at `logLevel >= 1`; rejected requests and failed
+controls at 2; everything else at 3.
 
 ## Command Line Arguments
 
@@ -211,11 +243,10 @@ Upon activation (`Status` transitions to `true`), the server:
 
 Reports are delivered as MMS **InformationReport** messages. Each report contains
 the ObjectRef (domain + item) and the current `DataValue` for each included
-dataset member. The server logs every report at `logLevel >= 1`:
-
-```
-ICCP Server: DSTS report '<dataset>' kind=<kind> values=<n> (first=<domain>/<item>)
-```
+dataset member. Reporting start and stop per transfer set are logged at
+`logLevel >= 2`; each sent report is logged at `logLevel 3` as a
+`ReportSent` server event, and counted in `stats.reportsSent` (see
+[Statistics](#statistics)). Dropped reports are logged at `logLevel >= 1`.
 
 On transport failure (e.g. client disconnect), the server stops the affected DSTS
 goroutines automatically.
@@ -234,13 +265,13 @@ When a TASE.2 client writes to a control point, the driver:
 |---|---|
 | `group1` | Domain name |
 | `tag` | Point name (sanitized) |
-| `type: "digital"` | StateQTimeTag Indication Point (state + quality + timetag) |
-| `type: "analog"` | RealQTimeTag Indication Point (float32 + quality + timetag) |
-| `type: "analog"` with integer ASDU (int16/32/64, uint16/32/64) | DiscreteQTimeTag Indication Point (int + quality + timetag) |
+| `type: "digital"` | StateQTimeTagExtended Indication Point (state + quality + ms time stamp) |
+| `type: "analog"` | RealQTimeTagExtended Indication Point (float32 + quality + ms time stamp) |
+| `type: "analog"` with integer ASDU (int16/32/64, uint16/32/64) | DiscreteQTimeTagExtended Indication Point (int + quality + ms time stamp) |
 | `type: "string"`, `"json"`, others | Not exposed via ICCP |
 | `origin: "command"` | Command Control Point (INTEGER32; SBO when `protocolSourceCommandUseSBO`, else direct operate) |
 | `invalid` | Quality validity (good/invalid) |
-| `timeTagAtSource` (when `timeTagAtSourceOk`) | Point TimeStamp |
+| `timeTagAtSource` (when `timeTagAtSourceOk`, else current time) | Point TimeStamp: IEC 60870-6-802 Ed.2 TimeStampExtended {GMTBasedS, Milliseconds}, UTC, millisecond resolution |
 
 ## License
 

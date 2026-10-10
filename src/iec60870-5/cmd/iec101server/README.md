@@ -58,7 +58,6 @@ A instance for this driver can have many server ports defined that must be descr
             sizeOfLinkAddress: 1,
             localLinkAddress: 1,
             remoteLinkAddress: 0,
-            giInterval: null,
             testCommandInterval: 0,
             timeSyncInterval: 0,
             sizeOfCOT: 2,
@@ -85,9 +84,8 @@ A instance for this driver can have many server ports defined that must be descr
 - _**sizeOfLinkAddress**_ [Double] - Size of the link layer address field of the LPCI. Can be 0, 1, or 2. **Mandatory parameter**.
 - _**localLinkAddress**_ [Double] - Local link address for the connection (originator address). **Mandatory parameter**.
 - _**remoteLinkAddress**_ [Double] - Not used for this driver. **Optional parameter**.
-- _**giInterval**_ [Double] - Not used for this driver. **Optional parameter**.
 - _**testCommandInterval**_ [Double] - Not used for this driver. **Optional parameter**.
-- _**timeSyncInterval**_ [Double] - Not used for this driver. **Mandatory parameter**.
+- _**timeSyncInterval**_ [Double] - Not used for this driver. **Optional parameter**.
 - _**sizeOfCOT**_ [Double] - Size of Cause Of Transmission protocol field in bytes (1 or 2). **Mandatory parameter**.
 - _**sizeOfCA**_ [Double] - Size of Command Address protocol field in bytes (1 or 2). **Mandatory parameter**.
 - _**sizeOfIOA**_ [Double] - Size of Information Object Address protocol field in bytes (1, 2, or 3). **Mandatory parameter**.

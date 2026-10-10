@@ -60,7 +60,7 @@ func (h *soeHandler) EndFragment(master.ResponseInfo) {
 // push builds the queue entry. baseGroup is the common address the tag is
 // configured under; group is what goes into asduAtSource. The C++ driver always
 // writes variation 0 and cause of transmission 20 (quirk Q4), so this does too.
-func (h *soeHandler) push(info master.HeaderInfo, baseGroup int, index uint16, value float64,
+func (h *soeHandler) push(info master.HeaderInfo, baseGroup int, index uint32, value float64,
 	valueString string, ts dnp3.Timestamp, q dnp3util.Quality) {
 
 	out := Dnp3Value{

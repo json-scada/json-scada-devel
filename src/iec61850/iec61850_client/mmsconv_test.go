@@ -26,7 +26,7 @@ func TestGetRefFc(t *testing.T) {
 		{"DemoProtCtrl/Obj1XCBR1$ST$Pos", "DemoProtCtrl/Obj1XCBR1.Pos", model.ST},
 		{"IED/GGIO1$MX$AnIn1$mag$f", "IED/GGIO1.AnIn1.mag.f", model.MX},
 		{"IED/LLN0$CO$Beh", "IED/LLN0.Beh", model.CO},
-		{"IED/GGIO1$SR$Something", "IED/GGIO1.Something", model.FCNone}, // SR has no counterpart
+		{"DemoProtCtrl/LTRK1$SR$DpcTrk", "DemoProtCtrl/LTRK1.DpcTrk", model.SR}, // service tracking (Ed2)
 		{"IED/GGIO1$NoFc$X", "IED/GGIO1.NoFc.X", model.FCNone},
 	}
 	for _, c := range cases {

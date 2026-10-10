@@ -40,6 +40,7 @@ const (
 	confirmTimeout   = 5 * time.Second
 	selectTimeout    = 5 * time.Second
 	maxTxFragment    = 2048
+	maxRxFragment    = 2048
 	unsolHoldTime    = 200 * time.Millisecond
 	unsolMaxEvents   = 20
 	unsolConfirmWait = 5 * time.Second
@@ -54,14 +55,19 @@ type application struct {
 	conn *Connection
 }
 
-// SupportsWriteTime follows timeSyncMode: zero refuses clock writes, which is
-// what the field documents.
-func (a application) SupportsWriteTime() bool { return a.conn.TimeSyncMode != 0 }
+// SupportsWriteTime accepts the master's clock whatever timeSyncMode says.
+//
+// parity: the C++ server reads timeSyncMode and never uses it; its
+// DefaultOutstationApplication accepts every clock write. The outstation
+// asserts NEED_TIME until its clock has been set, so a refusal would be met
+// with the same write, and the same NO_FUNC_CODE_SUPPORT, on every connection.
+func (a application) SupportsWriteTime() bool { return true }
 
+// WriteAbsoluteTime records that the master set the clock. The value is not
+// applied anywhere: event times come from the tags (timestampFor), not from
+// this clock, and what the write changes is that the outstation stops asking
+// for the time and reports its timestamps as synchronised.
 func (a application) WriteAbsoluteTime(t time.Time) bool {
-	if a.conn.TimeSyncMode == 0 {
-		return false
-	}
 	jslog.Log(jslog.LevelDetailed, "%s - Master set the clock to %s",
 		a.conn.Name, t.Format(time.RFC3339Nano))
 	return true
@@ -249,6 +255,7 @@ func (e *Engine) newOutstation(conn *Connection, tags []bson.M) *outstation.Sess
 		Database:       cfg,
 		Events:         outstation.EventBufferConfig{MaxEvents: conn.ServerQueueSize},
 		MaxTxFragment:  maxTxFragment,
+		MaxRxFragment:  maxRxFragment,
 		ConfirmTimeout: confirmTimeout,
 		SelectTimeout:  selectTimeout,
 		Unsolicited: outstation.UnsolicitedConfig{
@@ -258,9 +265,9 @@ func (e *Engine) newOutstation(conn *Connection, tags []bson.M) *outstation.Sess
 			ConfirmTimeout: unsolConfirmWait,
 			MaxRetries:     unsolMaxRetries,
 		},
-		// Group 0 identity. The library derives the point counts and the
-		// fragment sizes from this same config, so they are not repeated here.
-		Attributes: deviceAttributes(conn),
+		// Group 0: identity and the full capacity block, which supersedes the
+		// counts and sizes go-dnp3 derives (see attributes.go).
+		Attributes: deviceAttributes(conn, cfg),
 		Log:        jslog.NewStackLogger(conn.Name),
 	}
 	if conn.ConnectionMode == "SERIAL" {

@@ -36,8 +36,8 @@ import (
 const (
 	CopyrightMessage   = "{json:scada} IEC61850 Client Driver (Go) - Copyright 2020-2026 Ricardo Olsen"
 	ProtocolDriverName = "IEC61850"
-	DriverVersion      = "0.1.0"
-	LibraryVersion     = "v0.2.5"
+	DriverVersion      = "0.2.0"
+	LibraryVersion     = "v0.3.2"
 )
 
 // Queue and key-allocation limits, same values as the C# driver.
@@ -108,8 +108,8 @@ type Iec61850Connection struct {
 	mu            sync.Mutex
 	LastReportIds map[string][]byte // rcb reference -> last seen EntryID
 	Entries       map[string]*Iec61850Entry
-	EntryOrder    []string // stable iteration order for the polling sweep
-	InsertedTags  map[string]bool
+	EntryOrder    []string        // stable iteration order for the polling sweep
+	InsertedTags  map[string]bool // points that have a tag, by pointKey (not by tag name)
 	// TagKeys allocates _id values inside this connection's partition.
 	TagKeys      jstags.KeyAllocator
 	Cli          *client.Client
@@ -125,8 +125,21 @@ type Iec61850Connection struct {
 // SetLastReportID records a buffered report's EntryID for resync.
 func (c *Iec61850Connection) SetLastReportID(rcbRef string, entryID []byte) {
 	c.mu.Lock()
+	// This runs on the report reader goroutine, where a panic would take
+	// the whole driver down: never write into a nil map.
+	if c.LastReportIds == nil {
+		c.LastReportIds = map[string][]byte{}
+	}
 	c.LastReportIds[rcbRef] = entryID
 	c.BrcbCount++
+	c.mu.Unlock()
+}
+
+// ForgetLastReportID drops an RCB's EntryID, so the next save no longer
+// carries one the IED refused.
+func (c *Iec61850Connection) ForgetLastReportID(rcbRef string) {
+	c.mu.Lock()
+	delete(c.LastReportIds, rcbRef)
 	c.mu.Unlock()
 }
 

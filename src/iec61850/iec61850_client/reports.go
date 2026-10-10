@@ -25,6 +25,7 @@ package main
 
 import (
 	"context"
+	"errors"
 	"strings"
 	"time"
 
@@ -153,7 +154,12 @@ func enableRCB(ctx context.Context, conn *Iec61850Connection, ref model.ObjectRe
 	conn.RcbByDataSet[dsKey] = st
 	conn.mu.Unlock()
 
-	rcb.TrgOps = model.TrgDataChange | model.TrgIntegrity
+	// GI is requested below as soon as the block is enabled, and a server
+	// only answers a GI request whose trigger is enabled in TrgOps
+	// (IEC 61850-7-2). Without it a conformant IED ignores the request and
+	// nothing arrives until the first change or integrity period. The C#
+	// driver left GI out.
+	rcb.TrgOps = model.TrgDataChange | model.TrgIntegrity | model.TrgGI
 	rcb.IntgPd = time.Duration(conn.Class0ScanInterval) * time.Second
 	// The C# driver also requested DATA_REFERENCE. Report entries are
 	// identified here from the data set members instead, and the client
@@ -166,24 +172,39 @@ func enableRCB(ctx context.Context, conn *Iec61850Connection, ref model.ObjectRe
 		model.OptDataSetName | model.OptConfRev
 	if buffered {
 		rcb.OptFlds |= model.OptEntryID
-		lastEntryID := []byte{0, 0, 0, 0, 0, 0, 0, 0}
-		if saved, ok := conn.LastReportID(rpname); ok && len(saved) > 0 {
-			lastEntryID = saved
-			jslog.Log(jslog.LevelBasic, "%s BRCB: %s - Last seen entryId: %s", conn.Name, rpname, entryIDString(lastEntryID))
+		rcb.ResyncEntryID = resyncEntryID(conn, rpname)
+		if rcb.ResyncEntryID != nil {
+			jslog.Log(jslog.LevelBasic, "%s BRCB: %s - Last seen entryId: %s", conn.Name, rpname, entryIDString(rcb.ResyncEntryID))
 		}
-		rcb.ResyncEntryID = lastEntryID
 	}
 
-	sub, err := cli.EnableReporting(ctx, rcb, func(rep *client.Report) {
-		reportHandler(conn, st, rep)
-	})
+	enable := func() (*client.ReportSubscription, error) {
+		return cli.EnableReporting(ctx, rcb, func(rep *client.Report) {
+			reportHandler(conn, st, rep)
+		})
+	}
+	sub, err := enable()
+	// The saved EntryID is gone from the IED's buffer (it restarted or
+	// purged it), so the IED refuses it. Retrying with the same ID would
+	// fail forever: resume from the IED's own position instead and forget
+	// the ID. Reports buffered in between are lost.
+	if err != nil && rcb.ResyncEntryID != nil && entryIDRefused(err) {
+		jslog.Log(jslog.LevelBasic, "%s BRCB: %s - entryId %s refused by the IED, enabling without resync",
+			conn.Name, rpname, entryIDString(rcb.ResyncEntryID))
+		conn.ForgetLastReportID(rpname)
+		rcb.ResyncEntryID = nil
+		sub, err = enable()
+	}
 	if err != nil {
 		// An RCB left enabled by a previous association refuses
-		// configuration writes; disable it and try once more.
-		if _, werr := cli.MMS().Write(ctx, domain, []string{item + "$RptEna"}, []*mms.Value{mms.NewBool(false)}); werr == nil {
-			sub, err = cli.EnableReporting(ctx, rcb, func(rep *client.Report) {
-				reportHandler(conn, st, rep)
-			})
+		// configuration writes; disable it and try once more. A block
+		// another client still holds refuses the disable too, and then a
+		// retry cannot succeed.
+		if derr := disableRCB(ctx, cli, domain, item); derr != nil {
+			jslog.Log(jslog.LevelBasic, "%s %s: %s is held by another client (RptEna=false refused - %v)",
+				conn.Name, kind, rpname, derr)
+		} else {
+			sub, err = enable()
 		}
 	}
 	if err != nil {
@@ -206,6 +227,49 @@ func enableRCB(ctx context.Context, conn *Iec61850Connection, ref model.ObjectRe
 	if err := cli.TriggerGI(ctx, rcb); err != nil {
 		jslog.Log(jslog.LevelBasic, "%s %s: IED SetRCB exception - %v", conn.Name, kind, err)
 	}
+}
+
+// resyncEntryID is the EntryID a buffered block resumes after: the last one
+// this driver saw on it, or nil when it has seen none. Then no EntryID is
+// written and the IED delivers from its own position. The C# driver wrote
+// all zeros instead, which some IEDs refuse outright.
+func resyncEntryID(conn *Iec61850Connection, rcbRef string) []byte {
+	saved, ok := conn.LastReportID(rcbRef)
+	if !ok || len(saved) == 0 || isZeroEntryID(saved) {
+		return nil
+	}
+	return saved
+}
+
+func isZeroEntryID(id []byte) bool {
+	for _, b := range id {
+		if b != 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// entryIDRefused reports whether enabling failed because the IED refused the
+// resync EntryID (IEC 61850-7-2: an entry its buffer does not hold). Settings
+// can be refused with the same code, so the write is identified by the
+// library's "RCB write <attribute>" wrapping, which is pinned with its version.
+func entryIDRefused(err error) bool {
+	return errors.Is(err, mms.AccessObjectValueInvalid) && strings.Contains(err.Error(), "RCB write EntryID")
+}
+
+// disableRCB writes RptEna=false. The IED answers a write per item, so a
+// refusal arrives as an item result, not as the call's error; either one
+// means the block is still enabled.
+func disableRCB(ctx context.Context, cli *client.Client, domain, item string) error {
+	res, err := cli.MMS().Write(ctx, domain, []string{item + "$RptEna"}, []*mms.Value{mms.NewBool(false)})
+	if err != nil {
+		return err
+	}
+	if len(res) > 0 && res[0] != nil {
+		return res[0]
+	}
+	return nil
 }
 
 // installReportDiagnostics logs reports that match no active subscription.

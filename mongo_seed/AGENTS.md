@@ -26,7 +26,7 @@ Initialization scripts and seed data for MongoDB: replica set initialization, da
 - Keep demo data manageable in size but representative
 - RBAC roles should demonstrate the permission model
 - Keep initialization scripts idempotent where possible
-- When adding new collections, update both `b_create-db.js` and documentation
+- When adding or changing collections, validators, indexes or retention, update both `b_create-db.js` and the collection table/sections in `docs/schema.md`
 
 ## Verification
 

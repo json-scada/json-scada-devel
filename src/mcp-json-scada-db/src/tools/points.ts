@@ -16,7 +16,7 @@
  */
 
 import { z } from 'zod'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { ConnectionManager } from '../jsonscada/connection-manager.js'
 import { errorResult, notConnectedResult, textResult } from './util.js'
 
@@ -49,7 +49,7 @@ export function registerPointsTools(server: McpServer, mgr: ConnectionManager) {
         'Search for database points (tags) by tag/description regex and other filters. ' +
         'Returns a compact summary of each matching point plus the total match count. ' +
         'Use get_point to retrieve the full document of a specific point.',
-      inputSchema: {
+      inputSchema: z.object({
         filter: z
           .string()
           .optional()
@@ -68,7 +68,7 @@ export function registerPointsTools(server: McpServer, mgr: ConnectionManager) {
         invalid: z.boolean().optional().describe('Filter by invalid quality'),
         limit: z.number().int().min(1).max(100).optional().default(10),
         offset: z.number().int().min(0).optional().default(0),
-      },
+      }),
     },
     async ({ filter, group1, group2, type, origin, alarmed, invalid, limit, offset }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()
@@ -118,13 +118,13 @@ export function registerPointsTools(server: McpServer, mgr: ConnectionManager) {
     {
       description:
         'Get the full document of a specific point by tag name or numeric point key',
-      inputSchema: {
+      inputSchema: z.object({
         tag: z.string().optional().describe('The tag name of the point'),
         pointKey: z
           .number()
           .optional()
           .describe('The numeric point key (_id) of the point'),
-      },
+      }),
     },
     async ({ tag, pointKey }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()

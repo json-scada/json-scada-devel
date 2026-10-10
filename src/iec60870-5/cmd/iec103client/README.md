@@ -267,6 +267,5 @@ _autoCreateTags_ back to `false` when the address map is stable.
 
 ## Limitations
 
-- Master (primary station) side only; there is no 103 outstation driver.
 - Generic services (ASDU 10/11/21) and disturbance data transfer (ASDU 23–31)
   are not decoded.

@@ -236,7 +236,8 @@ func createCommandTags(ctx context.Context, collRTD *mongo.Collection, conns []*
 			continue
 		}
 		tag := ct.Tag()
-		if conn.InsertedTags[tag] {
+		key := pointKey(ct.Ref, "CO")
+		if conn.InsertedTags[key] {
 			continue
 		}
 
@@ -271,7 +272,7 @@ func createCommandTags(ctx context.Context, collRTD *mongo.Collection, conns []*
 			jslog.Log(jslog.LevelBasic, "%s - command tag insert failed for %s: %v", ct.ConnName, tag, err)
 			continue
 		}
-		conn.InsertedTags[tag] = true
+		conn.InsertedTags[key] = true
 
 		if supervisedID != 0 {
 			updCtx, cancelUpd := context.WithTimeout(ctx, 10*time.Second)
@@ -314,11 +315,12 @@ func maybeInsertTag(ctx context.Context, collRTD *mongo.Collection, conns []*Iec
 		return nil
 	}
 
-	tag := TagFromParameters(iv)
-	if conn.InsertedTags[tag] {
+	key := pointKey(iv.Address, iv.CommonAddress)
+	if conn.InsertedTags[key] {
 		return nil
 	}
-	conn.InsertedTags[tag] = true
+	conn.InsertedTags[key] = true
+	tag := TagFromParameters(iv)
 
 	jslog.Log(jslog.LevelBasic, "%s - INSERT NEW TAG: %s - Addr:%s", iv.ConnName, tag, iv.Address)
 

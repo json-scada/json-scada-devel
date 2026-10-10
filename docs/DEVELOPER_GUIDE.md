@@ -76,17 +76,18 @@ To link a tag to your driver for **data acquisition**:
 *   Other fields like `kconv1`, `kconv2` (for scaling), and protocol-specific polling/subscription parameters might also be used by the driver if relevant.
 
 When your driver reads a new value for a tag, it should update the `sourceDataUpdate` sub-document within the tag's document in `realtimeData`. This sub-document typically includes:
-    *   `valueAtSource` (appropriate BSON type for the value)
-    *   `valueStringAtSource` (String representation)
-    *   `valueJsonAtSource` (JSON representation)
-    *   `timeTagAtSource` (Date, timestamp from the source, if available)
-    *   `timeTagAtSourceOk` (Boolean, true if `timeTagAtSource` is reliable)
-    *   `invalidAtSource` (Boolean, true if the value is considered invalid by the source)
-    *   `timeTag` (Date, timestamp when the driver processed the update)
-    *   `originator` (String, identifies the source, e.g., "MY_DRIVER|conn_123")
-    *   `causeOfTransmissionAtSource` (String, specify the cause of transmission, e.g. "3"=Spontaneous in IEC60870-5-101/104.
-    *   `asduAtSource` (String, type representation of the data as detected by the protocol driver, e.g. "M_ME_NC_1".
-    *   Other quality flags like `notTopicalAtSource`, `substitutedAtSource`, `blockedAtSource` as relevant.
+
+*   `valueAtSource` (appropriate BSON type for the value)
+*   `valueStringAtSource` (String representation)
+*   `valueJsonAtSource` (JSON representation)
+*   `timeTagAtSource` (Date, timestamp from the source, if available)
+*   `timeTagAtSourceOk` (Boolean, true if `timeTagAtSource` is reliable)
+*   `invalidAtSource` (Boolean, true if the value is considered invalid by the source)
+*   `timeTag` (Date, timestamp when the driver processed the update)
+*   `originator` (String, identifies the source, e.g., "MY_DRIVER|conn_123")
+*   `causeOfTransmissionAtSource` (String, specify the cause of transmission, e.g. "3" = spontaneous in IEC 60870-5-101/104).
+*   `asduAtSource` (String, type representation of the data as detected by the protocol driver, e.g. "M_ME_NC_1").
+*   Other quality flags like `notTopicalAtSource`, `substitutedAtSource`, `blockedAtSource` as relevant.
 
 To link a tag for **command execution**:
 
@@ -98,7 +99,7 @@ When a user or another process in JSON SCADA wants to send a command to a device
 
 Key fields in a `commandsQueue` document that your driver will use:
 
-*   `protocolSourceConnectionNumber` (Double/Int): Your driver should only process commands matching one of its active connections.
+*   `protocolSourceConnectionNumber` (Double): Your driver should only process commands matching one of its active connections. Current producers (`server_realtime_auth`, its GraphQL server, the Modbus server driver, `cs_custom_processor`) write a BSON Double (e.g. `61.0`). Older tools or hand-inserted documents may store Int32/Int64, so read the field as any numeric BSON type and convert it explicitly to a double before comparing; never assume an integer BSON type.
 *   `protocolSourceObjectAddress` (String): The protocol-specific address of the target point for the command.
 *   `protocolSourceASDU` (String): The data type of the value to be written.
 *   `value` (appropriate BSON type): The value to be written to the device.
@@ -315,8 +316,12 @@ When developing a protocol driver in C#, you'll typically use the official Mongo
     //     foreach (var change in cursor.ToEnumerable())
     //     {
     //         var commandDoc = change.FullDocument;
-    //         int cmdConnNumber = commandDoc["protocolSourceConnectionNumber"].AsInt32;
-    //         // If cmdConnNumber matches one of this driver's active connections...
+    //         // Producers write a BSON Double; accept any numeric type (Double/Int32/Int64/Decimal128).
+    //         // AsInt32 would throw InvalidCastException on a BsonDouble.
+    //         var connVal = commandDoc.GetValue("protocolSourceConnectionNumber", BsonNull.Value);
+    //         if (!connVal.IsNumeric) continue; // missing or non-numeric: not a valid command
+    //         double cmdConnNumber = connVal.ToDouble();
+    //         // If cmdConnNumber == connection.protocolConnectionNumber (both doubles) for an active connection...
     //         // Process command...
     //         // Update commandDoc in commandsQueueCollection with status
     //         // e.g., Builders<BsonDocument>.Update.Set("delivered", true).Set("ackTimeTag", DateTime.UtcNow)
@@ -506,9 +511,23 @@ Go is well-suited for protocol driver development due to its concurrency feature
     //     if err := cmdChangeStream.Decode(&changeDoc); err != nil { log.Println(err); continue }
     //
     //     commandDoc := changeDoc.FullDocument
-    //     cmdConnNumber, ok := commandDoc["protocolSourceConnectionNumber"].(int32) // Or appropriate type
-    //     if !ok { continue }
-    //     // If cmdConnNumber matches one of this driver's active connections...
+    //     // Producers write a BSON Double (decoded as float64 into bson.M); a bare .(int32)
+    //     // assertion would fail and silently skip every valid command. Convert explicitly:
+    //     var cmdConnNumber float64
+    //     switch v := commandDoc["protocolSourceConnectionNumber"].(type) {
+    //     case float64:
+    //         cmdConnNumber = v
+    //     case int32:
+    //         cmdConnNumber = float64(v)
+    //     case int64:
+    //         cmdConnNumber = float64(v)
+    //     default:
+    //         log.Printf("command %v: invalid protocolSourceConnectionNumber %T", commandDoc["_id"], v)
+    //         continue
+    //     }
+    //     // Alternatively, decode FullDocument into a struct with a float64 field
+    //     // (`bson:"protocolSourceConnectionNumber"`); the Go driver converts Int32/Int64 into float64.
+    //     // If cmdConnNumber == connection.ProtocolConnectionNumber (float64) for an active connection...
     //     // Process command...
     //     // Update commandDoc in commandsQueueCollection with status
     //     // e.g., cmdUpdate := bson.M{"$set": bson.M{"delivered": true, "ackTimeTag": time.Now()}}
@@ -655,8 +674,11 @@ Node.js is suitable for I/O-bound protocol drivers due to its asynchronous, even
     // cmdChangeStream.on('change', async (change) => {
     //     const commandDoc = change.fullDocument;
     //     if (commandDoc) {
-    //         const cmdConnNumber = commandDoc.protocolSourceConnectionNumber;
-    //         // If cmdConnNumber matches one of this driver's active connections...
+    //         // With default promoteValues, BSON Double/Int32/Int64 all arrive as JS numbers.
+    //         // Number() also unwraps Double/Long/Decimal128 wrapper objects if promoteValues is off.
+    //         const cmdConnNumber = Number(commandDoc.protocolSourceConnectionNumber);
+    //         if (!Number.isFinite(cmdConnNumber)) return; // missing or non-numeric
+    //         // If cmdConnNumber === connection.protocolConnectionNumber for an active connection...
     //         // Process command...
     //         // Update commandDoc in commandsQueueCollection with status
     //         // await commandsQueueCollection.updateOne({ _id: commandDoc._id }, { $set: { delivered: true, ackTimeTag: new Date() } });
@@ -691,13 +713,12 @@ When auto-tag creation is enabled for a specific connection (usually via a boole
 When creating a new tag document, the driver should populate it with as much relevant information as possible:
 
 *   `tag` (String): A unique tag name. This can be derived from the discovered point name or address. It might need sanitization or a prefix/suffix to ensure uniqueness within JSON SCADA. Some systems use the `protocolSourceObjectAddress` itself or a variation of it as the tag name if a human-friendly name isn't readily available.
-*   `protocolSourceConnectionNumber` (Double/Int): The `protocolConnectionNumber` of the current connection being processed.
+*   `protocolSourceConnectionNumber` (Double): The `protocolConnectionNumber` of the current connection being processed. Write it as a BSON Double (Node.js: `new Double(n)`, C#: `new BsonDouble(n)`, Go: `float64(n)`); a plain integer JS number is stored as Int32 by the Node.js driver.
 *   `protocolSourceObjectAddress` (String): The address of the point as discovered from the protocol.
 *   `protocolSourceASDU` (String): The data type, if discoverable from the protocol.
 *   `description` (String): A description of the tag, if available from the source.
 *   `type` (String): The JSON SCADA data type (e.g., "analog", "digital", "string", "json"). This should be inferred from the `protocolSourceASDU`.
-*   `origin` (String): Typically set to something like "auto-created" or the driver's name.
-*   `enabled` (Boolean): Usually `true` by default for auto-created tags.
+*   `origin` (String): `supervised` or `command`.
 *   `value`, `valueString`, `timeTag`, `invalid`: Initialize with sensible default values (e.g., 0, empty string, current time, `true` for invalid until first update).
 *   **Default Configuration for Acquisition:**
     *   `kconv1`: 1.0
@@ -769,10 +790,10 @@ node /path/to/json-scada/src/MyNodeDriver/index.js 1 1 ../conf/json-scada.json
 
 ```batch
 REM For a C# driver
-C:\path	o\json-scadain\MyCustomDriver.exe 1 1 ..\conf\json-scada.json
+C:\path\to\json-scada\bin\MyCustomDriver.exe 1 1 ..\conf\json-scada.json
 
 REM For a Node.js driver
-node C:\path	o\json-scada\src\MyNodeDriver\index.js 1 1 ..\conf\json-scada.json
+node C:\path\to\json-scada\src\MyNodeDriver\index.js 1 1 ..\conf\json-scada.json
 ```
 
 **Process Management:**

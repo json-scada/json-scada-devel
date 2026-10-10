@@ -93,15 +93,15 @@ namespace OPCDAClientDriver
                                         {
                                             found = true;
 
-                                            int timeDif = DateTime
-                                                    .Now
-                                                    .ToLocalTime()
-                                                    .Subtract(change
-                                                        .FullDocument
-                                                        .timeTag
-                                                        .ToLocalTime(
-                                                        ))
-                                                    .Seconds;
+                                            // command age in whole seconds (TotalSeconds, not the 0-59 Seconds component),
+                                            // a missing timeTag is treated as expired
+                                            var cmdTimeTag = change.FullDocument.timeTag;
+                                            double timeDif = cmdTimeTag == null
+                                                ? double.MaxValue
+                                                : Math.Floor(DateTime
+                                                    .UtcNow
+                                                    .Subtract(cmdTimeTag.ToUniversalTime())
+                                                    .TotalSeconds);
 
                                             // test for command expired
                                             if (timeDif > 10)

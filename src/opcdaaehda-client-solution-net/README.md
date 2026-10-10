@@ -24,13 +24,7 @@ We provide an online help for the current version: [OPC DA/AE/HDA Solution NET O
 
 ## Getting started
 
-### Simple Examples using the source code
-
-Examples can be found in the solution [WorkshopClientSamples.sln](/WorkshopClientSamples.sln).
-
-### Advanced Examples using the source code
-
-Examples can be found in the solution [SampleClients.sln](/SampleClients.sln).
+This copy contains only the library solution `DaAeHdaNetStandard.sln` used by the JSON-SCADA OPC-DA client; the upstream example solutions are not included.
 
 ### Licenses
 TECHNOSOFTWARE provides different licenses depending on the component and on the ownership of a purchased license of the user of the sources. A single ZIP file or a single repository can contain multiple components where the sources have different license models. The valid license is in the header of each source file.

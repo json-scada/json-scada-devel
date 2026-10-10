@@ -260,7 +260,15 @@ func (e *Engine) changeStreamOptions(resumeToken bson.Raw) *options.ChangeStream
 //
 // All destinations of one connection are applied inside a single Update, so a
 // master polling mid-change cannot see a torn set.
+//
+// Only supervised tags are data. The initial load takes only those (tagsFor),
+// and so does this: a command tag has its destination in group 12 or 41, which
+// familyOf would send to the analog family, and applying it would write the
+// command tag's value over the supervised analog at the same index.
 func (e *Engine) distribute(doc bson.M) {
+	if jsmongo.GetString(doc, "origin", "") != "supervised" {
+		return
+	}
 	byConn := map[int][]Destination{}
 	for _, d := range DestinationsOf(doc) {
 		if _, ok := e.byNum[d.ConnectionNumber]; ok {

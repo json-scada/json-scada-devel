@@ -17,7 +17,7 @@
 
 import { z } from 'zod'
 import { BSON } from 'mongodb'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { ConnectionManager } from '../jsonscada/connection-manager.js'
 import {
   errorResult,
@@ -66,7 +66,7 @@ export function registerCollectionsTools(
       description:
         'Run a read-only query on any collection. The query, projection and sort are ' +
         'MongoDB Extended JSON strings, so operators like {"$gte": {"$date": "..."}} are supported.',
-      inputSchema: {
+      inputSchema: z.object({
         collection: z.string().describe('The collection name to query'),
         query: z
           .string()
@@ -82,7 +82,7 @@ export function registerCollectionsTools(
           .describe('Extended JSON string with the sort specification'),
         limit: z.number().int().min(1).max(100).optional().default(5),
         offset: z.number().int().min(0).optional().default(0),
-      },
+      }),
     },
     async ({ collection, query, projection, sort, limit, offset }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()

@@ -49,22 +49,30 @@ type serverEntry struct {
 	server     *tase2.Server
 	connection protocolConnection
 	endpoint   *tase2.Endpoint
+	since      time.Time
+	peer       tase2.EventPeer // set by the AssociationAccepted event
 }
 
-// serverRegistry tracks all live per-connection servers.
+// serverRegistry tracks all live per-connection servers, and keeps the
+// counters of associations that have ended so connection statistics survive
+// client reconnects.
 type serverRegistry struct {
 	mu      sync.Mutex
 	entries map[*tase2.Server]*serverEntry
+	closed  map[int]*connStats // by protocolConnectionNumber
 }
 
 func newServerRegistry() *serverRegistry {
-	return &serverRegistry{entries: make(map[*tase2.Server]*serverEntry)}
+	return &serverRegistry{
+		entries: make(map[*tase2.Server]*serverEntry),
+		closed:  make(map[int]*connStats),
+	}
 }
 
 func (r *serverRegistry) add(srv *tase2.Server, ep *tase2.Endpoint, conn protocolConnection) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
-	r.entries[srv] = &serverEntry{server: srv, endpoint: ep, connection: conn}
+	r.entries[srv] = &serverEntry{server: srv, endpoint: ep, connection: conn, since: time.Now()}
 	return len(r.entries)
 }
 
@@ -72,9 +80,26 @@ func (r *serverRegistry) remove(srv *tase2.Server) int {
 	r.mu.Lock()
 	defer r.mu.Unlock()
 	// The per-connection transport is already closed by ServeClients before
-	// the post-disconnect hook (which calls remove) runs.
-	delete(r.entries, srv)
+	// the post-disconnect hook (which calls remove) runs; its counters are
+	// final, so fold them into the connection totals.
+	if e, ok := r.entries[srv]; ok {
+		n := e.connection.ProtocolConnectionNumber
+		if r.closed[n] == nil {
+			r.closed[n] = newConnStats()
+		}
+		r.closed[n].add(srv.Stats())
+		delete(r.entries, srv)
+	}
 	return len(r.entries)
+}
+
+// setPeer records the peer identity of a live association.
+func (r *serverRegistry) setPeer(srv *tase2.Server, peer tase2.EventPeer) {
+	r.mu.Lock()
+	defer r.mu.Unlock()
+	if e, ok := r.entries[srv]; ok {
+		e.peer = peer
+	}
 }
 
 func (r *serverRegistry) snapshot() []*serverEntry {
@@ -419,23 +444,15 @@ func main() {
 
 			// Start servers for each connection
 			registry := newServerRegistry()
+			var listening []protocolConnection
 
 			for _, conn := range connections {
 				conn := conn // capture for closure
-				port := 102  // default ICCP port
-				if conn.IPAddressLocalBind != "" {
-					parts := strings.Split(conn.IPAddressLocalBind, ":")
-					if len(parts) > 1 {
-						if p, err := strconv.Atoi(parts[1]); err == nil {
-							port = p
-						}
-					}
-					// The tase2 library listens on all interfaces; a specific
-					// bind host cannot be honored yet.
-					if host := parts[0]; host != "" && host != "0.0.0.0" && host != "::" {
-						LogMsg(LogLevelMin, "ICCP - Connection %q: bind host %q ignored, listening on all interfaces (port %d)",
-							conn.Name, host, port)
-					}
+				bindHost, port, err := parseLocalBind(conn.IPAddressLocalBind)
+				if err != nil {
+					LogMsg(LogLevelMin, "ICCP - Connection %q: invalid ipAddressLocalBind %q: %v; not listening",
+						conn.Name, conn.IPAddressLocalBind, err)
+					continue
 				}
 
 				localAPTitle := conn.LocalApTitle
@@ -468,6 +485,15 @@ func main() {
 				endpoint := tase2.NewEndpoint(tase2.EndpointPassive)
 				endpoint.SetLocalAPTitle(localAPTitle, localAEQual)
 				endpoint.SetMaxTPDUSizeParam(maxTPDUSizeParam)
+				// Library messages for this listener's associations are
+				// attributed to the connection; accepted endpoints inherit it.
+				endpoint.SetLogHandler(tase2LogHandler(conn.Name))
+				// The library binds passive endpoints to loopback unless told
+				// otherwise; bind where ipAddressLocalBind says.
+				if err := endpoint.SetListenAddress(bindHost); err != nil {
+					LogMsg(LogLevelMin, "ICCP - Connection %q: %v; not listening", conn.Name, err)
+					continue
+				}
 
 				// Secure ICCP (IEC 62351-3): TLS wraps the whole association.
 				// chainValidation=true additionally requires and verifies
@@ -486,34 +512,16 @@ func main() {
 					continue
 				}
 
-				LogMsg(LogLevelMin, "ICCP - Connection %q listening on port %d (AP: %s, AE: %d)",
-					conn.Name, port, localAPTitle, localAEQual)
+				LogMsg(LogLevelMin, "ICCP - Connection %q listening on %v (AP: %s, AE: %d)",
+					conn.Name, endpoint.ListenAddr(), localAPTitle, localAEQual)
 
 				// Serve clients: ServeClients runs the accept loop, one server
 				// goroutine per association, and closes each transport when the
 				// association ends; the post-disconnect hook keeps the registry
 				// in sync for change-stream fan-out and client counting.
+				listening = append(listening, conn)
 				go func(ep *tase2.Endpoint, conn protocolConnection, srvCfg tase2.ServerConfig) {
-					err := ep.ServeClients(
-						func(ce *tase2.Endpoint) *tase2.Server {
-							// IP filtering is done at the ICCP bilateral-table
-							// level; IP-based access control can be added in a
-							// future version.
-							srv := buildServer(dataModel, ce, srvCfg, conn, datasetDefs, collectionCommands)
-							n := registry.add(srv, ce, conn)
-							LogMsg(LogLevelNormal, "ICCP - Client associated! %s (%d active client(s))",
-								conn.Name, n)
-							return srv
-						},
-						func(ce *tase2.Endpoint, srv *tase2.Server, serveErr error) {
-							if serveErr != nil {
-								LogMsg(LogLevelNormal, "ICCP - Server error for %s: %v", conn.Name, serveErr)
-							}
-							n := registry.remove(srv)
-							LogMsg(LogLevelNormal, "ICCP - Client disconnected from %s (%d active client(s))",
-								conn.Name, n)
-						},
-					)
+					err := ep.ServeClients(serveClientCallbacks(registry, dataModel, srvCfg, conn, datasetDefs, collectionCommands))
 					if errors.Is(err, net.ErrClosed) {
 						LogMsg(LogLevelNormal, "ICCP - Listener closed for %s", conn.Name)
 					} else if err != nil {
@@ -521,6 +529,9 @@ func main() {
 					}
 				}(endpoint, conn, cfg)
 			}
+
+			// Publish per-connection association statistics
+			go publishConnectionStats(collectionConnections, registry, listening, cfg.NodeName)
 
 			// Start the MongoDB change stream watcher
 			go watchRealtimeDataChanges(clientMongo, collectionRtData, registry, ipByTag, cpByTag, connNumbers, topicList)
@@ -549,17 +560,6 @@ func main() {
 			clientMongo.Disconnect(context.TODO())
 			clientMongo = nil
 		}
-	}
-}
-
-func configureTASE2Logging(level int) {
-	switch {
-	case level >= LogLevelDebug:
-		tase2.SetLogLevel(tase2.LogLevelDebug)
-	case level >= LogLevelDetailed:
-		tase2.SetLogLevel(tase2.LogLevelInfo)
-	default:
-		tase2.SetLogLevel(tase2.LogLevelError)
 	}
 }
 
@@ -898,28 +898,29 @@ func convertToDataValueWithQuality(tag rtData) (*tase2.DataValue, *tase2.Quality
 	val := convertToDataValue(tag)
 	var qual *tase2.Quality
 	if tag.Invalid {
-		qual = &tase2.Quality{Validity: "invalid", Source: "process"}
+		qual = &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
 	} else {
-		qual = &tase2.Quality{Validity: "good", Source: "process"}
+		qual = &tase2.Quality{Validity: tase2.QualityValid, Source: tase2.SourceTelemetered}
 	}
 	return val, qual
 }
 
 // getICCPType maps a realtimeData tag type to an ICCP data type with quality
-// and timestamp. Returns ICCPTypeUnknown for types that don't map to a
+// and a millisecond-resolution time stamp (IEC 60870-6-802 Ed.2
+// QTimeTagExtended). Returns ICCPTypeUnknown for types that don't map to a
 // standard ICCP type (e.g. strings, JSON).
 func getICCPType(tag rtData) tase2.ICCPType {
 	switch tag.Type {
 	case "digital":
-		return tase2.ICCPTypeStateQTimeTag
+		return tase2.ICCPTypeStateQTimeTagExtended
 	case "analog":
 		// Integer-typed analogs map to Discrete to avoid float32 precision
 		// loss on large values.
 		switch asduToString(tag.ProtocolSourceASDU) {
 		case "int16", "uint16", "int32", "uint32", "int64", "uint64", "integer":
-			return tase2.ICCPTypeDiscreteQTimeTag
+			return tase2.ICCPTypeDiscreteQTimeTagExtended
 		}
-		return tase2.ICCPTypeRealQTimeTag
+		return tase2.ICCPTypeRealQTimeTagExtended
 	default:
 		return tase2.ICCPTypeUnknown
 	}
@@ -929,26 +930,33 @@ func getICCPType(tag rtData) tase2.ICCPType {
 // using the appropriate constructor for the given ICCP type. The returned value
 // embeds quality and timestamp per the ICCP data type specification.
 func convertToICCPValue(tag rtData, iccpType tase2.ICCPType) *tase2.DataValue {
-	q := &tase2.Quality{Validity: "good", Source: "process"}
+	q := &tase2.Quality{Validity: tase2.QualityValid, Source: tase2.SourceTelemetered}
 	if tag.Invalid {
-		q = &tase2.Quality{Validity: "invalid", Source: "process"}
+		q = &tase2.Quality{Validity: tase2.QualityInvalid, Source: tase2.SourceTelemetered}
 	}
-	tod := tase2.TimeTagNow()
+	ts := time.Now()
 	if tag.TimeTagAtSource != nil && tag.TimeTagAtSourceOk {
-		tod = tase2.TimeTagFrom(*tag.TimeTagAtSource)
+		ts = *tag.TimeTagAtSource
+	}
+	state := tase2.StateOff
+	if tag.Value != 0 {
+		state = tase2.StateOn
 	}
 
 	switch iccpType {
+	case tase2.ICCPTypeStateQTimeTagExtended:
+		return tase2.NewStateQTimeTagExtended(state, q, ts)
+	case tase2.ICCPTypeRealQTimeTagExtended:
+		return tase2.NewRealQTimeTagExtended(float32(tag.Value), q, ts)
+	case tase2.ICCPTypeDiscreteQTimeTagExtended:
+		return tase2.NewDiscreteQTimeTagExtended(int64(tag.Value), q, ts)
+	// Second-resolution (GMTBasedS) variants, for points declared with them.
 	case tase2.ICCPTypeStateQTimeTag:
-		state := tase2.StateOff
-		if tag.Value != 0 {
-			state = tase2.StateOn
-		}
-		return tase2.NewStateQTimeTag(state, q, tod)
+		return tase2.NewStateQTimeTag(state, q, tase2.TimeStampFrom(ts))
 	case tase2.ICCPTypeRealQTimeTag:
-		return tase2.NewRealQTimeTag(float32(tag.Value), q, tod)
+		return tase2.NewRealQTimeTag(float32(tag.Value), q, tase2.TimeStampFrom(ts))
 	case tase2.ICCPTypeDiscreteQTimeTag:
-		return tase2.NewDiscreteQTimeTag(int64(tag.Value), q, tod)
+		return tase2.NewDiscreteQTimeTag(int64(tag.Value), q, tase2.TimeStampFrom(ts))
 	default:
 		val, _ := convertToDataValueWithQuality(tag)
 		return val

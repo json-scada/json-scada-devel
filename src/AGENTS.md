@@ -43,9 +43,8 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 
 - [AdminUI](AdminUI/AGENTS.md) — Vue.js web admin interface (SPA)
 - [iccp](iccp/AGENTS.md) — ICCP TASE2 client/server protocol drivers (Go)
-- [mcp-json-scada-db](mcp-json-scada-db/AGENTS.md) — MCP server for AI-assisted JSON-SCADA development (TypeScript)
-- [lib60870.netcore](lib60870.netcore/AGENTS.md) — IEC 60870-5-104/101 client/server (.NET Core)
-- [dnp3](dnp3/AGENTS.md) — DNP3 client/server (C++/C# with opendnp3 submodule)
+- [mcp-json-scada-db](mcp-json-scada-db/AGENTS.md) — MCP server for AI access to data, commands, configuration and driver processes (TypeScript)
+- [dnp3-go](dnp3-go/AGENTS.md) — DNP3 client/server on go-dnp3 (Go, drop-in alternative)
 - [mqtt-sparkplug](mqtt-sparkplug/AGENTS.md) — MQTT/Sparkplug-B pub/sub client (Node.js)
 - [server_realtime_auth](server_realtime_auth/AGENTS.md) — Realtime WebSocket data server with JWT auth (Node.js)
 - [calculations](calculations/AGENTS.md) — Compiled cyclic calculations engine (Go)
@@ -53,20 +52,14 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 - [mongofw](mongofw/AGENTS.md) — MongoDB firewall/forwarder for 1-way air-gap replication (Node.js)
 - [cs_custom_processor](cs_custom_processor/AGENTS.md) — Customizable change stream data processor (TypeScript)
 - [cs_data_processor](cs_data_processor/AGENTS.md) — Change stream data processor (Node.js)
-- [OPC-UA-Client](OPC-UA-Client/AGENTS.md) — OPC UA client driver (.NET Core)
+- [OPC-UA-Client-Go](OPC-UA-Client-Go/AGENTS.md) — OPC UA client driver (Go, drop-in alternative, no .NET runtime)
 - [OPC-UA-Server](OPC-UA-Server/AGENTS.md) — OPC UA server driver (Node.js)
 - [OPC-DA-Client](OPC-DA-Client/AGENTS.md) — OPC DA client driver (.NET Core, Windows)
 - [OPC-DA-Server](OPC-DA-Server/AGENTS.md) — OPC DA server plugin (.NET Framework, Windows)
-- [iec61850_client](iec61850_client/AGENTS.md) — IEC 61850 MMS client driver (.NET Core)
 - [iec61850/iec61850_client](iec61850/iec61850_client/AGENTS.md) — IEC 61850 MMS client driver (Go, drop-in alternative, no native library)
 - [iec61850/iec61850_server](iec61850/iec61850_server/AGENTS.md) — IEC 61850 MMS server driver (Go, drop-in alternative, no native library)
 - [telegraf-listener](telegraf-listener/AGENTS.md) — Telegraf HTTP listener (Node.js)
-- [plc4x-client](plc4x-client/AGENTS.md) — PLC4X-GO Modbus client (Go)
-- [i104m](i104m/AGENTS.md) — Legacy I104M adapter (Go)
 - [camera-onvif](camera-onvif/AGENTS.md) — ONVIF camera control and streaming (Node.js)
-- [convex_bridge](convex_bridge/AGENTS.md) — Convex backend bridge (TypeScript)
-- [libplctag](libplctag/AGENTS.md) — CIP Ethernet/IP client via libplctag (.NET Core)
-- [amqp](amqp/AGENTS.md) — AMQP messaging client (Node.js)
 
 ### Protocol Drivers (no AGENTS.md, use parent doc)
 
@@ -88,17 +81,13 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 | [inkscape-extension](inkscape-extension/AGENTS.md) | Python | Inkscape SVG SCADA editor extension |
 | svg-display-editor | — | SVG display editor (docs) |
 | svgedit | JS | Web-based SVG editor (submodule) |
-| [logrotate](logrotate/AGENTS.md) | C# .NET Core | Log rotation utility |
 | log-io | Node.js | Log streaming UI |
-| [graphql-server](graphql-server/AGENTS.md) | Node.js | GraphQL API server |
 | [carbone-reports](carbone-reports/AGENTS.md) | Node.js | Carbone report generation |
 | [backup-mongo](backup-mongo/AGENTS.md) | Node.js | MongoDB backup utility |
-| [shell-api](shell-api/AGENTS.md) | Node.js | Shell command API |
 | [updateUser](updateUser/AGENTS.md) | Node.js | User management utility |
 | [alarm_beep](alarm_beep/AGENTS.md) | Node.js | Alarm audio notification |
 | [demo_simul](demo_simul/AGENTS.md) | Node.js | Demo data simulator |
 | [grafana_alert2event](grafana_alert2event/AGENTS.md) | Node.js | Grafana alert to SCADA event bridge |
-| [ldap-test](ldap-test/AGENTS.md) | Node.js | LDAP/AD auth test |
 | [oshmi2json](oshmi2json/AGENTS.md) | Node.js | OSHMI to JSON converter |
 | certificate-creator | Bash | TLS cert creation scripts |
 | ClassicClientSolutions | C# .NET | OPC Classic client libraries (submodule) |

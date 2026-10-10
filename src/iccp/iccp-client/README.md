@@ -26,9 +26,11 @@ The ICCP client:
   (RBE) reporting plus periodic integrity snapshots.
 - **Polls** domains without a DSTS subscription periodically via chunked
   ICCP `ReadMultiple` calls (integrity polling at configurable interval).
-- **Decodes** ICCP typed points (RealQ, StateQTimeTag, ...Extended, etc.):
-  value, quality (invalid / questionable / substituted flags) and the
-  source timestamp are mapped into the `sourceDataUpdate` document.
+- **Decodes** ICCP typed points (RealQ, StateQTimeTag, ...Extended,
+  ...QTimeTagExtended, etc.): value, quality (invalid / held-suspect /
+  non-telemetered source flags) and the source timestamp (GMT seconds, with
+  milliseconds for the 802 Ed.2 QTimeTagExtended types) are mapped into the
+  `sourceDataUpdate` document.
 - **Writes** acquired values to MongoDB using bulk writes with the
   `sourceDataUpdate` sub-document pattern.
 - **Watches** the `commandsQueue` MongoDB collection via change streams
@@ -156,6 +158,18 @@ db.realtimeData.updateOne({"tag": "Breaker1.Command"}, {
 - **protocolSourceObjectAddress** [String] - ICCP address as `Domain/Item`. **Mandatory**.
 - **protocolSourceASDU** [String] - Data type (boolean, float, double, int32, string, etc.). **Mandatory**.
 - **origin** [String] - Must be "command". **Mandatory**.
+
+## Logging
+
+Library messages (the `iso`, `mms` and `tase2` layers) go through the driver
+log, filtered by the same `logLevel`: library errors at 0, informational
+messages at 2 (detailed) and protocol debug at 3. Messages about one
+association are prefixed with the connection name and the transport
+context, e.g.
+
+```
+TASE2 ICCP_CLI1 [conn 3 10.0.0.9:40001 1.1.999.2/12] mms - ...
+```
 
 ## Command Line Arguments
 

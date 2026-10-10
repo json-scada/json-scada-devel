@@ -33,7 +33,8 @@ import (
 )
 
 // startScans starts the goroutines that keep a connection's polls running: one
-// that registers the class scans on every connection, and one per range scan.
+// that registers the class scans once the session first connects, and one per
+// range scan.
 func (e *Engine) startScans(ctx context.Context, conn *Connection, session *master.Session) {
 	go classScanLoop(ctx, conn, session)
 
@@ -45,31 +46,28 @@ func (e *Engine) startScans(ctx context.Context, conn *Connection, session *mast
 	}
 }
 
-// classScanLoop registers the periodic class polls each time the session
+// classScanLoop registers the periodic class polls once the session first
 // connects.
 //
-// They cannot be registered once: the stack runs its startup sequence on every
-// connection, and that begins by clearing the task scheduler — so a scan
-// registered beforehand is dropped, and after the first reconnection the
-// session would poll nothing but its own startup integrity read. Registering on
-// each rising edge of Connected() is what keeps the configured intervals in
-// force for the life of the driver.
+// Once is enough, and more is harmful: from go-dnp3 v0.5.4 the startup
+// sequence each connection runs keeps periodic tasks, so a scan registered
+// again on every reconnection adds another copy of itself each time
+// (TestClassScansSurviveReconnection). The scans wait for the first connection
+// only because AddPeriodicScan hands the task to the running session.
 func classScanLoop(ctx context.Context, conn *Connection, session *master.Session) {
 	t := time.NewTicker(200 * time.Millisecond)
 	defer t.Stop()
 
-	wasConnected := false
 	for {
 		select {
 		case <-ctx.Done():
 			return
 		case <-t.C:
 		}
-		connected := session.Connected()
-		if connected && !wasConnected {
+		if session.Connected() {
 			registerClassScans(ctx, conn, session)
+			return
 		}
-		wasConnected = connected
 	}
 }
 
@@ -99,6 +97,14 @@ func registerClassScans(ctx context.Context, conn *Connection, session *master.S
 // scan is ours to schedule. It reads once before waiting, matching opendnp3's
 // AddRangeScan, which runs its first scan immediately.
 func rangeScanLoop(ctx context.Context, conn *Connection, session *master.Session, rs RangeScan) {
+	// A request carries 16-bit point indexes here; narrowing a larger address
+	// would wrap it and read a different range than the one configured.
+	if !validPointIndex(rs.StartAddress) || !validPointIndex(rs.StopAddress) ||
+		rs.StartAddress > rs.StopAddress {
+		jslog.Log(jslog.LevelBasic, "%s - Range scan g%dv%d %d-%d ignored: addresses must be 0..65535 and start <= stop",
+			conn.Name, rs.Group, rs.Variation, rs.StartAddress, rs.StopAddress)
+		return
+	}
 	t := time.NewTicker(time.Duration(rs.Period) * time.Second)
 	defer t.Stop()
 

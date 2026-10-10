@@ -193,6 +193,44 @@ instance — see [docs/n8n-integration.md](../../docs/n8n-integration.md).
 
 ## No-code quick paths
 
-- **n8n → SCADA now**: n8n HTTP Request node → `POST /login` then `POST /Invoke`.
+- **n8n → SCADA now**: n8n HTTP Request node → `POST /Invoke/auth/signin` then `POST /Invoke`
+  (example below; the `n8n-nodes-jsonscada` action node does the same automatically).
 - **SCADA → n8n now**: MQTT-Sparkplug-B driver + n8n MQTT Trigger node.
 - **Direct DB**: n8n MongoDB node against a read-only `realtimeData` user.
+
+### Calling the realtime API without the custom nodes
+
+Base URL is `server_realtime_auth` (default `http://localhost:8080`) or the Nginx front end.
+Sign-in returns only `{ "ok": true, "message": "Signed In" }` in the body; the JWT comes back
+in an httpOnly `x-access-token` **cookie** (`Set-Cookie`), never in the body. Send it on later
+requests either as that cookie or as an `x-access-token` header.
+
+```bash
+# 1. sign in (the response cookie holds the JWT)
+curl -s -c cookies.txt -H "Content-Type: application/json"   -d '{"username":"n8n-bot","password":"secret"}'   http://localhost:8080/Invoke/auth/signin
+
+# 2. read current values (OPC Web-HMI ReadRequest = 629, AttributeId 13 = Value,
+#    NodeId IdType 1 = tag name / 0 = numeric point key, Namespace 2)
+curl -s -b cookies.txt -H "Content-Type: application/json"   -d '{"ServiceId":629,"Body":{"RequestHeader":{"Timestamp":"2026-01-01T00:00:00Z","RequestHandle":1,"TimeoutHint":3000,"ReturnDiagnostics":2,"AuthenticationToken":null},"MaxAge":0,"TimestampsToReturn":2,"NodesToRead":[{"NodeId":{"IdType":1,"Id":"_System.Status.DigitalUpdatesCnt","Namespace":2},"AttributeId":13}]}}'   http://localhost:8080/Invoke
+```
+
+Instead of `-b cookies.txt`, the token can be passed as a header:
+`-H "x-access-token: <value of the x-access-token cookie>"`.
+
+In n8n:
+
+1. **HTTP Request** node: `POST {{baseUrl}}/Invoke/auth/signin`, body JSON
+   `{"username": "...", "password": "..."}`, *Options → Response → Include Response Headers
+   and Status* enabled. Check `body.ok === true`.
+2. Extract the token, e.g. in a **Set**/**Code** node:
+   `/x-access-token=([^;]+)/.exec([].concat($json.headers["set-cookie"]).join(";"))[1]`
+   (a value of `null` means the sign-in failed).
+3. **HTTP Request** node: `POST {{baseUrl}}/Invoke`, header `x-access-token: {{token}}`, body
+   the OPC envelope shown above (`ServiceId` 629 read; see `n8n-nodes-jsonscada` for write,
+   browse and history envelopes). On an auth failure response
+   (`Body.ResponseHeader.ServiceResult` = BadUserAccessDenied / BadIdentityTokenInvalid / BadIdentityTokenRejected) sign in again once.
+   The token lifetime follows the user's roles (`maxSessionDays`).
+
+Use a dedicated least-privilege user (see the security checklist in
+[docs/n8n-integration.md](../../docs/n8n-integration.md)).
+

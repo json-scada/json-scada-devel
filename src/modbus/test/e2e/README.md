@@ -10,6 +10,14 @@ tools / a database) and are not run by `npm test`.
 - **diagslave** — free Modbus slave simulator (TCP, RTU, RTU-over-TCP "enron"/encapsulated).
 - **modpoll** — free Modbus master poller.
 - **pymodbus** — Python library; used for TLS interop and byte-order cross-checks.
+  The recipes below are written for and were run with **pymodbus 3.15.0** (Python >= 3.10);
+  the pymodbus API changes between releases (`slave=` → `device_id=`, `pymodbus.payload`
+  removed, TLS client takes an `sslctx`), so pin it:
+
+  ```bash
+  python -m venv .venv && . .venv/bin/activate   # Windows: .venv\Scripts\activate
+  pip install pymodbus==3.15.0
+  ```
 - Serial loopback: `com0com` (Windows) or `socat -d -d pty,raw,echo=0 pty,raw,echo=0` (Linux).
 
 ## 1. Client against diagslave (TCP)
@@ -45,20 +53,52 @@ modpoll -m tcp -p 5020 -r 101 -t 4 127.0.0.1 4321
 
 ## 3. TLS interop with pymodbus
 
+Run MODBUS_SERVER in `TLS Passive` with certificate, key and CA configured. With chain
+validation on (default) the server requires a client certificate signed by that CA.
+
 ```python
-# server side: run MODBUS_SERVER in "TLS Passive" with cert/key/ca configured, then:
+# pymodbus==3.15.0
+import ssl
 from pymodbus.client import ModbusTlsClient
-c = ModbusTlsClient('127.0.0.1', port=802, certfile='client.crt',
-                    keyfile='client.key', server_hostname='localhost')
-c.connect()
-print(c.read_holding_registers(0, count=4, slave=1).registers)
+
+sslctx = ssl.create_default_context(ssl.Purpose.SERVER_AUTH, cafile='ca.crt')
+sslctx.load_cert_chain(certfile='client.crt', keyfile='client.key')
+sslctx.check_hostname = False  # pymodbus does not pass server_hostname; the chain is still verified
+c = ModbusTlsClient('127.0.0.1', port=802, sslctx=sslctx)
+assert c.connect()
+print(c.read_holding_registers(0, count=4, device_id=1).registers)
 ```
+
+Python 3.13+ enables strict X.509 checks: the CA certificate needs `basicConstraints=critical,CA:TRUE`
+and `keyUsage=keyCertSign`, otherwise the handshake fails with
+"CA cert does not include key usage extension".
 
 ## 4. Byte-order cross-check against pymodbus
 
-Encode a value with `pymodbus.payload.BinaryPayloadBuilder` under a known word/byte order,
-write it to a slave, point a MODBUS tag at it with the matching ASDU suffix (e.g.
-`float32_cdab`), and confirm `valueAtSource` matches. The committed unit-test fixtures in
+Encode a value with pymodbus under each word/byte order, write it to the slave (or to
+MODBUS_SERVER), point a MODBUS tag at each address with the matching ASDU suffix and confirm
+`valueAtSource` matches. pymodbus only swaps words (`word_order`); byte-swapped orders are
+produced by swapping the bytes of each register:
+
+```python
+# pymodbus==3.15.0, continuing with the connected client `c` from section 3
+DT = c.DATATYPE
+
+def swap_bytes(regs):
+    return [((r & 0xFF) << 8) | (r >> 8) for r in regs]
+
+value = 3.14159
+orders = {
+    'abcd': c.convert_to_registers(value, DT.FLOAT32, word_order='big'),                # [0x4049, 0x0fd0]
+    'cdab': c.convert_to_registers(value, DT.FLOAT32, word_order='little'),             # [0x0fd0, 0x4049]
+    'badc': swap_bytes(c.convert_to_registers(value, DT.FLOAT32, word_order='big')),    # [0x4940, 0xd00f]
+    'dcba': swap_bytes(c.convert_to_registers(value, DT.FLOAT32, word_order='little')), # [0xd00f, 0x4940]
+}
+for i, (order, regs) in enumerate(orders.items()):
+    c.write_registers(i * 2, regs, device_id=1)  # tag hr:<i*2>, ASDU float32_<order>
+```
+
+All four must decode to 3.14159 (as float32). The committed unit-test fixtures in
 `test/unit/datacodec.test.ts` already assert the standard reference values.
 
 ## 5. Robustness / fuzz (optional)

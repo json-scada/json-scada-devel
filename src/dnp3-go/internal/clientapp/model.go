@@ -36,7 +36,7 @@ import (
 // Driver identity.
 const (
 	ProtocolDriverName = "DNP3"
-	DriverVersion      = "0.2.0"
+	DriverVersion      = "0.2.1"
 	DriverMessage      = "{json:scada} DNP3 Client Driver (Go)"
 )
 

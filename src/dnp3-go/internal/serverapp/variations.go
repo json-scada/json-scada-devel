@@ -134,26 +134,33 @@ var defaultClasses = map[family]dnp3.Class{
 
 // variationsFor returns the static and event variation a destination's ASDU
 // selects. Port of the switch tables of DefineGroupVar().
+//
+// Every event variation chosen here carries an absolute time, so a change is
+// reported with the moment it happened: the field time of the tag when there is
+// one, the local update time otherwise (see timestampFor). The C++ table picks
+// g32v1/v2/v5/v6 for analog ASDUs 1, 2, 5 and 6, which report a change with no
+// time at all; here the event is the timed variation of the same width and
+// type, while the static variation still follows the ASDU (deviation D27).
 func variationsFor(f family, asdu int) variationPair {
 	switch f {
 	case famAnalog:
 		switch asdu {
 		case 1:
-			return variationPair{1, 1}
+			return variationPair{1, 3} // g30v1 32-bit, g32v3 32-bit with time
 		case 2:
-			return variationPair{2, 2}
+			return variationPair{2, 4} // g30v2 16-bit, g32v4 16-bit with time
 		case 3:
 			return variationPair{3, 3}
 		case 4:
 			return variationPair{4, 4}
 		case 6:
-			return variationPair{6, 6}
+			return variationPair{6, 8} // g30v6 double, g32v8 double with time
 		case 7:
 			return variationPair{5, 7}
 		case 8:
 			return variationPair{6, 8}
-		default: // including 5
-			return variationPair{5, 5}
+		default: // including 5: g30v5 float, g32v7 float with time
+			return variationPair{5, 7}
 		}
 
 	case famCounter:

@@ -226,14 +226,26 @@ func main() {
 			InfoObjTimeZone: time.Local,
 		}
 		server.SetParams(&params)
-		server.SetConfig(cs104.Config{
+		srvCfg := cs104.Config{
 			ConnectTimeout0:   time.Duration(defInt(int(cc.T0), 10)) * time.Second,
 			SendUnAckLimitK:   uint16(defInt(int(cc.K), 12)),
 			SendUnAckTimeout1: time.Duration(defInt(int(cc.T1), 15)) * time.Second,
 			RecvUnAckLimitW:   uint16(defInt(int(cc.W), 8)),
 			RecvUnAckTimeout2: time.Duration(defInt(int(cc.T2), 10)) * time.Second,
 			IdleTimeout3:      time.Duration(defInt(int(cc.T3), 20)) * time.Second,
-		})
+		}
+		// go-iecp5 falls back to its default config when the parameters are
+		// invalid (out of range, or t2 >= t1), logging it only at debug level
+		chk := srvCfg
+		if err := chk.Valid(); err != nil {
+			jslog.Log(jslog.LevelBasic, "%s - Invalid k/w/t0..t3 parameters (%s): library defaults will be used instead.",
+				cc.Name, err.Error())
+		} else if 3*int(chk.RecvUnAckLimitW) > 2*int(chk.SendUnAckLimitK) {
+			// allowed, but the standard recommends w <= 2/3 k
+			jslog.Log(jslog.LevelBasic, "%s - Warning: w (%d) exceeds two thirds of k (%d), throughput may drop to one window per t2.",
+				cc.Name, chk.RecvUnAckLimitW, chk.SendUnAckLimitK)
+		}
+		server.SetConfig(srvCfg)
 		server.SetInfoObjTimeZone(time.Local)
 		if jslog.Level() >= jslog.LevelDebug {
 			server.LogMode(true)

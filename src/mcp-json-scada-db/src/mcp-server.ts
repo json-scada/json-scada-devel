@@ -15,27 +15,44 @@
  * along with this program. If not, see <http://www.gnu.org/licenses/>.
  */
 
-import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
-import { StdioServerTransport } from "@modelcontextprotocol/sdk/server/stdio.js";
-import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
+import { McpServer, createMcpHandler } from "@modelcontextprotocol/server";
+import { serveStdio } from "@modelcontextprotocol/server/stdio";
+import {
+  toNodeHandler,
+  localhostHostValidation,
+  localhostOriginValidation,
+} from "@modelcontextprotocol/node";
 import { createServer } from "node:http";
-import crypto from "node:crypto";
 import { registerPointsTools } from "./tools/points.js";
 import { registerCommandsTools } from "./tools/commands.js";
 import { registerCollectionsTools } from "./tools/collections.js";
 import { registerInspectTools } from "./tools/inspect.js";
 import { registerHistoryTools } from "./tools/history.js";
 import { registerStatusTools } from "./tools/status.js";
+import { registerDriverDocTools, registerDriverTools } from "./tools/drivers.js";
+import {
+  registerConnectionReadTools,
+  registerConnectionTools,
+} from "./tools/connections.js";
+import { registerTagTools } from "./tools/tags.js";
+import { registerAuditTools, registerSystemTools } from "./tools/system.js";
+import { AdminApiClient } from "./jsonscada/admin-api.js";
 import { ConnectionManager } from "./jsonscada/connection-manager.js";
 import { Log } from "./jsonscada/index.js";
 import packageInfo from "../package.json" with { type: "json" };
 
-// Initialize Connection Manager
-// We are not using redundancy management for the MCP server itself (manageRedundancy: false)
-const mgr = new ConnectionManager({ manageRedundancy: false });
+const ENV_PREFIX = packageInfo.config.envPrefix || "JS_MCPJSDB_";
+
+// Initialize Connection Manager (no redundancy control: active on every node)
+const mgr = new ConnectionManager();
+
+// Configuration and process management tools go through the AdminUI backend
+// API; they are only offered when admin credentials are configured.
+const adminApi = new AdminApiClient();
 
 // Builds a fully configured MCP server instance. A factory is needed because
-// each transport (stdio, or one per HTTP session) requires its own server.
+// the SDK serves each stdio connection / HTTP request from its own instance.
+// The same factory serves both protocol eras (2026-07-28 and 2025-era clients).
 function buildServer(): McpServer {
   const server = new McpServer({
     name: packageInfo.name || "mcp-json-scada-db",
@@ -48,6 +65,16 @@ function buildServer(): McpServer {
   registerInspectTools(server, mgr);
   registerHistoryTools(server, mgr);
   registerStatusTools(server, mgr);
+  registerDriverDocTools(server);
+  registerConnectionReadTools(server, mgr);
+  registerAuditTools(server, mgr);
+
+  if (adminApi.enabled) {
+    registerDriverTools(server, adminApi);
+    registerConnectionTools(server, adminApi);
+    registerTagTools(server, adminApi);
+    registerSystemTools(server, adminApi);
+  }
 
   // Resource: Schema
   server.registerResource(
@@ -78,6 +105,11 @@ function buildServer(): McpServer {
 }
 
 async function main() {
+  Log.log(
+    adminApi.enabled
+      ? `Admin tools enabled (AdminUI API ${adminApi.baseUrl}, user '${adminApi.user}')`
+      : `Admin tools disabled (set ${ENV_PREFIX}ADMIN_USERNAME and ${ENV_PREFIX}ADMIN_PASSWORD to enable)`
+  );
   // Start MongoDB connection (runs a reconnect loop in the background)
   mgr
     .run(() => {
@@ -89,81 +121,44 @@ async function main() {
     });
 
   const transportType =
-    process.env["MCP_TRANSPORT"] ||
+    process.env[ENV_PREFIX + "TRANSPORT"] ||
     (process.argv.includes("--http") ? "http" : "stdio");
 
   try {
     if (transportType === "http") {
       const bind =
-        process.env["BIND"] ||
+        process.env[ENV_PREFIX + "IP_BIND"] ||
         process.argv.find((arg) => arg.startsWith("--bind="))?.split("=")[1] ||
         "127.0.0.1";
       const portArg = process.argv
         .find((arg) => arg.startsWith("--port="))
         ?.split("=")[1];
-      const port = parseInt(portArg || process.env["PORT"] || "6001", 10);
+      const port = parseInt(portArg || process.env[ENV_PREFIX + "HTTP_PORT"] || "6001", 10);
 
-      // One transport (and server) per MCP session, keyed by session id
-      const transports: Record<string, StreamableHTTPServerTransport> = {};
+      // Stateless per-request handler: serves 2026-07-28 clients natively and
+      // 2025-era clients through the SDK's stateless legacy fallback.
+      const mcpHandler = toNodeHandler(createMcpHandler(() => buildServer()), {
+        onerror: (error) => console.error("HTTP request error:", error),
+      });
+
+      // DNS rebinding protection when bound to loopback only
+      const loopback = ["127.0.0.1", "localhost", "::1"].includes(bind);
+      const validateHost = localhostHostValidation();
+      const validateOrigin = localhostOriginValidation();
 
       const httpServer = createServer(async (req, res) => {
-        try {
-          const sessionId = req.headers["mcp-session-id"] as string | undefined;
-          let transport = sessionId ? transports[sessionId] : undefined;
-
-          if (!transport) {
-            if (sessionId) {
-              // session expired or unknown
-              res.statusCode = 404;
-              res.setHeader("Content-Type", "application/json");
-              res.end(
-                JSON.stringify({
-                  jsonrpc: "2.0",
-                  error: { code: -32001, message: "Session not found" },
-                  id: null,
-                })
-              );
-              return;
-            }
-            // new session: create a transport and a server for it
-            // (non-initialize requests without a session id are rejected by
-            // the transport itself)
-            const newTransport = new StreamableHTTPServerTransport({
-              sessionIdGenerator: () => crypto.randomUUID(),
-              onsessioninitialized: (sid) => {
-                transports[sid] = newTransport;
-                Log.log("MCP session initialized: " + sid, Log.levelDetailed);
-              },
-            });
-            newTransport.onclose = () => {
-              if (newTransport.sessionId) {
-                delete transports[newTransport.sessionId];
-                Log.log(
-                  "MCP session closed: " + newTransport.sessionId,
-                  Log.levelDetailed
-                );
-              }
-            };
-            await buildServer().connect(newTransport);
-            transport = newTransport;
-          }
-
-          await transport.handleRequest(req, res);
-        } catch (error) {
-          console.error("HTTP request error:", error);
-          if (!res.headersSent) {
-            res.statusCode = 500;
-            res.end("Internal Server Error");
-          }
-        }
+        if (loopback && (!validateHost(req, res) || !validateOrigin(req, res)))
+          return;
+        await mcpHandler(req, res);
       });
 
       httpServer.listen(port, bind, () => {
         Log.log(`MCP Server running on HTTP at http://${bind}:${port}`);
       });
     } else {
-      const transport = new StdioServerTransport();
-      await buildServer().connect(transport);
+      serveStdio(() => buildServer(), {
+        onerror: (error) => console.error("stdio error:", error),
+      });
       Log.log("MCP Server running on stdio");
     }
   } catch (error) {

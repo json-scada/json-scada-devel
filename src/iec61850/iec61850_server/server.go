@@ -117,8 +117,8 @@ func NewGateway(conn *ServerConnection, built *BuiltModel) (*Gateway, error) {
 	}
 
 	// server.New materialises the report control block instances into the
-	// model; their report identifiers need correcting before any client
-	// reads them.
+	// model; their report identifiers are filled in before any client reads
+	// them.
 	g.srv = server.New(built.Model, opts...)
 	if n := fixReportIDs(built.Model); n > 0 {
 		jslog.Log(jslog.LevelDetailed, "Report identifiers set on %d report control block instance(s).", n)
@@ -134,18 +134,14 @@ func NewGateway(conn *ServerConnection, built *BuiltModel) (*Gateway, error) {
 // fixReportIDs gives every materialised report control block instance an
 // RptID of its own: the object reference of that instance, in MMS notation.
 //
-// The library composes the default RptID from the *configured* control
-// block name, while the instances it materialises carry an index suffix —
-// so `brcbMX01` with two instances yields `brcbMX0101` and `brcbMX0102`,
-// both reporting `LD/LLN0$BR$brcbMX01`, a control block that does not
-// exist. IEC 61850-8-1 has the default RptID be the object reference of
-// the report control block, which is what libiec61850 (and therefore the
-// C# driver) sends; clients that match an incoming report to the control
-// block they enabled — IEDExplorer among them — cannot bind the report to
-// their model otherwise, and the values arrive unattached to any data
-// object. Two instances sharing one identifier cannot be told apart either.
+// The library leaves RptID empty and, as IEC 61850-8-1 prescribes, sends
+// the instance reference in its reports instead. A client that reads the
+// RptID attribute would still see an empty string, and one that matches
+// incoming reports against the RptID it read — IEDExplorer among them —
+// could not bind them to the block it enabled. libiec61850, and therefore
+// the C# driver, exposes the reference in the attribute itself, so this
+// writes it there too: what a client reads is what its reports carry.
 //
-// This walks the model after materialisation and writes the correct value.
 // It assumes the driver never configures an RptID of its own, which the
 // model builder does not.
 func fixReportIDs(m *model.Model) int {

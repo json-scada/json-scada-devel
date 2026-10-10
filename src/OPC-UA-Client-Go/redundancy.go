@@ -21,7 +21,7 @@
 //
 // parity: in this driver the active flag gates command execution only.
 // Acquisition and the MongoDB writer run on both nodes, exactly as in the
-// C# driver — see deviation D9 in README.md.
+// C# driver — see deviation D9 in DEVIATIONS.md.
 
 package main
 
@@ -48,7 +48,7 @@ var redundancy = &jsredundancy.Controller{}
 // parity: no OnActivate/OnDeactivate is supplied, because the active flag
 // gates command execution only. Acquisition and the MongoDB writer run on
 // both the active and the standby node, exactly as in the C# driver — see
-// deviation D9 in README.md.
+// deviation D9 in DEVIATIONS.md.
 func initRedundancy(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConnection) {
 	redundancy.Config = cfg
 	redundancy.DriverName = ProtocolDriverName
@@ -58,8 +58,8 @@ func initRedundancy(ctx context.Context, cfg jsconfig.Config, conns []*OPCUAConn
 			db.Collection(jsmongo.ProtocolConnectionsCollectionName), cfg, conns)
 	}
 	redundancy.StatusSuffix = func() string {
-		return fmt.Sprintf(" - Notification events: %d - Lost updates: %d",
-			CntNotificEvents.Load(), CntLostDataUpdates.Load())
+		return fmt.Sprintf(" - Notification events: %d - Lost updates: %d - Flood-dropped: %d",
+			CntNotificEvents.Load(), CntLostDataUpdates.Load(), CntFloodDropped.Load())
 	}
 }
 

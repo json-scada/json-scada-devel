@@ -1,6 +1,7 @@
 package main
 
 import (
+	"context"
 	"math"
 	"testing"
 
@@ -25,7 +26,7 @@ func sampleValue() IECValue {
 
 func TestTagFromParameters(t *testing.T) {
 	got := TagFromParameters(sampleValue())
-	want := "IEC61850;IED1;DemoProtCtrl/Obj1XCBR1.Pos[ST]"
+	want := "IED1;DemoProtCtrl/Obj1XCBR1.Pos[ST]"
 	if got != want {
 		t.Errorf("TagFromParameters = %q, want %q", got, want)
 	}
@@ -70,10 +71,15 @@ func TestNewRealtimeDocFields(t *testing.T) {
 		}
 	}
 
-	if doc["description"] != "IEC61850~IED1~DemoProtCtrl/Obj1XCBR1.Pos" {
+	// group1 the connection, group2 the logical device, group3 the logical
+	// node; the description starts with group1, which viewers strip.
+	if doc["description"] != "IED1~DemoProtCtrl~Obj1XCBR1~Pos" {
 		t.Errorf("description = %v", doc["description"])
 	}
-	if doc["group1"] != "IEC61850" || doc["group2"] != "IED1" || doc["group3"] != "ST" {
+	if doc["ungroupedDescription"] != "Pos" {
+		t.Errorf("ungroupedDescription = %v", doc["ungroupedDescription"])
+	}
+	if doc["group1"] != "IED1" || doc["group2"] != "DemoProtCtrl" || doc["group3"] != "Obj1XCBR1" {
 		t.Errorf("groups = %v/%v/%v", doc["group1"], doc["group2"], doc["group3"])
 	}
 	if doc["hiLimit"] != math.MaxFloat64 || doc["loLimit"] != -math.MaxFloat64 {
@@ -202,11 +208,18 @@ func TestNewCommandDoc(t *testing.T) {
 		UseSBO:     true,
 		Asdu:       "MMS_BOOLEAN",
 	}
-	if got := ct.Tag(); got != "IEC61850;IED1;DemoProtCtrl/Obj1CSWI1.Pos[CO]" {
+	if got := ct.Tag(); got != "IED1;DemoProtCtrl/Obj1CSWI1.Pos[CO]" {
 		t.Errorf("tag = %q", got)
 	}
 
 	doc := newCommandDoc(ct, 101000042, 101000007)
+
+	if doc["group1"] != "IED1" || doc["group2"] != "DemoProtCtrl" || doc["group3"] != "Obj1CSWI1" {
+		t.Errorf("groups = %v/%v/%v", doc["group1"], doc["group2"], doc["group3"])
+	}
+	if doc["description"] != "IED1~DemoProtCtrl~Obj1CSWI1~Pos command" {
+		t.Errorf("description = %v", doc["description"])
+	}
 
 	if doc["origin"] != "command" {
 		t.Errorf("origin = %v, want command", doc["origin"])
@@ -255,5 +268,59 @@ func TestNewCommandDoc(t *testing.T) {
 	// No supervised twin found: still commandable, just without feedback.
 	if a["supervisedOfCommand"] != 0.0 {
 		t.Errorf("unlinked command = %#v", a["supervisedOfCommand"])
+	}
+}
+
+// The groups come from the object reference even when the value carries a
+// display name of its own, which then becomes the ungrouped description.
+func TestNewRealtimeDocGroupsFromReference(t *testing.T) {
+	iv := sampleValue()
+	iv.Address = "IED1/MMXU1.A.phsA.cVal.mag.f"
+	iv.DisplayName = "Phase A current"
+	doc := newRealtimeDoc(iv, 101000001)
+	if doc["group1"] != "IED1" || doc["group2"] != "IED1" || doc["group3"] != "MMXU1" {
+		t.Errorf("groups = %v/%v/%v", doc["group1"], doc["group2"], doc["group3"])
+	}
+	if doc["ungroupedDescription"] != "Phase A current" {
+		t.Errorf("ungroupedDescription = %v", doc["ungroupedDescription"])
+	}
+	if doc["description"] != "IED1~IED1~MMXU1~Phase A current" {
+		t.Errorf("description = %v", doc["description"])
+	}
+}
+
+func TestSplitRef(t *testing.T) {
+	cases := []struct{ in, ld, ln, rest string }{
+		{"DemoProtCtrl/Obj1XCBR1.Pos", "DemoProtCtrl", "Obj1XCBR1", "Pos"},
+		{"IED1/MMXU1.A.phsA.cVal.mag.f", "IED1", "MMXU1", "A.phsA.cVal.mag.f"},
+		{"IED1/LLN0", "IED1", "", "LLN0"},
+		{"NoDevice", "", "", "NoDevice"},
+	}
+	for _, c := range cases {
+		ld, ln, rest := splitRef(c.in)
+		if ld != c.ld || ln != c.ln || rest != c.rest {
+			t.Errorf("splitRef(%q) = %q,%q,%q; want %q,%q,%q", c.in, ld, ln, rest, c.ld, c.ln, c.rest)
+		}
+	}
+}
+
+// A point that already has a tag is never inserted again, whatever that tag
+// is called: tags created before the naming changed ("IEC61850;<conn>;...")
+// are matched by object reference and functional constraint, which is what
+// preloadEntries records for every tag of the connection.
+func TestExistingTagIsMatchedByReferenceNotName(t *testing.T) {
+	iv := sampleValue()
+	conn := &Iec61850Connection{
+		ProtocolConnectionNumber: iv.ConnNumber,
+		InsertedTags:             map[string]bool{},
+	}
+	// What preloadEntries records for the old-named document
+	// {tag: "IEC61850;IED1;DemoProtCtrl/Obj1XCBR1.Pos[ST]",
+	//  protocolSourceObjectAddress: "DemoProtCtrl/Obj1XCBR1.Pos", protocolSourceCommonAddress: "ST"}.
+	conn.InsertedTags[pointKey("DemoProtCtrl/Obj1XCBR1.Pos", "ST")] = true
+
+	iv.CommonAddress = "st" // the FC case of a value does not matter
+	if m := maybeInsertTag(context.Background(), nil, []*Iec61850Connection{conn}, iv); m != nil {
+		t.Error("a point that already has a tag was inserted again")
 	}
 }

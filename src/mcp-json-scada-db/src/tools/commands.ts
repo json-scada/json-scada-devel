@@ -17,7 +17,7 @@
 
 import { z } from 'zod'
 import { Double } from 'mongodb'
-import type { McpServer } from '@modelcontextprotocol/sdk/server/mcp.js'
+import type { McpServer } from '@modelcontextprotocol/server'
 import { ConnectionManager } from '../jsonscada/connection-manager.js'
 import { Origin } from '../jsonscada/types.js'
 import { errorResult, notConnectedResult, textResult } from './util.js'
@@ -32,7 +32,7 @@ export function registerCommandsTools(
       description:
         'Send a command to a command point (origin=command). Queues the command for ' +
         'dispatch by the protocol driver and optionally waits for delivery confirmation.',
-      inputSchema: {
+      inputSchema: z.object({
         tag: z.string().describe('The tag name of the command point'),
         value: z.number().describe('The numeric value for the command'),
         username: z.string().optional().default('mcp-agent'),
@@ -46,7 +46,7 @@ export function registerCommandsTools(
           .describe(
             'Seconds to wait for the protocol driver to confirm delivery (0 = do not wait)'
           ),
-      },
+      }),
     },
     async ({ tag, value, username, waitSeconds }: any) => {
       if (!mgr.status.HintMongoIsConnected) return notConnectedResult()

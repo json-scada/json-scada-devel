@@ -253,19 +253,28 @@ func GetDocArray(doc bson.M, key string) []bson.M {
 }
 
 // GetBinaryMap reads a sub-document of binary values, which is how
-// iec61850_client persists the last report entry id per RCB.
+// iec61850_client persists the last report entry id per RCB. A nested
+// document decoded into a bson.M arrives as a bson.D, so both forms are
+// accepted. The result is never nil, so the caller can add to it even when
+// the document has no such field yet.
 func GetBinaryMap(doc bson.M, key string) map[string][]byte {
-	sub, ok := doc[key].(bson.M)
-	if !ok {
-		return nil
-	}
-	out := make(map[string][]byte, len(sub))
-	for k, v := range sub {
+	out := map[string][]byte{}
+	put := func(k string, v any) {
 		switch b := v.(type) {
 		case bson.Binary:
 			out[k] = b.Data
 		case []byte:
 			out[k] = b
+		}
+	}
+	switch sub := doc[key].(type) {
+	case bson.M:
+		for k, v := range sub {
+			put(k, v)
+		}
+	case bson.D:
+		for _, e := range sub {
+			put(e.Key, e.Value)
 		}
 	}
 	return out

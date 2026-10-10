@@ -26,7 +26,7 @@ As you can have multiple JSON-SCADA systems in the same computer server, each in
 * **_mongoConnectionString_** - Standard MongoDB URI connection string pointing to the database server. Please include the database name in this URI string (the same db name from the next parameter) and TLS options. See https://docs.mongodb.com/manual/reference/connection-string/. **Mandatory parameter**
 * **_mongoDatabaseName_** - Database name to be accessed in the MongoDB server. **Mandatory parameter**.
 
-The TLS parameters below are necessary for secure connecions, anyway please include the equivalent TLS options directly in the URI connection string. See https://www.mongodb.com/pt-br/docs/manual/reference/connection-string-options/#std-label-connections-connection-options.
+The TLS parameters below are necessary for secure connections, anyway please include the equivalent TLS options directly in the URI connection string. See https://www.mongodb.com/pt-br/docs/manual/reference/connection-string-options/#std-label-connections-connection-options.
 
 If you encounter secure connection problems, please report your findings.
 

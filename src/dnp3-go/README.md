@@ -14,14 +14,14 @@ Same configuration documents, same collections, same command line, same `stats` 
 An existing installation switches driver by changing which executable the process manager
 starts. No schema change is required.
 
-For the configuration reference — driver instances, connections, tag setup, the group and
-variation tables, the CROB duration codes — see the existing documentation, which applies
-unchanged:
+Each driver has a complete, standalone reference — configuration, tag setup, behaviour and
+troubleshooting — that does not depend on the C++ drivers' documentation:
 
-- [`src/dnp3/Dnp3ClientCpp/README.md`](../dnp3/Dnp3ClientCpp/README.md) for the client
-- [`src/dnp3/Dnp3Server/README.md`](../dnp3/Dnp3Server/README.md) for the server
+- [`cmd/dnp3client/README.md`](cmd/dnp3client/README.md) for the client
+- [`cmd/dnp3server/README.md`](cmd/dnp3server/README.md) for the server
 
-This file documents only what is specific to the Go implementation.
+This file covers what spans both: how to build and test them, where they differ from the C++
+drivers, and the engineering notes behind the less obvious decisions.
 
 ## Why
 
@@ -42,6 +42,17 @@ On Windows, `build.bat` does the same. The platform build scripts
 (`platform-linux/build.sh`, `platform-mac/build.sh`, `platform-windows/build.bat`) build both
 binaries automatically.
 
+> **Rebuild any binary built against go-dnp3 before v0.5.5.** Earlier releases had two command
+> faults:
+>
+> - Before v0.5.3 the CROB close and trip codes were transposed. The client sent a **trip where a
+>   close was meant** (and the reverse) for command durations 11, 13, 21 and 23, and the server read
+>   a close from any other master as 0. Plain pulse and latch commands (durations 1 to 4) were not
+>   affected.
+> - Before v0.5.4 the client wrote every command's point index in one octet: **a command for a
+>   point above 255 operated point index mod 256** (300 operated 44). Commands to points 0–255 were
+>   not affected.
+
 ## Running
 
 ```
@@ -55,8 +66,8 @@ client falls back to `~/json-scada/conf/json-scada.json` and the server to
 are 0 = none, 1 = basic, 2 = detailed, 3 = debug; a level given on the command line takes
 precedence over the one in the instance document.
 
-To select the Go drivers from the AdminUI process manager, set the instance's variant to
-`dnp3go` or `dnp3servergo` (see `driver-catalog.js`). The C++ binaries remain the default.
+The AdminUI process manager starts a `DNP3` instance as `dnp3-client` and a `DNP3_SERVER` instance
+as `dnp3-server` (see `driver-catalog.js`).
 
 ## Licence
 
@@ -90,80 +101,40 @@ Intentional differences. Everything not listed here is meant to behave identical
 | D24 | The server answers device attribute reads (group 0) with the driver's identity and the point counts of the connection. opendnp3 has no group 0 support, so the C++ server answers none of it. Read-only, and nothing else in JSON-SCADA is affected. |
 | D25 | Auto-created command destinations get a matching output status destination: a CROB at group 12 index N is mirrored by group 10 index N on the command's supervised twin, and an analog output block at group 41 index N by group 40 index N. The C++ server creates the command alone, leaving a master able to operate a point but not read it back. |
 | D26 | An active connection uses every entry of `ipAddresses` as an alternative address for the same device, trying them in turn until one answers. The C++ drivers use only the first and their documentation says so. |
+| D27 | Every change of a digital or analog value is reported as an event **with its time**. The C++ server picks the untimed analog event variations (g32v1, g32v2, g32v5, g32v6) for `protocolDestinationASDU` 1, 2, 5 and 6 — 5 being the default and 6 what auto-creation uses — so a master learns that an analog changed but not when. The Go server uses the timed variation of the same width and type instead (g32v3, g32v4, g32v7, g32v8); the static variation still follows the ASDU. See [`cmd/dnp3server/README.md`](cmd/dnp3server/README.md#values-quality-and-time). |
 
 
 
 D13, D14, D17, D18 and D19 were opened against the C++ server and then **withdrawn**: the defects
-they described were fixed in `Dnp3Server` v0.1.1 instead, so both implementations now agree. See
-[`DNP3_GO_DRIVERS_PLAN.md`](DNP3_GO_DRIVERS_PLAN.md).
+they described were fixed in `Dnp3Server` v0.1.1 instead, so both implementations now agree.
 
-## Auto-created destinations
+## Behaviour documented in the driver READMEs
 
-With `autoCreateTags` set, the connection publishes tags it is not already distributing, in the
-order the C++ server uses: CROB commands, analog output commands, then supervised digitals and
-analogs.
+These were once described here and are now in the driver that owns them:
 
-Each command also gets its **output status**, so a master can read back the state of what it
-operated:
+| Topic | Where |
+| --- | --- |
+| Automatic destinations and output status of commands | [server](cmd/dnp3server/README.md#automatic-destinations) |
+| Events, classes, variations and time stamps | [server](cmd/dnp3server/README.md#object-families-and-variations) |
+| Device attributes (group 0) | [server](cmd/dnp3server/README.md#device-attributes) |
+| Automatic tag creation | [client](cmd/dnp3client/README.md#automatic-tag-creation) |
+| Several outstations on one endpoint (multi-drop) | [client](cmd/dnp3client/README.md#multi-drop), [server](cmd/dnp3server/README.md#several-outstations-on-one-endpoint) |
+| Alternative addresses of one device | [client](cmd/dnp3client/README.md#tcp-active-and-tls-active), [server](cmd/dnp3server/README.md#tcp-active-and-tls-active) |
 
-| Command | Distributed as | Readback | On which tag |
-| --- | --- | --- | --- |
-| digital command | group 12 index N, variation 1 | group 10 index N, variation 2 | the command's `supervisedOfCommand` twin |
-| analog command | group 41 index N, variation 3 | group 40 index N, variation 3 | the command's `supervisedOfCommand` twin |
+### Why the server reports device attribute capacity itself
 
-The status carries the **same object address as the command**, because that is what the protocol
-means: a CROB at index N operates binary output N, and group 10 index N is that output's state.
-The address is therefore not this driver's to choose. If something already occupies it, the clash
-is logged and no status is created — the command still works, and silently moving a configured
-point would be worse than a missing readback.
+go-dnp3 derives the point counts and fragment sizes on its own, but only those, and it leaves out a
+point type the database does not have. The server reports the whole block for every type instead,
+empty ones included, so a master can tell "none" from "not said". Configured attributes replace
+derived ones variation by variation, and `TestAttributesCoverDerived` checks that every variation
+the library derives is one the server answers, so the two are never mixed in one response.
+go-dnp3 releases before v0.5.2 used an older numbering for the derived attributes (the binary
+input count as 226, "frozen counters supported" in IEEE 1815); this module needs v0.5.5 or later.
 
-Two consequences worth knowing:
-
-- **A command with no supervised twin gets no status.** `supervisedOfCommand` is what the schema
-  calls the tag "where the command feedback manifests"; a command without one is what the schema
-  calls a blind command, and there is nothing whose state could be reported.
-- **A twin is published as an output status rather than as an input.** The supervised passes run
-  after the command passes and skip tags already distributed on the connection, so a controllable
-  point appears once, as group 10 or 40, rather than also as group 1 or 30. A controllable point
-  is an output.
-
-Re-running auto-create adds nothing: a command already distributed is not a candidate, and a twin
-already carrying its status destination is left alone.
-
-## Device attributes
-
-The server answers a read of group 0, which is how a master asks an outstation what it is. A
-commissioning engineer facing several identical-looking gateways reads this instead of trusting a
-drawing.
-
-| Variation | Attribute | Value |
-| --- | --- | --- |
-| 252 | manufacturer name | `{json:scada}` |
-| 250 | product name and model | `JSON-SCADA DNP3 Outstation Server (Go)` |
-| 242 | software version | the driver version |
-| 243 | hardware version | the host platform, e.g. `linux/amd64` — the nearest honest thing to hardware for a software outstation, and what you want when a gateway misbehaves on one machine and not another |
-| 247 | device name | the connection's `name`, which is what the tag names and every log line already use |
-| 245 | location | the connection's `description`, omitted when it is empty |
-| 246 | ID code | the `protocolConnectionNumber`, unique across every driver of an installation |
-
-The library adds the point counts and the fragment sizes from the session it built — number of
-binary inputs, analog inputs, counters and so on — so those cannot drift from the database they
-describe. A point type the connection does not carry is left unreported rather than reported as
-zero: "none" and "I did not say" are different answers.
-
-Two standard attributes are deliberately **not** answered:
-
-- **Subset level and conformance (249).** Nothing here has been through certified conformance
-  testing, and go-dnp3's own device profile says the same. Answering it would be a claim, not a
-  fact.
-- **Serial number (248).** A software gateway has no serial number, and inventing one from a
-  connection number invites somebody to key an asset register off it.
-
-A master reading an attribute the outstation does not report learns that it does not report it,
-which is true. A plausible wrong value propagates.
-
-Nothing is configurable from MongoDB: no schema change was needed, and every value is either
-fixed or already in the connection document.
+Not reported, deliberately: the **serial number** (248), because a software gateway has none and
+inventing one from a connection number invites somebody to key an asset register off it, and the
+**subset level and conformance** (249), because nothing here has been through certified
+conformance testing.
 
 ## Quirks reproduced on purpose
 
@@ -172,58 +143,11 @@ depends on them.
 
 | ID | Quirk |
 | --- | --- |
-| Q1 | The client files frozen counters under `protocolSourceCommonAddress` **23**, the event group, not the 21 the README's table names. Changing it would orphan every existing frozen counter tag. |
+| Q1 | The client files frozen counters under `protocolSourceCommonAddress` **23**, the event group, not the 21 the C++ driver's README names. Changing it would orphan every existing frozen counter tag. |
 | Q2 | Timestamps outside 2001-09-09 … 2033-05-18 are zeroed before `sourceDataUpdate` is written. It is a guard against a device reporting a wild time; it will also discard legitimate timestamps from 2033. |
-| Q3 | CROB durations 10, 12, 20 and 22 appear in the driver README's table but were never implemented by the C++ switch. They produce a block that operates nothing. A guess here would operate the wrong coil of a breaker, so they are left as they are and documented instead. |
+| Q3 | CROB durations 10, 12, 20 and 22 appear in the C++ driver's README but were never implemented by the C++ switch. They produce a block that operates nothing. A guess here would operate the wrong coil of a breaker, so they are left as they are and documented instead. |
 | Q4 | `sourceDataUpdate.asduAtSource` always ends in variation 0, and `causeOfTransmissionAtSource` is always 20. |
-
-## Multi-drop
-
-Several `protocolConnections` documents that repeat one endpoint — the same
-`ipAddresses`, the same `ipAddressLocalBind`, or the same `portName` — and differ in their link
-addresses share one physical channel, exactly as with the C++ drivers.
-
-The sharing is done by the library's `multidrop.Bus`, which routes inbound frames by link
-address, serialises transmission, and holds the half-duplex line for one master's exchange at a
-time. Two things follow that are worth knowing:
-
-- **The bus does not pace the sessions against each other.** Three masters polling a slow line
-  every second will spend their time waiting for each other. The driver logs a warning at startup
-  when the configured scan intervals on a shared line imply more exchanges per second than the
-  line can carry, but the intervals are still yours to choose.
-- **Arbitration is on for a shared line and off for a dedicated socket.** A single connection on
-  its own TCP, TLS or UDP endpoint needs no turn taking; a serial line always does, and so does
-  any endpoint carrying more than one connection, because that is what a terminal server fronting
-  a real serial line looks like.
-
-## Alternative addresses
-
-For an active connection, `ipAddresses` is a list of ways to reach **one** device — a second NIC,
-a redundant gateway, a standby route — not a list of devices. The driver tries them in order:
-
-- an attempt that fails moves straight to the next address, with no delay, because the whole
-  point of a second address is that failing over should cost one dial rather than a retry
-  interval;
-- the backoff is paid once the entire list has been tried, not once per address, so three dead
-  addresses do not take three backoffs to get through;
-- a connection that succeeds stays where it is and only moves when that address stops answering.
-
-Blank entries are ignored; a list with nothing usable in it is a configuration error.
-
-Failing over across three addresses where only the last answers:
-
-```
-FOCLI - Connection attempt to tcp-client 127.0.0.1:20560 failed: ... actively refused it.
-FOCLI - Connection attempt to tcp-client 127.0.0.1:20561 failed: ... actively refused it.
-FOCLI - Channel state: OPEN
-```
-
-Both refusals and the successful connection land within a millisecond of each other, and
-`numOpenFail` counts each attempt.
-
-This applies to `TCP Active` and `TLS Active`. A passive connection listens on one bind address,
-and for it `ipAddresses` remains the list of clients allowed to connect; UDP and serial each have
-one endpoint.
+| Q6 | The server ignores `timeSyncMode` and accepts every clock write from a master, as the C++ server's `DefaultOutstationApplication` does. Refusing it is not harmless: the outstation asks for the time (NEED_TIME) until it is set, so a master keeps writing it, and the refusal (NO_FUNC_CODE_SUPPORT) would be repeated on every connection. Event times come from the tags, not from this clock, so accepting the write changes nothing but the indication. |
 
 ## Large outstations
 
@@ -332,7 +256,9 @@ go vet ./... && gofmt -l .
 The loopback tests run a real master against a real outstation through `channel.Pipe` — the
 whole link, transport, application and object stack — with no socket, no MongoDB and no
 hardware. `TestServerMultidrop` puts two outstations and two masters on one line and checks each
-master reaches only its own station.
+master reaches only its own station. `TestChangesAreTimedEvents` changes digital and analog points
+under every analog ASDU and checks that each change reaches the master as a timed event carrying
+the field time, the local time or the update time, in that order of preference.
 
 ### Running the serial port test
 

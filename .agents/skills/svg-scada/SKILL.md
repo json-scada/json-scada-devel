@@ -30,7 +30,7 @@ Multiple behaviors can be combined by embedding multiple JSON objects in the sam
 - Targets `<text>` SVG elements.
 - The `<text>` element should contain a `<tspan>` child element where the format string is placed (e.g., `%5.2f`, `.3s`, `off|on|failed`).
 - **Fields:** `"attr":"get"`, `"tag"`, `align` (e.g., `"align":"Right"`), `type` (e.g., `"type":"Good"`). All fields are required to ensure proper parsing and functionality.
-- **JSON:** `{"attr":"get", "tag":"TAG_NAME", align":"Right", "type":"Good"}`
+- **JSON:** `{"attr":"get", "tag":"TAG_NAME", "align":"Right", "type":"Good"}`
 - **Format Strings should be put in the tspan element:**
   - Printf (`%5.2f`), d3 (`.3s`), Boolean (`off|on|failed`).
   - Flow arrows: append `u^`, `d^`, `r^`, `l^`, `a^` to show direction.
@@ -51,7 +51,7 @@ Multiple behaviors can be combined by embedding multiple JSON objects in the sam
 ### 2. Color (Fill, Stroke, & Attributes)
 
 - **Target:** SVG drawing objects (Exclude `<g>`).
-- **Fields:** `"attr":"color"`, `"tag"`, `"list"` as an array of `{"data":"VALUE_LIMIT"}`, `{"param":"COLOR_CODE"}`, `{"tag","TAG_NAME"}`.
+- **Fields:** `"attr":"color"`, `"tag"`, `"list"` as an array of `{"data":"VALUE_LIMIT"}`, `{"param":"COLOR_CODE"}`, `{"tag":"TAG_NAME"}`.
 - **Color Syntax:** `"fill|stroke"`, e.g., `"red|green"`, `"|yellow"` (stroke only), `"black|"` (fill only).
 - **Limit Constants:** `"a"` (alarm), `"f"` (failed), `"1"` (off), `"2"` (on).
 - **JSON:** `{"attr":"color", "tag":"TAG_NAME", "list":[{"data":"1", "param":"red|", "tag":"%n"}, {"data":"2", "param":"green|", "tag":"%n"}, {"data":"f", "param":"gray|", "tag":"%n"}]}`. All fields are required to ensure proper parsing and functionality.
