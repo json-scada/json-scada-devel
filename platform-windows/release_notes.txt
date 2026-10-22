@@ -1,6 +1,6 @@
     {json:scada} 
     
-    © 2008-present Ricardo L. Olsen 
+    © 2019-present Ricardo L. Olsen 
     (https://www.linkedin.com/in/ricardo-olsen/)
 
     This program is free software: you can redistribute it and/or modify
@@ -24,24 +24,19 @@ Acknowledgements:
   PostgreSQL - https://www.postgresql.org/
   TimescaleDB - https://github.com/timescale/timescaledb, https://www.timescale.com/
   Grafana - https://github.com/grafana/grafana, https://grafana.com/
-  Lib60870, Lib61850 By MZ Automation - https://github.com/mz-automation/lib60870, https://www.mz-automation.de/
-  ICCP Client by Fernando Covatti - https://github.com/fcovatti/iccp
-  Opendnp3 - https://github.com/dnp3/opendnp3
   PLC4X - https://github.com/apache/plc4x
   Go-IEC61850 - https://github.com/dscsystems/go-iec61850
-  Libplctag - https://github.com/libplctag/libplctag
   Node-opcua - https://github.com/node-opcua/node-opcua
   OPC-UA - https://github.com/OPCFoundation/UA-.NETStandard
   Telegraf - https://github.com/influxdata/telegraf
   Inkscape - https://inkscape.org
   Inkscape + SAGE - https://sourceforge.net/projects/sage-scada
-  Inkscape + SAGE (updated) - https://gitlab.com/lvta0909/inkscape
-  Inkscape + SAGE (rebased) - https://gitlab.com/ricardolo/inkscape-rebased
+  Inkscape + SAGE (updated) - https://gitlab.com/ricardolo/inkscape-scadavis-editor
   SVG Edit - https://github.com/SVG-Edit/svgedit
-  Chromium by "The Chromium Authors"
-  Chromium x86 binaries - http://chromium.woolyss.com/
   NGINX - http://nginx.org/
   Node.js - https://nodejs.org/
+  Node-RED - https://nodered.org/
+  Metabase - https://www.metabase.com/
   Express - https://expressjs.com/pt-br/
   Dotnet - https://dotnet.microsoft.com/download
   Golang - https://golang.org/
@@ -105,7 +100,7 @@ We respect the GPL license of the upstream work by making the source code of the
   modifications to the original Inkscape and SAGE code available at:
 
 Source Code:
-  https://gitlab.com/ricardolo/inkscape-rebased/
+  https://gitlab.com/ricardolo/inkscape-scadavis-editor
 
 -------------------------------------------------------------------
   
@@ -115,14 +110,14 @@ Recommended Operating Systems:
 * Windows Server 2019+.
 
 Can also run on:
-* RHEL/Rocky/Oracle/Alma Linux 9.4 x86/64 or ARM64 (scripted installation).
+* RHEL/Rocky/Oracle/Alma Linux 9/10 x86/64 or ARM64 (scripted installation).
+* Ubuntu 24.04 LTS x86/64 or ARM64 (scripted installation).
 * Other Linux distros, Mac OSX, x86/64, ARM64, (no installer provided).
 * See documentation.
 
 Client user interface can be used on:
 * Modern IOS and Android devices.
 * Any device with an updated HTML5 browser like Chrome, Chromium, Firefox, Edge, Safari, Brave, Opera, Vivaldi.
-* Internet Explorer and non-Chromium based Edge are explicitly not supported!
 
 -------------------------------------------------------------------
 
