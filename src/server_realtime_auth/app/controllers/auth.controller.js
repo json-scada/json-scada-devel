@@ -72,6 +72,48 @@ const generateClsid = () => {
   return `{${generateHex(8)}-${generateHex(4)}-4${generateHex(3)}-${(Math.floor(Math.random() * 4) + 8).toString(16)}${generateHex(3)}-${generateHex(12)}}`
 }
 
+// Update documents built from request bodies. Mongoose treats top-level keys
+// beginning with '$' as update operators, so a body like
+// { _id, $set: { roles: [...] } } or { _id, $inc: { tokenVersion: -1 } } would
+// slip past every check made on the plain fields. Bodies are reduced to plain
+// fields (an allowlist where one exists) and ids must be scalars, so a filter
+// like { _id: { $ne: null } } cannot select other documents.
+function withoutOperators(body) {
+  const out = {}
+  for (const [k, v] of Object.entries(body || {}))
+    if (!k.startsWith('$') && !k.includes('.')) out[k] = v
+  return out
+}
+function pickFields(body, allowed) {
+  const out = {}
+  for (const k of allowed)
+    if (Object.prototype.hasOwnProperty.call(body || {}, k)) out[k] = body[k]
+  return out
+}
+function scalarId(v) {
+  return typeof v === 'string' || typeof v === 'number' ? v : null
+}
+const USER_UPDATE_FIELDS = ['username', 'email', 'password', 'isLDAPUser']
+const ROLE_UPDATE_FIELDS = [
+  'name',
+  'isAdmin',
+  'changePassword',
+  'sendCommands',
+  'enterAnnotations',
+  'enterNotes',
+  'enterManuals',
+  'enterLimits',
+  'substituteValues',
+  'ackEvents',
+  'ackAlarms',
+  'disableAlarms',
+  'cimEngineering',
+  'group1List',
+  'group1CommandList',
+  'displayList',
+  'maxSessionDays',
+]
+
 // Error text for an admin route answer: what the admin can act on (invalid
 // field, duplicate name, missing file), never internals such as stack traces,
 // paths of the server or database messages; the full error goes to the log.
@@ -242,7 +284,8 @@ exports.updateTag = async (req, res) => {
   try {
     registerUserAction(req, 'updateTag')
 
-    if ('_id' in req.body) {
+    req.body = withoutOperators(req.body)
+    if ('_id' in req.body && scalarId(req.body._id) !== null) {
       let _id = req.body._id
       delete req.body._id
       const csTag = await findCommStatusTag(_id)
@@ -1196,6 +1239,9 @@ exports.updateProtocolConnection = async (req, res) => {
 
   try {
     // findOneAndUpdate returns the pre-update document (used to detect instance moves)
+    req.body = withoutOperators(req.body)
+    if (scalarId(req.body._id) === null)
+      return res.status(200).send({ error: 'Invalid connection id!' })
     const oldConn = await ProtocolConnection.findOneAndUpdate(
       { _id: req.body._id },
       req.body
@@ -1406,6 +1452,9 @@ exports.listProtocolDriverInstances = async (req, res) => {
 
 exports.updateProtocolDriverInstance = async (req, res) => {
   try {
+    req.body = withoutOperators(req.body)
+    if (scalarId(req.body._id) === null)
+      return res.status(200).send({ error: 'Invalid driver instance id!' })
     req.body.protocolDriverInstanceNumber = Math.floor(
       req.body.protocolDriverInstanceNumber
     )
@@ -1661,16 +1710,22 @@ const LAST_ADMIN_MESSAGE =
 exports.updateRole = async (req, res) => {
   Log.log('Update role')
   try {
+    const id = scalarId(req.body?._id)
+    if (id === null) {
+      res.status(200).send({ error: 'Invalid role id!' })
+      return
+    }
+    const fields = pickFields(req.body, ROLE_UPDATE_FIELDS)
     if (
-      'isAdmin' in req.body &&
-      !req.body.isAdmin &&
-      (await remainingAdmins({ withoutRole: req.body._id })) === 0
+      'isAdmin' in fields &&
+      fields.isAdmin !== true &&
+      (await remainingAdmins({ withoutRole: id })) === 0
     ) {
       res.status(200).send({ error: LAST_ADMIN_MESSAGE })
       return
     }
     registerUserAction(req, 'updateRole')
-    await Role.findOneAndUpdate({ _id: req.body._id }, req.body)
+    await Role.updateOne({ _id: id }, { $set: fields })
     UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
@@ -1682,43 +1737,43 @@ exports.updateRole = async (req, res) => {
 exports.updateUser = async (req, res) => {
   Log.log('Update user: ' + req?.body?.username)
   try {
-    if ('username' in req.body) {
-      const current = await User.findById(req.body._id).select('username').lean().exec()
-      if (current?.username === 'admin' && req.body.username !== 'admin') {
-        res.status(200).send({ error: 'Cannot rename admin user!' })
-        return
-      }
+    const id = scalarId(req.body?._id)
+    if (id === null) {
+      res.status(200).send({ error: 'Invalid user id!' })
+      return
     }
-    if (
-      'password' in req.body &&
-      req.body.password !== '' &&
-      req.body.password !== null &&
-      passwordTooShort(req.body.password)
-    ) {
+    // plain allowed fields only: roles change through userAddRole/RemoveRole,
+    // the token version only moves forward (and only here, with the password)
+    const fields = pickFields(req.body, USER_UPDATE_FIELDS)
+    if (fields.password === '' || fields.password === null) delete fields.password
+    if ('password' in fields && passwordTooShort(fields.password)) {
       res.status(200).send({ error: PASSWORD_TOO_SHORT })
       return
     }
-    registerUserAction(req, 'updateUser')
-    if (
-      'password' in req.body &&
-      req.body.password !== '' &&
-      req.body.password !== null
-    )
-      req.body.password = await bcrypt.hash(req.body.password, BCRYPT_COST)
-    else delete req.body['password']
-    delete req.body['roles']
-    // the token version only moves forward (a stale copy must not revive old sessions)
-    delete req.body['tokenVersion']
-    if (
-      'username' in req.body &&
-      (await usernameTaken(req.body.username, req.body._id))
-    ) {
-      res.status(200).send({ error: 'User name already exists!' })
-      return
+    if ('username' in fields) {
+      if (typeof fields.username !== 'string' || fields.username.trim() === '') {
+        res.status(200).send({ error: 'Invalid user name!' })
+        return
+      }
+      const current = await User.findById(id).select('username').read('primary').lean().exec()
+      if (current?.username === 'admin' && fields.username !== 'admin') {
+        res.status(200).send({ error: 'Cannot rename admin user!' })
+        return
+      }
+      if (await usernameTaken(fields.username, id)) {
+        res.status(200).send({ error: 'User name already exists!' })
+        return
+      }
     }
-    await User.findOneAndUpdate({ _id: req.body._id }, req.body)
-    // a password set by an admin ends the sessions of that user
-    if ('password' in req.body) await UserRights.bumpTokenVersion(req.body._id)
+    registerUserAction(req, 'updateUser')
+    const update = { $set: fields }
+    if ('password' in fields) {
+      fields.password = await bcrypt.hash(fields.password, BCRYPT_COST)
+      // a password set by an admin ends the sessions of that user: the new
+      // hash and the token version change in one write
+      update.$inc = { tokenVersion: 1 }
+    }
+    await User.updateOne({ _id: id }, update)
     UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {

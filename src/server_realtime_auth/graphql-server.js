@@ -52,6 +52,8 @@ const MaxQueryDepth = 10 // deepest selection nesting accepted in a query
 // schema introspection (__schema/__type) nests type references deeply (the
 // standard GraphiQL/Apollo query has 15 levels): it gets a limit of its own
 const MaxIntrospectionDepth = 30
+// selections in a query document (fields, fragments): bounds validation work
+const MaxQuerySelections = 5000
 
 // errors of writes nobody waits for (events, range checks) must not go unhandled
 function logBgError(e) {
@@ -66,15 +68,25 @@ function asPointKey(id) {
   return null
 }
 
-// Validation rule refusing queries nested deeper than maxDepth (fragments included)
-function depthLimitRule(maxDepth, maxIntrospectionDepth) {
+// Validation rule refusing queries nested deeper than maxDepth (fragments included).
+// Each fragment is measured once (memoized), so a query reusing fragments
+// many times costs no more than its size; the selections walked are also
+// counted and a document with more than maxSelections of them is refused,
+// which bounds the work of this rule.
+function depthLimitRule(maxDepth, maxIntrospectionDepth, maxSelections) {
   return (context) => {
     const fragments = {}
-    let introspectionDepth = 0
-    const depthOf = (selectionSet, visited, inIntrospection) => {
-      if (!selectionSet) return 0
-      let max = 0
+    const memo = new Map() // `${name}|${inIntrospection}` -> { depth, intro }
+    const IN_PROGRESS = { depth: 0, intro: 0 } // fragment cycles count as 0
+    let walked = 0
+    class TooComplex extends Error {}
+
+    // { depth, intro }: depth of the selection set, deepest introspection subtree
+    const walk = (selectionSet, inIntrospection) => {
+      const out = { depth: 0, intro: 0 }
+      if (!selectionSet) return out
       for (const sel of selectionSet.selections) {
+        if (++walked > maxSelections) throw new TooComplex()
         let d = 0
         if (sel.kind === Kind.FIELD) {
           const name = sel.name.value
@@ -84,49 +96,67 @@ function depthLimitRule(maxDepth, maxIntrospectionDepth) {
             sel.selectionSet
           ) {
             // measured against its own limit, counts as one level here
-            const id = 1 + depthOf(sel.selectionSet, visited, true)
-            if (id > introspectionDepth) introspectionDepth = id
+            const r = walk(sel.selectionSet, true)
+            out.intro = Math.max(out.intro, 1 + r.depth, r.intro)
             d = 1
-          } else
-            d = sel.selectionSet
-              ? 1 + depthOf(sel.selectionSet, visited, inIntrospection)
-              : 1
-        } else if (sel.kind === Kind.INLINE_FRAGMENT)
-          d = depthOf(sel.selectionSet, visited, inIntrospection)
-        else if (sel.kind === Kind.FRAGMENT_SPREAD) {
-          const name = sel.name.value
-          if (!visited.has(name) && fragments[name])
-            d = depthOf(
-              fragments[name].selectionSet,
-              new Set([...visited, name]),
-              inIntrospection
-            )
+          } else if (sel.selectionSet) {
+            const r = walk(sel.selectionSet, inIntrospection)
+            out.intro = Math.max(out.intro, r.intro)
+            d = 1 + r.depth
+          } else d = 1
+        } else if (sel.kind === Kind.INLINE_FRAGMENT) {
+          const r = walk(sel.selectionSet, inIntrospection)
+          out.intro = Math.max(out.intro, r.intro)
+          d = r.depth
+        } else if (sel.kind === Kind.FRAGMENT_SPREAD) {
+          const r = fragmentDepth(sel.name.value, inIntrospection)
+          out.intro = Math.max(out.intro, r.intro)
+          d = r.depth
         }
-        if (d > max) max = d
+        if (d > out.depth) out.depth = d
       }
-      return max
+      return out
     }
+    const fragmentDepth = (name, inIntrospection) => {
+      const key = name + '|' + inIntrospection
+      const known = memo.get(key)
+      if (known) return known
+      if (!fragments[name]) return IN_PROGRESS // unknown: reported by graphql itself
+      memo.set(key, IN_PROGRESS)
+      const r = walk(fragments[name].selectionSet, inIntrospection)
+      memo.set(key, r)
+      return r
+    }
+
     return {
       Document(doc) {
         for (const def of doc.definitions)
           if (def.kind === Kind.FRAGMENT_DEFINITION) fragments[def.name.value] = def
-        for (const def of doc.definitions)
-          if (def.kind === Kind.OPERATION_DEFINITION) {
-            introspectionDepth = 0
-            const depth = depthOf(def.selectionSet, new Set(), false)
-            if (depth > maxDepth)
-              context.reportError(
-                new GraphQLError(
-                  `Query is nested too deeply (${depth} levels, maximum ${maxDepth})`
+        try {
+          for (const def of doc.definitions)
+            if (def.kind === Kind.OPERATION_DEFINITION) {
+              const { depth, intro } = walk(def.selectionSet, false)
+              if (depth > maxDepth)
+                context.reportError(
+                  new GraphQLError(
+                    `Query is nested too deeply (${depth} levels, maximum ${maxDepth})`
+                  )
                 )
-              )
-            if (introspectionDepth > maxIntrospectionDepth)
-              context.reportError(
-                new GraphQLError(
-                  `Introspection query is nested too deeply (${introspectionDepth} levels, maximum ${maxIntrospectionDepth})`
+              if (intro > maxIntrospectionDepth)
+                context.reportError(
+                  new GraphQLError(
+                    `Introspection query is nested too deeply (${intro} levels, maximum ${maxIntrospectionDepth})`
+                  )
                 )
-              )
-          }
+            }
+        } catch (e) {
+          if (!(e instanceof TooComplex)) throw e
+          context.reportError(
+            new GraphQLError(
+              `Query is too complex (more than ${maxSelections} selections)`
+            )
+          )
+        }
       },
     }
   }
@@ -1737,7 +1767,9 @@ async function initGQLServer(app, dbParam, authentication) {
     typeDefs,
     resolvers,
     introspection: true, // only for signed-in users (the token is checked first)
-    validationRules: [depthLimitRule(MaxQueryDepth, MaxIntrospectionDepth)],
+    validationRules: [
+      depthLimitRule(MaxQueryDepth, MaxIntrospectionDepth, MaxQuerySelections),
+    ],
   })
   await srvApollo.start()
 
