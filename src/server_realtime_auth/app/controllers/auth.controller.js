@@ -35,6 +35,7 @@ const AdmZip = require('adm-zip')
 const { Client, Filter, DN } = require('ldapts')
 const { checkToken } = require('../middlewares/authJwt')
 const { clientAddress } = require('../services/client-address')
+const { stripSessionToken } = require('../../proxy-utils')
 const crypto = require('node:crypto')
 const UserRights = require('../services/user-rights')
 const ProcessManager = require('../services/process-manager')
@@ -76,8 +77,10 @@ const generateClsid = () => {
 // would be forwarded next to ours and could impersonate another user)
 exports.addXWebAuthUser = (req) => {
   delete req.headers['x-webauth-user']
-  let ck = checkToken(req)
-  if (ck !== false) req.headers['x-webauth-user'] = ck?.username
+  // verifyToken already checked the token
+  const ck = req.token || checkToken(req)
+  if (ck) req.headers['x-webauth-user'] = ck.username
+  stripSessionToken(req)
 }
 
 exports.listUserActions = async (req, res) => {
@@ -1849,6 +1852,11 @@ exports.signup = async (req, res) => {
 const SIGNIN_MAX_FAILURES = 5
 const SIGNIN_LOCK_MS = 15 * 60 * 1000
 const SIGNIN_MAX_TRACKED = 10000 // bound of the failure table
+// failures of one client address, whatever the user names (password spraying)
+const SIGNIN_MAX_FAILURES_PER_ADDRESS = 30
+// password checks running at once (bcrypt and LDAP binds are expensive)
+const SIGNIN_MAX_CONCURRENT = 8
+let signinsInProgress = 0
 const MAX_USERNAME_LOGGED = 64 // characters of a failed user name kept in logs
 const signinFailures = new Map() // key -> { count, first, lockedUntil }
 
@@ -1869,12 +1877,12 @@ function purgeSigninFailures() {
     if (now - e.first > SIGNIN_LOCK_MS && e.lockedUntil < now)
       signinFailures.delete(k)
 }
-function signinFailed(key) {
+function signinFailed(key, max = SIGNIN_MAX_FAILURES) {
   const now = Date.now()
   let e = signinFailures.get(key)
   if (!e || now - e.first > SIGNIN_LOCK_MS) e = { count: 0, first: now, lockedUntil: 0 }
   e.count++
-  if (e.count >= SIGNIN_MAX_FAILURES) e.lockedUntil = now + SIGNIN_LOCK_MS
+  if (e.count >= max) e.lockedUntil = now + SIGNIN_LOCK_MS
   if (!signinFailures.has(key) && signinFailures.size >= SIGNIN_MAX_TRACKED) {
     purgeSigninFailures()
     // still full: drop the oldest entries (Map keeps insertion order)
@@ -1984,7 +1992,8 @@ exports.signin = async (req, res) => {
     }
 
     const attemptKey = signinKey(req)
-    if (signinLocked(attemptKey)) {
+    const addressKey = 'address|' + clientAddress(req)
+    if (signinLocked(attemptKey) || signinLocked(addressKey)) {
       Log.log(
         'Sign-in locked for ' +
           req.body.username.slice(0, MAX_USERNAME_LOGGED) +
@@ -1996,8 +2005,14 @@ exports.signin = async (req, res) => {
         message: 'Too many failed attempts, try again later.',
       })
     }
+    if (signinsInProgress >= SIGNIN_MAX_CONCURRENT)
+      return res.status(503).send({
+        ok: false,
+        message: 'Server busy, try again in a moment.',
+      })
     const failed = () => {
       signinFailed(attemptKey)
+      signinFailed(addressKey, SIGNIN_MAX_FAILURES_PER_ADDRESS)
       UserActionsQueue.enqueue({
         username: req.body.username.slice(0, MAX_USERNAME_LOGGED),
         action: 'signinFailed',
@@ -2006,38 +2021,50 @@ exports.signin = async (req, res) => {
       })
       return res
         .status(200)
-        .cookie('x-access-token', null)
+        .clearCookie('x-access-token', {
+          httpOnly: true,
+          secure: isSecureRequest(req),
+          sameSite: 'lax',
+        })
         .send({ ok: false, message: SIGNIN_FAIL_MESSAGE })
     }
 
-    // Try LDAP authentication first if enabled
-    if (config.ldap.enabled) {
-      user = await authenticateWithLDAP(req.body.username, req.body.password)
-    }
-
-    // Fall back to local authentication if LDAP auth failed or is disabled
-    if (!user) {
-      user = await User.findOne({
-        username: req.body.username,
-      })
+    signinsInProgress++
+    try {
+      // A local account is checked here only: its password never goes to the
+      // directory, and an LDAP login can never take it over. An LDAP account
+      // (or an unknown name, when LDAP is enabled) is checked by the
+      // directory only: a password stored for it is never accepted.
+      const local = await User.findOne({ username: req.body.username })
         .populate('roles', '-__v')
         .exec()
 
-      const passwordIsValid = await bcrypt.compare(
-        req.body.password,
-        user?.password || DUMMY_HASH
-      )
-
-      if (!user || !user.password || !passwordIsValid) return failed()
-
-      // hashes made with a lower cost (older versions) are upgraded now
-      if (bcrypt.getRounds(user.password) < BCRYPT_COST)
-        User.updateOne(
-          { _id: user._id, password: user.password },
-          { $set: { password: await bcrypt.hash(req.body.password, BCRYPT_COST) } }
+      if (local && !local.isLDAPUser) {
+        const passwordIsValid = await bcrypt.compare(
+          req.body.password,
+          local.password || DUMMY_HASH
         )
-          .exec()
-          .catch((e) => Log.log('Password rehash: ' + e.message))
+        if (!local.password || !passwordIsValid) return failed()
+        user = local
+
+        // hashes made with a lower cost (older versions) are upgraded now
+        if (bcrypt.getRounds(user.password) < BCRYPT_COST)
+          User.updateOne(
+            { _id: user._id, password: user.password },
+            { $set: { password: await bcrypt.hash(req.body.password, BCRYPT_COST) } }
+          )
+            .exec()
+            .catch((e) => Log.log('Password rehash: ' + e.message))
+      } else if (config.ldap.enabled) {
+        user = await authenticateWithLDAP(req.body.username, req.body.password)
+        if (!user) return failed()
+      } else {
+        // no such user (or an LDAP user while LDAP is off): same time as a check
+        await bcrypt.compare(req.body.password, DUMMY_HASH)
+        return failed()
+      }
+    } finally {
+      signinsInProgress--
     }
     signinFailures.delete(attemptKey)
 
@@ -2069,11 +2096,10 @@ exports.signout = async (req, res) => {
 
   return res
     .status(200)
-    .cookie('x-access-token', null, {
+    .clearCookie('x-access-token', {
       httpOnly: true,
       secure: isSecureRequest(req),
       sameSite: 'lax',
-      maxAge: 0,
     })
     .send({
       ok: true,
@@ -2200,6 +2226,10 @@ const PLATFORM_SCRIPTS = {
     : 'restart_processes.sh',
 }
 
+// limits of an uploaded project zip once unpacked (uploads are up to 100 MB)
+const MAX_PROJECT_UNPACKED_BYTES = 1024 * 1024 * 1024
+const MAX_PROJECT_ENTRIES = 10000
+
 // Kill a script that never finishes instead of leaking child processes.
 const SCRIPT_TIMEOUT_MS = 5 * 60 * 1000
 
@@ -2322,6 +2352,8 @@ exports.exportProject = async (req, res) => {
 // import project file: download, extract zip project file, import collections and move some files
 exports.importProject = async (req, res) => {
   Log.log('Import project')
+  let zipPath = null // removed on any failure before the import starts
+  let started = false
   try {
     if (!req.files || !req.files.projectFileData)
       throw new Error('No project file uploaded!')
@@ -2356,7 +2388,7 @@ exports.importProject = async (req, res) => {
     if (!fs.existsSync(projectPath))
       fs.mkdirSync(projectPath, { recursive: true, mode: 0o700 })
 
-    const zipPath = path.join(projectPath, safeName)
+    zipPath = path.join(projectPath, safeName)
     await upload.mv(zipPath)
     const zip = new AdmZip(zipPath)
 
@@ -2368,7 +2400,14 @@ exports.importProject = async (req, res) => {
     // separator is a path separator on Windows and an ordinary character on
     // Linux, and adm-zip writes entry names verbatim).
     const resolvedBase = path.resolve(projectPath)
-    for (const entry of zip.getEntries()) {
+    const entries = zip.getEntries()
+    // zip bomb guard: limits on the unpacked size and number of entries
+    if (entries.length > MAX_PROJECT_ENTRIES)
+      throw new Error('Project file has too many entries!')
+    const unpacked = entries.reduce((n, e) => n + (Number(e.header?.size) || 0), 0)
+    if (unpacked > MAX_PROJECT_UNPACKED_BYTES)
+      throw new Error('Project file too large when unpacked!')
+    for (const entry of entries) {
       const entryName = entry.entryName
       // directory entries legitimately end with '/', everything else must be a
       // plain relative path of non-empty, non-traversing segments
@@ -2397,19 +2436,52 @@ exports.importProject = async (req, res) => {
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
 
+    // the extracted files hold the whole configuration (users, connection
+    // passwords): remove them, and the zip, once the import is over
+    const cleanup = () => {
+      for (const p of [
+        zipPath,
+        ...entries
+          .filter((e) => !e.isDirectory)
+          .map((e) => path.resolve(projectPath, e.entryName)),
+      ])
+        fs.unlink(p, (e) => {
+          if (e && e.code !== 'ENOENT')
+            Log.log('Could not remove ' + p + ': ' + e.message)
+        })
+    }
+
     // Fixed script, no shell, no arguments taken from the request.
-    const cmd = spawnPlatformScript('importProject')
+    let cmd
+    try {
+      cmd = spawnPlatformScript('importProject')
+    } catch (e) {
+      cleanup()
+      throw e
+    }
+    started = true
+    let spawnError = null
+    cmd.on('error', (e) => (spawnError = e))
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
-      fs.unlink(zipPath, (e) => {
-        if (e) Log.log('Could not remove ' + zipPath + ': ' + e.message)
+      cleanup()
+      registerUserAction(req, 'importProject', {
+        body: { projectFileName: safeName, exitCode: code },
       })
-      registerUserAction(req, 'importProject')
+      if (spawnError || code !== 0) {
+        res.status(200).send({
+          error:
+            'Project import failed (' +
+            (spawnError ? spawnError.message : 'exit code ' + code) +
+            '), see the server log!',
+        })
+        return
+      }
       res.status(200).send({ error: false })
-      return
     })
   } catch (err) {
     Log.log(err)
+    if (zipPath && !started) fs.unlink(zipPath, () => {})
     res.status(200).send({ error: err.message || String(err) })
   }
 }
@@ -2773,6 +2845,15 @@ async function authenticateWithLDAP(username, password) {
 
     // Find or create user in local database
     let user = await User.findOne({ username: userData.username })
+    // the directory may answer with a name of its own (case, other attribute):
+    // a local account with that name is never turned into this LDAP user
+    if (user && !user.isLDAPUser) {
+      Log.log(
+        'LDAP - Refused: a local (non LDAP) user has the name ' +
+          userData.username
+      )
+      return null
+    }
 
     const defaultRole = await Role.findOne({ name: config.ldap.defaultRole })
 

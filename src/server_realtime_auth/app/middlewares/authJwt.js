@@ -1,10 +1,7 @@
 const Log = require('../../simple-logger')
 const jwt = require('jsonwebtoken')
 const config = require('../config/auth.config.js')
-const db = require('../models')
 const UserRights = require('../services/user-rights')
-const User = db.user
-const Role = db.role
 
 const OPC_BAD_IDENTITY_TOKEN_INVALID = 0x80200000
 const OPC_BAD_IDENTITY_TOKEN_REJECTED = 0x80210000
@@ -32,6 +29,9 @@ function opcDenied(reqHandle, statusName, text, code) {
   }
 }
 
+// tokens are signed by this server with HS256 only (jwt.sign default)
+const VERIFY_OPTS = { algorithms: ['HS256'] }
+
 function getToken(req) {
   return req.headers['x-access-token'] || req.cookies?.['x-access-token']
 }
@@ -41,7 +41,7 @@ const checkToken = (req) => {
   const token = getToken(req)
   if (!token || typeof token !== 'string') return false
   try {
-    return jwt.verify(token, config.secret)
+    return jwt.verify(token, config.secret, VERIFY_OPTS)
   } catch (err) {
     return false
   }
@@ -85,7 +85,7 @@ const verifyToken = (req, res, next) => {
       'Access not allowed. No token provided'
     )
 
-  jwt.verify(token, config.secret, (err, decoded) => {
+  jwt.verify(token, config.secret, VERIFY_OPTS, (err, decoded) => {
     if (err)
       return deny(
         'BadIdentityTokenRejected',
@@ -156,6 +156,9 @@ const isAdmin = async (req, res, next) => {
   try {
     const rights = await UserRights.getCurrentRights(tok, { fresh: true })
     if (rights && rights.isAdmin) {
+      req.userId = tok.id
+      req.token = tok
+      req.rights = rights
       next()
       return
     }
@@ -175,6 +178,9 @@ const isUser = async (req, res, next) => {
   try {
     const rights = await UserRights.getCurrentRights(tok)
     if (rights) {
+      req.userId = tok.id
+      req.token = tok
+      req.rights = rights
       next()
       return
     }
@@ -182,6 +188,25 @@ const isUser = async (req, res, next) => {
   } catch (err) {
     sendLookupError(res, err)
   }
+}
+
+// Pages (not API calls) for signed-in users: without a valid session the
+// browser is sent to the sign-in page instead of getting a JSON answer.
+const isUserPage = async (req, res, next) => {
+  const tok = checkToken(req)
+  try {
+    const rights = tok === false ? null : await UserRights.getCurrentRights(tok)
+    if (rights) {
+      req.userId = tok.id
+      req.token = tok
+      req.rights = rights
+      return next()
+    }
+  } catch (err) {
+    return sendLookupError(res, err)
+  }
+  if (req.method === 'GET' || req.method === 'HEAD') return res.redirect('/login')
+  res.status(401).send({ ok: false, message: 'Require sign-in!' })
 }
 
 // rights read afresh from the database, null when unavailable or not signed in
@@ -225,14 +250,7 @@ const hasCimEngineering = async (req) => {
   const tok = checkToken(req)
   if (tok === false) return false
   try {
-    if (!(await UserRights.getCurrentRights(tok))) return false
-    const user = await User.findById(tok.id).exec()
-    if (!user) return false
-    const n = await Role.countDocuments({
-      _id: { $in: user.roles },
-      cimEngineering: true,
-    }).exec()
-    return n > 0
+    return !!(await UserRights.getCurrentRights(tok))?.cimEngineering
   } catch (err) {
     Log.log(err)
     return false
@@ -254,6 +272,7 @@ const authJwt = {
   hasRight,
   isAdmin,
   isUser,
+  isUserPage,
   canSendCommands,
   canSendCommandTo,
   hasCimEngineering,

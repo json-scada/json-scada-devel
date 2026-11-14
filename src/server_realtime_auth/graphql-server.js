@@ -1495,7 +1495,7 @@ const resolvers = {
                   value: 0,
                   valueString: '$stateTextFalse',
                   timeTagAtSource: null,
-                  TimeTagAtSourceOk: null,
+                  timeTagAtSourceOk: null,
                 },
               },
             ]
@@ -1530,7 +1530,7 @@ const resolvers = {
                   value: 0,
                   valueString: '$stateTextFalse',
                   timeTagAtSource: null,
-                  TimeTagAtSourceOk: null,
+                  timeTagAtSourceOk: null,
                 },
               },
             ]

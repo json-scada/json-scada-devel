@@ -3,7 +3,7 @@ const httpProxy = require('express-http-proxy')
 const fs = require('fs')
 const path = require('path')
 const { createProxyMiddleware } = require('http-proxy-middleware')
-const { withMountedUrl } = require('../../proxy-utils')
+const { withMountedUrl, stripSessionToken } = require('../../proxy-utils')
 const { authJwt } = require('../middlewares')
 const controller = require('../controllers/user.controller')
 const authController = require('../controllers/auth.controller')
@@ -132,6 +132,10 @@ module.exports = function (
   app.use(
     '/supervisor',
     [authJwt.verifyToken, authJwt.isAdmin],
+    (req, _, next) => {
+      stripSessionToken(req)
+      next()
+    },
     supervisorProxy
   )
 
@@ -176,6 +180,12 @@ module.exports = function (
     } catch (e) {
       return res.status(400).send({ error: 'Bad request' })
     }
+    // Windows opens 'a.svg.', 'a.svg ' and 'a.svg::$DATA' as 'a.svg': such
+    // names would pass the extension test below without being in the list
+    if (/[:\\]|[. ]$/.test(name)) {
+      Log.log('Display access denied: ' + name)
+      return res.status(403).send({ error: 'Access to display denied!' })
+    }
     if (!/\.svg$/i.test(name) || list.includes(name)) return next()
     Log.log('Display access denied: ' + name)
     res.status(403).send({ error: 'Access to display denied!' })
@@ -203,6 +213,12 @@ module.exports = function (
   app.use('/login', express.static('../AdminUI/dist'))
   app.use('/dashboard', express.static('../AdminUI/dist'))
   app.use('/admin', express.static('../AdminUI/dist'))
+
+  const escapeHtml = (t) =>
+    String(t).replace(
+      /[&<>"']/g,
+      (c) => ({ '&': '&amp;', '<': '&lt;', '>': '&gt;', '"': '&quot;', "'": '&#39;' })[c]
+    )
 
   // Directory served by the custom developments routes below.
   const customDevPath = path.join(
@@ -243,14 +259,16 @@ module.exports = function (
         )
         return
       }
-      app.use(routePath, express.static(folderPath))
+      app.use(routePath, authJwt.isUserPage, express.static(folderPath))
       Log.log(`Created static route for: ${routePath}`)
     })
   } catch (error) {
     console.error('Error setting up custom development routes:', error)
   }
 
-  app.use('/custom-developments', (req, res) => {
+  // the apps and their list are for signed-in users (the data they read is
+  // restricted by the user's rights anyway)
+  app.use('/custom-developments', authJwt.isUserPage, (req, res) => {
     try {
       // A request for a specific example that got here matched no static route,
       // i.e. the example is not built. Answer 404 instead of rendering the index
@@ -317,7 +335,7 @@ module.exports = function (
                       .map(
                         (folder) => `
                         <li>
-                            <a href="/custom-developments/${folder}">${folder}</a>
+                            <a href="/custom-developments/${encodeURIComponent(folder)}/">${escapeHtml(folder)}</a>
                         </li>
                     `
                       )

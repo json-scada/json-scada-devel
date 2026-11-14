@@ -66,6 +66,22 @@ function mountPathFilter(mountPath) {
   }
 }
 
+// The session token of this server is not for the proxied apps: it is removed
+// from the forwarded request (header and cookie), so a proxied app (or whoever
+// controls it) never gets a token valid for JSON-SCADA. Other cookies stay.
+function stripSessionToken(req) {
+  delete req.headers['x-access-token']
+  const ck = req.headers.cookie
+  if (typeof ck !== 'string') return
+  const kept = ck
+    .split(';')
+    .filter((c) => c.split('=')[0].trim() !== 'x-access-token')
+    .join(';')
+    .trim()
+  if (kept === '') delete req.headers.cookie
+  else req.headers.cookie = kept
+}
+
 // Token check for websocket upgrades, that do not pass through the express middlewares.
 function checkUpgradeToken(req) {
   let token = req.headers['x-access-token']
@@ -80,7 +96,7 @@ function checkUpgradeToken(req) {
   if (!token) return false
 
   try {
-    return jwt.verify(token, config.secret)
+    return jwt.verify(token, config.secret, { algorithms: ['HS256'] })
   } catch (err) {
     return false
   }
@@ -334,6 +350,7 @@ function attachProxyUpgrade(httpServer, proxy, mountPath, label) {
     // node lowercases incoming header names: replace anything the client sent
     delete req.headers['x-webauth-user']
     if (decoded?.username) req.headers['x-webauth-user'] = decoded.username
+    stripSessionToken(req)
 
     proxy.upgrade(req, socket, head)
   })
@@ -355,6 +372,7 @@ function attachLogioUpgrade(httpServer, logioProxy) {
 }
 
 module.exports = {
+  stripSessionToken,
   NODERED_MOUNT_PATH,
   NODERED_DEFAULT_SERVER,
   N8N_MOUNT_PATH,

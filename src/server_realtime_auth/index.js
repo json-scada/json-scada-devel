@@ -169,7 +169,21 @@ function logBgError(e) {
 
 // last chance to store the queued user actions when the process ends
 let flushOnExit = async () => {}
-async function exitAfterFlush(code) {
+let httpServerRef = null // set once listening
+const ShutdownGraceMs = 5000 // time given to requests in progress on a stop
+let exiting = false
+async function exitAfterFlush(code, graceful = false) {
+  if (exiting) return
+  exiting = true
+  // a stop: no new connections, the requests in progress may finish
+  if (graceful && httpServerRef) {
+    const closed = new Promise((resolve) => httpServerRef.close(() => resolve()))
+    httpServerRef.closeIdleConnections?.()
+    await Promise.race([
+      closed,
+      new Promise((resolve) => setTimeout(resolve, ShutdownGraceMs)),
+    ])
+  }
   try {
     await Promise.race([
       flushOnExit(),
@@ -195,7 +209,7 @@ process.on('unhandledRejection', (reason) => {
 for (const sig of ['SIGTERM', 'SIGINT'])
   process.on(sig, () => {
     Log.log('Received ' + sig + ', exiting')
-    exitAfterFlush(0)
+    exitAfterFlush(0, true)
   })
 
 const DoInsertCommandAsSOE = true
@@ -208,6 +222,19 @@ const MaxHistoryRowsPerNode = 10000 // max historian rows returned per requested
 const MaxEventRows = 100000 // max rows returned by an events (soeData) query
 const UserActionsFlushMs = 1000 // interval to write the queued user actions to mongodb
 const UserActionsBatch = 500 // user actions written per insert
+const MaxFilteredReadRows = 100000 // max points returned by a ContentFilter read
+// fields of the points returned by a ContentFilter read
+const FilteredReadFields = Object.fromEntries(
+  ['_id', 'tag', 'type', 'value', 'valueString', 'valueDefault', 'invalid',
+    'timeTag', 'timeTagAtSource', 'timeTagAtSourceOk', 'timeTagAlarm',
+    'alarmed', 'alarmRange', 'alarmState', 'alarmDisabled', 'frozen', 'isEvent',
+    'transit', 'group1', 'group2', 'group3', 'description',
+    'ungroupedDescription', 'hiLimit', 'loLimit', 'hysteresis',
+    'stateTextTrue', 'stateTextFalse', 'unit', 'annotation', 'notes',
+    'commandOfSupervised', 'supervisedOfCommand', 'origin', 'priority'].map(
+    (f) => [f, 1]
+  )
+)
 // fields of a point read before a property write (the rest is not needed)
 const PropertyWriteFields = Object.fromEntries(
   ['_id', 'tag', 'type', 'group1', 'value', 'description', 'unit', 'priority',
@@ -251,7 +278,7 @@ function maskConnectionString(cs) {
     })
     .catch((err) => {
       console.error('Connection error', err)
-      process.exit()
+      process.exit(1) // a failure: the process manager restarts the server
     })
 
   const PROXIED_PREFIXES = ['/grafana', '/metabase', '/nodered', '/n8n', '/log-io', '/supervisor']
@@ -331,6 +358,7 @@ function maskConnectionString(cs) {
   const httpServer = app.listen(HTTP_PORT, IP_BIND, () => {
     Log.log('listening on ' + HTTP_PORT)
   })
+  httpServerRef = httpServer
 
   // websocket upgrades do not pass through the express middlewares, proxy them here
   attachNoderedUpgrade(httpServer, noderedProxy)
@@ -960,7 +988,7 @@ function maskConnectionString(cs) {
                           value: 0,
                           valueString: '$stateTextFalse',
                           timeTagAtSource: null,
-                          TimeTagAtSourceOk: null,
+                          timeTagAtSourceOk: null,
                         },
                       },
                     ],
@@ -1001,7 +1029,7 @@ function maskConnectionString(cs) {
                           value: 0,
                           valueString: '$stateTextFalse',
                           timeTagAtSource: null,
-                          TimeTagAtSourceOk: null,
+                          timeTagAtSourceOk: null,
                         },
                       },
                     ]
@@ -1770,6 +1798,8 @@ function maskConnectionString(cs) {
                   frozen: 1,
                   type: 1,
                   annotation: 1,
+                  notes: 1,
+                  transit: 1,
                   origin: 1,
                   group1: 1,
                   beepType: 1,
@@ -1811,7 +1841,7 @@ function maskConnectionString(cs) {
           // if there is a content filter, it takes precedence over NodesToRead lists
           if ('ContentFilter' in req.body.Body) {
             sort = { group1: 1, group2: 1 }
-            projection = null
+            projection = { projection: FilteredReadFields }
             query = {}
             let grp1 = null
             let grp2 = null
@@ -1908,11 +1938,20 @@ function maskConnectionString(cs) {
             })
           }
 
+          // a filtered query of a user restricted to some stations reads only
+          // their points (the database does the filtering, not this process)
+          if (
+            'ContentFilter' in req.body.Body &&
+            userRights.group1List.length > 0
+          )
+            query = { $and: [query, { group1: { $in: userRights.group1List } }] }
+
           try {
             const results = await db
               .collection(COLL_REALTIME)
               .find(query, projection)
               .sort(sort)
+              .limit('ContentFilter' in req.body.Body ? MaxFilteredReadRows : 0)
               .toArray()
 
             if (results) {
@@ -2131,7 +2170,7 @@ function maskConnectionString(cs) {
                       origin: node.origin,
                       timeTagAtSourceOk:
                         'timeTagAtSourceOk' in node
-                          ? node.TimeTagAtSourceOk
+                          ? node.timeTagAtSourceOk
                           : null,
                       type: node.type,
                     },
@@ -2630,21 +2669,21 @@ function maskConnectionString(cs) {
           // cap the number of rows returned by the historian
           let rowLimit = parseInt(limitValues, 10)
           if (isNaN(rowLimit) || rowLimit < 1) rowLimit = MaxHistoryRowsPerNode
-          rowLimit =
-            Math.min(rowLimit, MaxHistoryRowsPerNode) * allowedTags.length
+          // a limit for each tag: one busy tag cannot take the rows of the others
+          rowLimit = Math.min(rowLimit, MaxHistoryRowsPerNode)
 
           // all request-supplied values below are bound as query parameters
           // ($1..$n): never build this query by string concatenation
           let query =
-            'SELECT tag, value, flags, ' +
-            'time_tag, ' +
-            'time_tag_at_source ' +
+            'SELECT h.tag, h.value, h.flags, h.time_tag, h.time_tag_at_source ' +
+            'FROM unnest($3::text[]) AS t(tag) ' +
+            'CROSS JOIN LATERAL (' +
+            'SELECT tag, value, flags, time_tag, time_tag_at_source ' +
             'FROM hist ' +
-            'WHERE time_tag>=$1 AND ' +
-            'time_tag<=$2 AND ' +
-            'tag = ANY($3) ' +
-            'ORDER BY tag asc, time_tag ASC ' +
-            'LIMIT $4'
+            'WHERE hist.tag = t.tag AND time_tag>=$1 AND time_tag<=$2 ' +
+            'ORDER BY time_tag ASC LIMIT $4' +
+            ') AS h ' +
+            'ORDER BY h.tag ASC, h.time_tag ASC'
           let queryParams = [startTs, endTs, allowedTags, rowLimit]
 
           if (startTs.getTime() === endTs.getTime()) {

@@ -417,10 +417,12 @@ To each user can be attributed a set of roles. Each right in each user role are 
 - Tag names may not begin with a number (or a signed number): `createTag`/`updateTag` refuse them, because a point id that is a number or a digit string is read as a point key.
 - The audit trail (_userActions_) never stores secrets: any field named like a password, passphrase, secret, token, credential or api key is replaced by `***`. Display saves are audited with name and size only, sign-outs only for a valid session.
 - While MongoDB is unavailable, users whose rights are cached keep working; others get HTTP 503 with `unavailable: true` (the AdminUI keeps the session) or the OPC status _BadServerNotConnected_.
-- Sign-in is throttled: 5 failed attempts of the same client address for the same user name lock that pair for 15 minutes (kept in memory). Failures are audited as _signinFailed_ user actions and the answer does not tell whether the user exists. The client address is the connection's, unless the connection comes from a trusted proxy (_JS_TRUSTED_PROXIES_), whose _X-Real-IP_ / _X-Forwarded-For_ is then used.
+- Sign-in is throttled: 5 failed attempts of the same client address for the same user name lock that pair for 15 minutes, and 30 failed attempts of one client address (any user names) lock that address for 15 minutes (kept in memory). At most 8 password checks run at once; more simultaneous sign-ins get HTTP 503 (try again).
+- A local user (not created by LDAP) is checked against its stored password only, also when LDAP is enabled: its password is never sent to the directory, and an LDAP login can never take over a local account of the same name (it is refused). An LDAP user is checked by the directory only: a password stored for it is never accepted. Failures are audited as _signinFailed_ user actions and the answer does not tell whether the user exists. The client address is the connection's, unless the connection comes from a trusted proxy (_JS_TRUSTED_PROXIES_), whose _X-Real-IP_ / _X-Forwarded-For_ is then used.
 - Users restricted to some stations (_group1List_) only get the rows of their points from _/queryJSON_, and the displays of their _displayList_ from _/svg_. Special `$$` commands need `$$` in a non-empty _group1CommandList_.
 - GraphQL (_/apollo_): the token is checked before the body is read, queries nested deeper than 10 levels are refused (schema introspection, `__schema`/`__type`, has a limit of 30 of its own), and the protocol connection and driver instance queries are for admin users.
-- The Node-RED editor (_/nodered_), n8n (_/n8n_), the log viewers (_/log-io_, _/supervisor_) and their websocket channels are for admin users only.
+- The Node-RED editor (_/nodered_), n8n (_/n8n_), the log viewers (_/log-io_, _/supervisor_) and their websocket channels are for admin users only. The session token (_x-access-token_ cookie or header) is removed from every request forwarded to a proxied app (Grafana, Metabase, Node-RED, n8n, log viewers); they identify the user by _X-WebAuth-User_.
+- The custom developments (_/custom-developments_) are for signed-in users; without a session the browser is sent to _/login_.
 - The session cookies are _SameSite=Lax_ (and _Secure_ when the request came over https, also behind a proxy sending _X-Forwarded-Proto_, as the HTTPS nginx templates do: `proxy_set_header X-Forwarded-Proto $scheme;`). Creating, updating and deleting tags, connections and driver instances accept only POST.
 - Request bodies are limited to 2 MB, except for the project import, CIM-EMS model upload/requests and display save routes (100 MB, token checked before the body is read).
 
@@ -464,6 +466,9 @@ Notes on how the login name is used:
 For connection to the PostgreSQL historian, it is possible to use the standard _Libpq_ environment variables.
 
 - https://www.postgresql.org/docs/current/libpq-envars.html
+
+- _**JS_PG_CONNECT_TIMEOUT_MS**_ [Integer] - Time limit to open a historian connection. **Default=5000**.
+- _**JS_PG_STATEMENT_TIMEOUT_MS**_ [Integer] - Time limit of a historian query (the client gives up 5 s later). **Default=30000**.
 
 ### Command line arguments
 
