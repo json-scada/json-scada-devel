@@ -273,7 +273,7 @@ Do not rename existing tags to fit the conventions. Tag names are referenced by 
 * _**_substituted_**_ [Boolean] - When true, indicates that the value is substituted locally by the operator. **Mandatory parameter**.
 * _**_alarmDisabled_**_ [Boolean] - When true, indicates that alarms are disabled for the point. **Mandatory parameter**.
 * _**_annotation_**_ [String] - Blocking annotation text (reason command for blocking). **Mandatory parameter**.
-* _**_commandBlocked_**_ [Boolean] - When true, the command is disabled by the operator. **Mandatory parameter**.
+* _**_commandBlocked_**_ [Boolean] - When true, the command is disabled by the operator. **Mandatory parameter**. _server_realtime_auth_ (`/Invoke/` and GraphQL) refuses a command while the command point, or the supervised point it acts on (_supervisedOfCommand_), has _commandBlocked_ true or a non-empty blocking _annotation_; only points with _origin_ `command` accept commands.
 * _**_notes_**_ [String] - Documental notes text about the point. **Mandatory parameter**.
 * _**_commissioningRemarks_**_ [String] - Remarks about the point commissioning. **Mandatory parameter**.
 
@@ -562,7 +562,7 @@ RBAC roles (model `app/models/role.model.js`); seed in `mongo_seed/roles.json`. 
 * _**_substituteValues_**_ [Boolean] - May substitute values.
 * _**_ackEvents_**_, _**_ackAlarms_**_, _**_disableAlarms_**_ [Boolean] - May acknowledge events, acknowledge alarms, disable alarms.
 * _**_group1List_**_ [Array of String] - _group1_ values the role can see. Empty = all.
-* _**_group1CommandList_**_ [Array of String] - _group1_ values the role can command. Empty = all. A role with a list can send special `$$` commands (no point) only when the list contains `$$`.
+* _**_group1CommandList_**_ [Array of String] - _group1_ values the role can command. Empty = all the stations the user can see: a user restricted by _group1List_ can only command those stations (when both lists are given, a station must be in both). Special `$$` commands (no point) are allowed to a user restricted by either list only when _group1CommandList_ contains `$$`.
 * _**_displayList_**_ [Array of String] - Display files (e.g. `kaw2.svg`) the role can open; enforced for the `.svg` files under `/svg`. Empty = all; admins open any display.
 * _**_cimEngineering_**_ [Boolean] - CIM-EMS engineering: upload and activate network models, approve binding revisions, download CIM-EMS artifacts. Checked in addition to _isAdmin_. Default false.
 * _**_maxSessionDays_**_ [Double] - Session (JWT) lifetime in days. Default 3.

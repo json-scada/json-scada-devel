@@ -31,6 +31,7 @@ const { ObjectId, Double } = require('mongodb')
 const { getPgPool } = require('./pg-pool') // historian pool shared with /Invoke/
 const { authJwt } = require('./app/middlewares')
 const { canSendCommands, canSendCommandTo } = require('./app/middlewares/authJwt.js')
+const { findCommandPoint, commandRefusal } = require('./app/services/command-guard')
 const UserActionsQueue = require('./userActionsQueue')
 const UserRights = require('./app/services/user-rights')
 const { clientAddress } = require('./app/services/client-address')
@@ -45,7 +46,8 @@ const EventsRemoveGuardSeconds = 20
 const DoInsertCommandAsSOE = true
 const CommandSentAsSOESymbol = '⚙️➡️'
 const MaxQueryLimit = 20000
-const MaxHistoryLimit = 50000
+const MaxHistoryLimit = 50000 // max historical values per tag
+const MaxHistoryTotalRows = 500000 // max historical values in one answer
 const MaxQueryDepth = 10 // deepest selection nesting accepted in a query
 // schema introspection (__schema/__type) nests type references deeply (the
 // standard GraphiQL/Apollo query has 15 levels): it gets a limit of its own
@@ -240,7 +242,7 @@ const typeDefs = `#graphql
     "Query sequence of events (SOE) data. Defaults to the last hour when no time range is given."
     soeEvents(filter: SoeFilter, limit: Int = 1000, ascending: Boolean = false): [SoeEvent!]!
 
-    "Query historical values (PostgreSQL/TimescaleDB 'hist' table) for a list of tags."
+    "Query historical values (PostgreSQL/TimescaleDB 'hist' table) for a list of tags; limit is the maximum number of values per tag."
     historicalData(
       tags: [String!]!
       timeBegin: DateTime
@@ -1105,11 +1107,16 @@ const resolvers = {
       if (!pool) throw gqlError('Historian database not connected!', 'SERVICE_UNAVAILABLE')
       let resp
       try {
+        // `limit` applies to each tag: a busy tag cannot take the rows of the
+        // others; the whole answer is capped as well
         resp = await pool.query(
-          'SELECT tag, value, flags, time_tag, time_tag_at_source FROM hist ' +
-            'WHERE time_tag>=$1 AND time_tag<=$2 AND tag = ANY($3) ' +
-            'ORDER BY tag ASC, time_tag ASC LIMIT $4',
-          [begin, end, allowedTags, clampLimit(limit, MaxHistoryLimit)]
+          'SELECT h.tag, h.value, h.flags, h.time_tag, h.time_tag_at_source ' +
+            'FROM unnest($3::text[]) AS t(tag) CROSS JOIN LATERAL (' +
+            'SELECT tag, value, flags, time_tag, time_tag_at_source FROM hist ' +
+            'WHERE hist.tag = t.tag AND time_tag>=$1 AND time_tag<=$2 ' +
+            'ORDER BY time_tag ASC LIMIT $4) AS h ' +
+            'ORDER BY h.tag ASC, h.time_tag ASC LIMIT $5',
+          [begin, end, allowedTags, clampLimit(limit, MaxHistoryLimit), MaxHistoryTotalRows]
         )
       } catch (err) {
         Log.log('GraphQL: Postgresql error - ' + err.message)
@@ -1276,10 +1283,8 @@ const resolvers = {
         return { ok: true, commandHandle: result.insertedId.toString() }
       }
 
-      // look for the command point in the database
-      const data = await mdb
-        .collection(COLL_REALTIME)
-        .findOne(findPointQuery(ctx, tagOrId, false))
+      // look for the command point in the database (primary: a fresh block counts)
+      const data = await findCommandPoint(mdb, findPointQuery(ctx, tagOrId, false))
       if (data === null || typeof data._id !== 'number')
         throw gqlError('Command point not found!', 'NOT_FOUND')
 
@@ -1294,6 +1299,13 @@ const resolvers = {
             'FORBIDDEN'
           )
         }
+      }
+
+      // only command points, and not while blocked by the operator
+      const refusal = await commandRefusal(mdb, data)
+      if (refusal) {
+        Log.log(`GraphQL: command refused: ${refusal} [${ctx.username}] [${data.tag}]`)
+        throw gqlError(refusal, 'FORBIDDEN')
       }
 
       let addressing = {}

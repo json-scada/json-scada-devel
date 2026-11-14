@@ -104,7 +104,17 @@ async function loadEntry(key) {
   let p = inflight.get(key)
   if (!p) {
     p = (async () => {
-      const user = await db.user.findById(key).populate('roles', '-__v').exec()
+      // always the primary (also with JS_SERVER_REALTIME_AUTH_READ_FROM_SECONDARY):
+      // a removed right or a password change must not wait for replication
+      const user = await db.user
+        .findById(key)
+        .read('primary')
+        .populate({
+          path: 'roles',
+          select: '-__v',
+          options: { readPreference: 'primary' },
+        })
+        .exec()
       if (!user) {
         cache.delete(key)
         return null
@@ -160,13 +170,20 @@ function invalidate() {
 }
 
 // Can these rights command a point of the given group1?
-// A role with a command list restricts commands to the listed groups. Special
-// '$$' commands (no point, no group1) need the '$$' entry in such a list.
+// A role with a command list restricts commands to the listed groups; a role
+// restricted to some stations (group1List) can only command those stations
+// too: both lists apply when both are given. Special '$$' commands (no point,
+// no station) need the '$$' entry in a command list when the user is
+// restricted by either list.
 function canCommandGroup(rights, group1) {
   if (!rights || !rights.sendCommands) return false
-  const list = rights.group1CommandList || []
-  if (list.length === 0) return true
-  return list.includes(group1)
+  const cmdList = rights.group1CommandList || []
+  const viewList = rights.group1List || []
+  if (group1 === '$$')
+    return (cmdList.length === 0 && viewList.length === 0) || cmdList.includes('$$')
+  if (cmdList.length > 0 && !cmdList.includes(group1)) return false
+  if (viewList.length > 0 && !viewList.includes(group1)) return false
+  return true
 }
 
 // ---------------------------------------------------------------------------
@@ -197,7 +214,10 @@ async function refreshRevoked() {
   try {
     const docs = await mdb
       .collection(COLL_REVOKED)
-      .find({ expireAt: { $gt: new Date() } }, { projection: { _id: 1 } })
+      .find(
+        { expireAt: { $gt: new Date() } },
+        { projection: { _id: 1 }, readPreference: 'primary' }
+      )
       .toArray()
     const next = new Set(docs.map((d) => d._id))
     for (const j of revoked) if (pendingRevoked.has(j)) next.add(j)

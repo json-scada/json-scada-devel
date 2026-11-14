@@ -47,6 +47,10 @@ const Log = require('./simple-logger')
 const express = require('express')
 const fileUpload = require('express-fileupload')
 const path = require('path')
+const fs = require('fs')
+const os = require('os')
+// temporary files of multipart uploads (removed after each request)
+const UPLOAD_TMP_DIR = path.join(os.tmpdir(), 'json-scada-uploads')
 const cors = require('cors')
 const app = express()
 const cookieParser = require('cookie-parser')
@@ -153,6 +157,7 @@ const dbAuth = require('./app/models')
 const { authJwt } = require('./app/middlewares')
 const UserRights = require('./app/services/user-rights')
 const { clientAddress } = require('./app/services/client-address')
+const { findCommandPoint, commandRefusal } = require('./app/services/command-guard')
 
 // A point id names a point key (_id) only when it is a number or a string of
 // digits: '22KV_BRK' is a tag name, not key 22 (parseInt would say 22).
@@ -324,12 +329,34 @@ function maskConnectionString(cs) {
         .send({ ok: false, message: 'Access not allowed. No token provided' })
     next()
   }
-  // multipart uploads (the file size limit is enforced by express-fileupload)
+  // multipart uploads (the file size limit is enforced by express-fileupload).
+  // Files go to temporary files, not memory (several 100 MB uploads at once
+  // would use that much RAM); whatever a handler did not move away is removed
+  // when the response ends.
+  const removeUploadTempFiles = (req, res, next) => {
+    let done = false
+    const cleanup = () => {
+      if (done) return
+      done = true
+      for (const f of Object.values(req.files || {}).flat())
+        if (f?.tempFilePath)
+          fs.unlink(f.tempFilePath, (e) => {
+            if (e && e.code !== 'ENOENT')
+              Log.log('Could not remove upload ' + f.tempFilePath + ': ' + e.message)
+          })
+    }
+    res.on('finish', cleanup)
+    res.on('close', cleanup)
+    next()
+  }
   app.use(
     UPLOAD_ROUTES,
     requireValidToken,
+    removeUploadTempFiles,
     fileUpload({
       createParentPath: true,
+      useTempFiles: true,
+      tempFileDir: UPLOAD_TMP_DIR,
       limits: {
         fileSize: 100 * 1024 * 1024,
         fieldSize: 1024 * 1024,
@@ -1136,7 +1163,11 @@ function maskConnectionString(cs) {
                       (node.Value.Type !== opc.DataType.Double &&
                         node.Value.Type !== opc.DataType.String) || // only accepts a double or string value for the command
                       (typeof node.Value.Body !== 'number' &&
-                        typeof node.Value.Body !== 'string')
+                        typeof node.Value.Body !== 'string') ||
+                      // a numeric command carries a finite number
+                      (node.Value.Type === opc.DataType.Double &&
+                        (typeof node.Value.Body !== 'number' ||
+                          !Number.isFinite(node.Value.Body)))
                     ) {
                       OpcResp.Body.ResponseHeader.ServiceResult =
                         opc.StatusCode.BadNodeAttributesInvalid
@@ -1237,10 +1268,8 @@ function maskConnectionString(cs) {
                       }
                     }
 
-                    // search command in database (wait for results)
-                    const data = await db
-                      .collection(COLL_REALTIME)
-                      .findOne(query)
+                    // search command in database (primary: a fresh block counts)
+                    const data = await findCommandPoint(db, query)
 
                     if (data === null || typeof data._id !== 'number') {
                       // command not found, abort
@@ -1275,6 +1304,21 @@ function maskConnectionString(cs) {
                       Log.log(
                         `User authorized to issue commands to the group1 destination! [${username}]`
                       )
+                    }
+
+                    // only command points, and not while blocked by the operator
+                    const refusal = await commandRefusal(db, data)
+                    if (refusal) {
+                      Log.log(`Command refused: ${refusal} [${username}] [${data.tag}]`)
+                      OpcResp.Body.ResponseHeader.ServiceResult =
+                        opc.StatusCode.BadNotWritable
+                      OpcResp.Body.ResponseHeader.StringTable = [
+                        opc.getStatusCodeName(opc.StatusCode.BadNotWritable),
+                        opc.getStatusCodeText(opc.StatusCode.BadNotWritable),
+                        refusal,
+                      ]
+                      res.send(OpcResp)
+                      return
                     }
 
                     let addressing = {}

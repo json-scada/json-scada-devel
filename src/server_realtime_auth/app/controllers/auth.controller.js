@@ -72,6 +72,19 @@ const generateClsid = () => {
   return `{${generateHex(8)}-${generateHex(4)}-4${generateHex(3)}-${(Math.floor(Math.random() * 4) + 8).toString(16)}${generateHex(3)}-${generateHex(12)}}`
 }
 
+// Error text for an admin route answer: what the admin can act on (invalid
+// field, duplicate name, missing file), never internals such as stack traces,
+// paths of the server or database messages; the full error goes to the log.
+function errorText(err) {
+  if (err?.code === 11000)
+    return 'Duplicate value: ' + Object.keys(err.keyValue || {}).join(', ')
+  if (err?.name === 'ValidationError' || err?.name === 'CastError')
+    return String(err.message).slice(0, 500)
+  if (typeof err?.code === 'string' && /^E[A-Z]+$/.test(err.code))
+    return 'File operation failed (' + err.code + ')'
+  return 'Operation failed, see the server log.'
+}
+
 // add header to identify json-scada user for Grafana auto-login (auth.proxy)
 // (node lowercases incoming header names: drop any client-sent value first, or it
 // would be forwarded next to ours and could impersonate another user)
@@ -111,7 +124,7 @@ exports.listUserActions = async (req, res) => {
     res.status(200).send({ userActions: userActions, countTotal: count })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -221,7 +234,7 @@ exports.createTag = async (req, res) => {
     res.status(200).send(tag)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -268,7 +281,7 @@ exports.updateTag = async (req, res) => {
     } else res.status(200).send({ error: 'No _id in update request.' })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -286,7 +299,7 @@ exports.deleteTag = async (req, res) => {
     } else res.status(200).send({ error: 'No _id in delete request.' })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -320,7 +333,7 @@ exports.listTags = async (req, res) => {
     res.status(200).send(ret)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1197,7 +1210,7 @@ exports.updateProtocolConnection = async (req, res) => {
     res.status(200).send({ ...restartInfo })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1262,7 +1275,7 @@ exports.deleteProtocolConnection = async (req, res) => {
     res.status(200).send({ error: false, ...restartInfo })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1284,7 +1297,7 @@ exports.createProtocolConnection = async (req, res) => {
     res.status(200).send({ _id: protocolConnection._id, error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1305,7 +1318,7 @@ exports.getProtocolConnectionModel = async (req, res) => {
       .send({ error: false, protocolConnection: protocolConnection })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1317,7 +1330,7 @@ exports.listProtocolConnections = async (req, res) => {
     res.status(200).send(protocolConnections)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1345,7 +1358,7 @@ exports.deleteProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1362,7 +1375,7 @@ exports.listNodes = async (req, res) => {
     res.status(200).send([...new Set(listNodes)])
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1375,7 +1388,7 @@ exports.createProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ _id: driverInstance._id, error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1387,7 +1400,7 @@ exports.listProtocolDriverInstances = async (req, res) => {
     res.status(200).send(driverInstances)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1428,7 +1441,7 @@ exports.updateProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1442,7 +1455,7 @@ exports.listUsers = async (req, res) => {
     res.status(200).send(users)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1454,7 +1467,7 @@ exports.listRoles = async (req, res) => {
     res.status(200).send(roles)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1477,7 +1490,7 @@ exports.userAddRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1515,7 +1528,7 @@ exports.userRemoveRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1527,7 +1540,7 @@ exports.listGroup1 = async (req, res) => {
     res.status(200).send(groups)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1543,7 +1556,7 @@ exports.listDisplays = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
 
@@ -1575,7 +1588,7 @@ exports.openDisplay = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
 
@@ -1608,7 +1621,7 @@ exports.saveDisplay = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
     // the content itself is in the file, the audit keeps name and size
@@ -1622,13 +1635,14 @@ exports.saveDisplay = (req, res) => {
 // `fromUser` losing role `role`. Used to refuse changes locking every admin out.
 async function remainingAdmins({ withoutRole, withoutUser, fromUser, role } = {}) {
   const adminRoleIds = (
-    await Role.find({ isAdmin: true }).select('_id').lean().exec()
+    await Role.find({ isAdmin: true }).select('_id').read('primary').lean().exec()
   )
     .map((r) => String(r._id))
     .filter((id) => id !== String(withoutRole))
   if (adminRoleIds.length === 0) return 0
   const users = await User.find({ roles: { $in: adminRoleIds } })
     .select('_id roles')
+    .read('primary')
     .lean()
     .exec()
   return users.filter((u) => {
@@ -1661,7 +1675,7 @@ exports.updateRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1709,7 +1723,7 @@ exports.updateUser = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1730,7 +1744,7 @@ exports.createRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1756,7 +1770,7 @@ exports.createUser = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1778,7 +1792,7 @@ exports.deleteRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1803,7 +1817,7 @@ exports.deleteUser = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1856,7 +1870,10 @@ const SIGNIN_MAX_TRACKED = 10000 // bound of the failure table
 const SIGNIN_MAX_FAILURES_PER_ADDRESS = 30
 // password checks running at once (bcrypt and LDAP binds are expensive)
 const SIGNIN_MAX_CONCURRENT = 8
+// ...and from one client address, so one client cannot take every slot
+const SIGNIN_MAX_CONCURRENT_PER_ADDRESS = 2
 let signinsInProgress = 0
+const signinsByAddress = new Map() // client address -> checks running
 const MAX_USERNAME_LOGGED = 64 // characters of a failed user name kept in logs
 const signinFailures = new Map() // key -> { count, first, lockedUntil }
 
@@ -2005,7 +2022,11 @@ exports.signin = async (req, res) => {
         message: 'Too many failed attempts, try again later.',
       })
     }
-    if (signinsInProgress >= SIGNIN_MAX_CONCURRENT)
+    const address = clientAddress(req)
+    if (
+      signinsInProgress >= SIGNIN_MAX_CONCURRENT ||
+      (signinsByAddress.get(address) || 0) >= SIGNIN_MAX_CONCURRENT_PER_ADDRESS
+    )
       return res.status(503).send({
         ok: false,
         message: 'Server busy, try again in a moment.',
@@ -2030,13 +2051,15 @@ exports.signin = async (req, res) => {
     }
 
     signinsInProgress++
+    signinsByAddress.set(address, (signinsByAddress.get(address) || 0) + 1)
     try {
       // A local account is checked here only: its password never goes to the
       // directory, and an LDAP login can never take it over. An LDAP account
       // (or an unknown name, when LDAP is enabled) is checked by the
       // directory only: a password stored for it is never accepted.
       const local = await User.findOne({ username: req.body.username })
-        .populate('roles', '-__v')
+        .read('primary') // a password just changed must be the one checked
+        .populate({ path: 'roles', select: '-__v', options: { readPreference: 'primary' } })
         .exec()
 
       if (local && !local.isLDAPUser) {
@@ -2065,6 +2088,9 @@ exports.signin = async (req, res) => {
       }
     } finally {
       signinsInProgress--
+      const n = (signinsByAddress.get(address) || 1) - 1
+      if (n <= 0) signinsByAddress.delete(address)
+      else signinsByAddress.set(address, n)
     }
     signinFailures.delete(attemptKey)
 
@@ -2126,7 +2152,7 @@ exports.changePassword = async (req, res) => {
       return
     }
 
-    let user = await User.findById(ck.id).exec()
+    let user = await User.findById(ck.id).read('primary').exec()
     if (!user) {
       res.status(200).send({ error: 'User not found!' })
       Log.log('Change password user not found!')
@@ -2224,6 +2250,46 @@ const PLATFORM_SCRIPTS = {
   restartProcesses: IS_WINDOWS
     ? 'restart_services.bat'
     : 'restart_processes.sh',
+}
+
+// Why the users/roles of a project zip (mongoexport files, one JSON document
+// per line) cannot be imported, or null: both files are needed and some user
+// must hold a role with isAdmin.
+function projectAdminProblem(zip) {
+  const read = (name) => {
+    const e = zip.getEntry(name)
+    return e ? zip.readAsText(e) : null
+  }
+  const rolesTxt = read('roles.json')
+  const usersTxt = read('users.json')
+  if (rolesTxt === null || usersTxt === null)
+    return 'Project file without users.json/roles.json: the import would remove all users!'
+  const docs = (txt) =>
+    txt
+      .split(/\r?\n/)
+      .filter((l) => l.trim() !== '')
+      .map((l) => {
+        try {
+          return JSON.parse(l)
+        } catch (e) {
+          return null
+        }
+      })
+  const oid = (v) => (v && typeof v === 'object' ? v.$oid : v)
+  const adminRoles = new Set(
+    docs(rolesTxt)
+      .filter((r) => r && r.isAdmin === true)
+      .map((r) => String(oid(r._id)))
+  )
+  const hasAdmin = docs(usersTxt).some(
+    (u) =>
+      u &&
+      Array.isArray(u.roles) &&
+      u.roles.some((r) => adminRoles.has(String(oid(r))))
+  )
+  return hasAdmin
+    ? null
+    : 'Project file has no user with an admin role: the import would lock everybody out!'
 }
 
 // limits of an uploaded project zip once unpacked (uploads are up to 100 MB)
@@ -2433,6 +2499,11 @@ exports.importProject = async (req, res) => {
       }
     }
 
+    // the import scripts replace all users and roles: a project without a
+    // user holding an admin role would lock everybody out
+    const adminProblem = projectAdminProblem(zip)
+    if (adminProblem) throw new Error(adminProblem)
+
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
 
@@ -2465,6 +2536,8 @@ exports.importProject = async (req, res) => {
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
       cleanup()
+      // users and roles were replaced behind the back of the rights cache
+      UserRights.invalidate()
       registerUserAction(req, 'importProject', {
         body: { projectFileName: safeName, exitCode: code },
       })
