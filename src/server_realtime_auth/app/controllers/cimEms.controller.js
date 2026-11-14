@@ -19,8 +19,8 @@
 // requests, takes model uploads, and queues study requests in cimStudyRequests.
 // The CIM-EMS driver (src/cim-ems, cim_ems/api.py) executes the requests on its
 // active node; this server never imports models or computes anything itself.
-// All routes need isAdmin (auth.routes.js); model, binding and artifact actions
-// also need a role with cimEngineering. Every write is logged as a user action.
+// All routes need a signed-in user (auth.routes.js); model, binding and artifact
+// actions also need a role with cimEngineering. Every write is logged as a user action.
 
 'use strict'
 

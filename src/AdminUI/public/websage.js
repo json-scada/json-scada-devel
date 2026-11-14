@@ -407,6 +407,31 @@ var WebSAGE = {
     }
     if (jsuserck) {
       jsuserObj = JSON.parse(decodeURIComponent(jsuserck))
+      // a long display list does not fit in the cookie: read it from the server
+      if (jsuserObj.rights && jsuserObj.rights.displayListTruncated) {
+        if (!Array.isArray(WebSAGE.userDisplayList)) {
+          fetchTimeout("/Invoke/auth/userDisplays", 3000)
+            .then(function(r){ return r.json(); })
+            .then(function(data) {
+              WebSAGE.userDisplayList = (data && Array.isArray(data.displayList)) ? data.displayList : [];
+            })
+            .catch(function(err){
+              console.log("Error loading user display list: " + err);
+              WebSAGE.userDisplayList = [];
+            })
+            .then(function() {
+              var sFile = WebSAGE.lista_telas(filename, indscr);
+              if (sFile && sFile !== "") WebSAGE.init_svg(sFile);
+              WebSAGE.atalhosTela();
+            });
+          return "";
+        }
+        jsuserObj.rights.displayList = WebSAGE.userDisplayList;
+      }
+      if (!jsuserObj.rights || !Array.isArray(jsuserObj.rights.displayList)) {
+        jsuserObj.rights = jsuserObj.rights || {};
+        jsuserObj.rights.displayList = [];
+      }
       for (i=0; i<jsuserObj.rights.displayList.length; i++) {
           elSel = document.getElementById("SELTELA");
           elOptNew = document.createElement("option");

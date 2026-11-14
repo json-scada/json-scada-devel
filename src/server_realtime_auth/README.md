@@ -365,7 +365,7 @@ Parameters:
 
 - _**name**_ [String] - File name (for files saved by the MQTT driver, use the MQTT topic name). **Required parameter**
 - _**bucket**_ [String] - Gridfs bucket name. Default is "fs". **Optional parameter**
-- _**mime**_ [String] - Mime type for the HTTP header. If not specified, it will be guessed based on the file extension. **Optional parameter**
+- _**mime**_ [String] - Mime type for the HTTP header, accepted only for passive content (`image/png`, `image/jpeg`, `image/gif`, `image/webp`, `image/bmp`, `image/avif`, `video/*`, `audio/*`, `text/plain`, `text/csv`, `application/pdf`, `application/json`, `application/octet-stream`); otherwise, and when not specified, the type comes from the file extension. HTML, SVG, XML and script files are served with `Content-Security-Policy: sandbox` (they cannot use the session of this site). **Optional parameter**
 - _**refresh**_ [Integer] - Time interval in seconds to reload page automatically (using the refresh HTTP header). **Optional parameter**
 
 Examples:
@@ -403,8 +403,26 @@ To each user can be attributed a set of roles. Each right in each user role are 
 - _**JS_HTTP_PORT**_ [Integer] - HTTP Port for server listening. **Default=8080**.
 - _**JS_GRAFANA_SERVER**_ [Integer] - HTTP URL to the Grafana server (for reverse proxy on /grafana). **Default="http://127.0.0.1:3000"**.
 - _**JS_CONFIG_FILE**_ [String] - JSON SCADA config file name. **Default="../../conf/json-scada.json"**.
-- _**JS_JWT_SECRET**_ [String] - Signing key for the JWT session tokens. Must be unique per installation and kept private: whoever knows it can forge a valid admin token. **Default=value defined in ./app/config/auth.config.js, which is public (it is in the repository) and MUST be overridden in any real installation**. The docker demo generates one in demo-docker/.env (see demo-docker/generate-env.sh), the Windows services get one from platform-windows/create_services.bat and the supervisor setup from platform-ubuntu-2404/start_server_realtime_auth.sh.
+- _**JS_TRUSTED_PROXIES**_ [String] - Comma separated addresses of reverse proxies whose _X-Real-IP_ / _X-Forwarded-For_ headers are believed (client address for the sign-in throttling, the audit trail and the command originator). **Default="127.0.0.1,::1,::ffff:127.0.0.1"** (a proxy on this host). Exact addresses only (no ranges). A proxy on another host (or another container) must be listed, written as the server sees it (e.g. `::ffff:10.0.0.5` for an IPv4 peer on a dual-stack socket); otherwise every user appears to come from the proxy address and 5 failed sign-ins of anyone lock that user name for every client of the proxy. Never list an address that clients can connect from directly.
+- _**JS_ALLOW_FRAMING**_ [Boolean] - Use "true" to let other sites show the pages of this server in frames. **Default="false"**: pages are sent with _X-Frame-Options: SAMEORIGIN_ (the proxied apps such as Grafana keep their own policy). All responses carry _X-Content-Type-Options: nosniff_ and _Referrer-Policy: same-origin_.
+- _**JS_JWT_SECRET**_ [String] - Signing key for the JWT session tokens. Must be unique per installation and kept private: whoever knows it can forge a valid admin token. **When not set, a random secret is generated at each start (a warning is logged): sessions then end when the server restarts. The value in ./app/config/auth.config.js is public (it is in the repository) and is never used for signing.** The docker demo generates one in demo-docker/.env (see demo-docker/generate-env.sh), the Windows services get one from platform-windows/create_services.bat and the supervisor setup from platform-ubuntu-2404/start_server_realtime_auth.sh.
 - _**JS_SERVER_REALTIME_AUTH_READ_FROM_SECONDARY**_ [String] - Use "TRUE" to change the preferred read to a secondary MongoDB server. By default all read operations are directed to the primary server.
+
+#### Access control notes
+
+- The session token only identifies the user. Rights are read from the database (cached for 10 seconds, immediately refreshed after a change of users or roles made through this server, and always fresh for commands and admin routes): a deleted user is refused and a role change applies without waiting for the token to expire. A sign-out revokes the token (also a kept copy, see the _revokedTokens_ collection) and a password change ends all the other sessions of the user. Sessions last the largest _maxSessionDays_ of the user's roles, at least one hour; LDAP users at most _JS_LDAP_MAX_SESSION_HOURS_ (the directory is consulted only at sign-in).
+- Passwords set through this server (user creation/update, password change) need at least 8 characters. Hashes made with a lower bcrypt cost by older versions are upgraded at the next successful sign-in.
+- No change through this server can leave the installation without a user holding an _isAdmin_ role (role update, role removal from a user, user deletion), and the `admin` user can be neither renamed nor deleted.
+- The client cookie _json-scada-user_ carries the user's flags and _displayList_; when the list would not fit in a cookie it is left out (`rights.displayListTruncated: true`) and clients read it from `GET /Invoke/auth/userDisplays` (`{ "displayList": [] }`, an empty list means all displays).
+- Tag names may not begin with a number (or a signed number): `createTag`/`updateTag` refuse them, because a point id that is a number or a digit string is read as a point key.
+- The audit trail (_userActions_) never stores secrets: any field named like a password, passphrase, secret, token, credential or api key is replaced by `***`. Display saves are audited with name and size only, sign-outs only for a valid session.
+- While MongoDB is unavailable, users whose rights are cached keep working; others get HTTP 503 with `unavailable: true` (the AdminUI keeps the session) or the OPC status _BadServerNotConnected_.
+- Sign-in is throttled: 5 failed attempts of the same client address for the same user name lock that pair for 15 minutes (kept in memory). Failures are audited as _signinFailed_ user actions and the answer does not tell whether the user exists. The client address is the connection's, unless the connection comes from a trusted proxy (_JS_TRUSTED_PROXIES_), whose _X-Real-IP_ / _X-Forwarded-For_ is then used.
+- Users restricted to some stations (_group1List_) only get the rows of their points from _/queryJSON_, and the displays of their _displayList_ from _/svg_. Special `$$` commands need `$$` in a non-empty _group1CommandList_.
+- GraphQL (_/apollo_): the token is checked before the body is read, queries nested deeper than 10 levels are refused (schema introspection, `__schema`/`__type`, has a limit of 30 of its own), and the protocol connection and driver instance queries are for admin users.
+- The Node-RED editor (_/nodered_), n8n (_/n8n_), the log viewers (_/log-io_, _/supervisor_) and their websocket channels are for admin users only.
+- The session cookies are _SameSite=Lax_ (and _Secure_ when the request came over https, also behind a proxy sending _X-Forwarded-Proto_, as the HTTPS nginx templates do: `proxy_set_header X-Forwarded-Proto $scheme;`). Creating, updating and deleting tags, connections and driver instances accept only POST.
+- Request bodies are limited to 2 MB, except for the project import, CIM-EMS model upload/requests and display save routes (100 MB, token checked before the body is read).
 
 #### LDAP Authentication Configuration
 
@@ -439,6 +457,7 @@ Notes on how the login name is used:
 - _**JS_LDAP_TLS_SECURE_PROTOCOL**_ [String] - LDAP TLS secure protocol. **E.g."TLSv1_2_method"**.
 - _**JS_LDAP_TLS_MIN_VERSION**_ [String] - LDAP TLS min version. **E.g."TLSv1.2"**.
 - _**JS_LDAP_TLS_MAX_VERSION**_ [String] - LDAP TLS max version. **E.g."TLSv1.3"**.
+- _**JS_LDAP_MAX_SESSION_HOURS**_ [Number] - Longest session of an LDAP user, in hours. The directory is consulted only at sign-in, so a disabled account or a changed group keeps working until its session ends. **Default=12**.
 
 #### PostgreSQL Historian Environment Variables
 

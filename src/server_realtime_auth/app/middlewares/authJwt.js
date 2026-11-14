@@ -2,257 +2,231 @@ const Log = require('../../simple-logger')
 const jwt = require('jsonwebtoken')
 const config = require('../config/auth.config.js')
 const db = require('../models')
+const UserRights = require('../services/user-rights')
 const User = db.user
 const Role = db.role
 
-let OpcResp = {
-  NamespaceUris: [
-    'urn:opcf-apps-01:UA:Quickstarts:ReferenceServer',
-    'http://opcfoundation.org/Quickstarts/ReferenceApplications',
-    'http://opcfoundation.org/UA/Diagnostics',
-  ],
-  ServerUris: [],
-  ServiceId: 395,
-  Body: {
-    ResponseHeader: {
-      RequestHandle: null,
-      Timestamp: '',
-      ServiceDiagnostics: { LocalizedText: 0 },
-      StringTable: [],
-      ServiceResult: 0,
+const OPC_BAD_IDENTITY_TOKEN_INVALID = 0x80200000
+const OPC_BAD_IDENTITY_TOKEN_REJECTED = 0x80210000
+const OPC_BAD_SERVER_NOT_CONNECTED = 0x800d0000
+
+// OPC-style answer for the realtime API (the request carries a RequestHandle)
+function opcDenied(reqHandle, statusName, text, code) {
+  return {
+    NamespaceUris: [
+      'urn:opcf-apps-01:UA:Quickstarts:ReferenceServer',
+      'http://opcfoundation.org/Quickstarts/ReferenceApplications',
+      'http://opcfoundation.org/UA/Diagnostics',
+    ],
+    ServerUris: [],
+    ServiceId: 395,
+    Body: {
+      ResponseHeader: {
+        RequestHandle: reqHandle,
+        Timestamp: '',
+        ServiceDiagnostics: { LocalizedText: 0 },
+        StringTable: [statusName, text],
+        ServiceResult: code,
+      },
     },
-  },
+  }
 }
 
-verifyToken = (req, res, next) => {
-  Log.log('Verify ' + req.originalUrl)
+function getToken(req) {
+  return req.headers['x-access-token'] || req.cookies?.['x-access-token']
+}
+
+// check and decode token (signature and expiry only, see getCurrentRights)
+const checkToken = (req) => {
+  const token = getToken(req)
+  if (!token || typeof token !== 'string') return false
+  try {
+    return jwt.verify(token, config.secret)
+  } catch (err) {
+    return false
+  }
+}
+
+// Rights the signed-in user has now (from the database, cached a few seconds), or
+// null when the user was deleted or the token was revoked. Takes the request or a
+// decoded token. Throws UserRights.RightsUnavailableError on database trouble.
+const getCurrentRights = (reqOrToken, opts) => {
+  const tok =
+    reqOrToken && typeof reqOrToken.headers === 'object' ?
+      checkToken(reqOrToken)
+    : reqOrToken
+  return UserRights.getCurrentRights(tok || null, opts)
+}
+
+const isUnavailable = (err) => err?.name === 'RightsUnavailableError'
+
+const verifyToken = (req, res, next) => {
+  Log.log('Verify ' + req.originalUrl, Log.levelDetailed)
 
   let reqHandle = null
   if (req.method === 'POST')
     reqHandle = req?.body?.Body?.RequestHeader?.RequestHandle
 
-  let token = req.headers['x-access-token'] || req.cookies['x-access-token']
-
-  if (!token) {
+  const deny = (statusName, text, code, message) => {
     if (reqHandle) {
-      OpcResp.Body.ResponseHeader.RequestHandle = reqHandle
-      OpcResp.Body.ResponseHeader.StringTable = [
-        'BadIdentityTokenInvalid',
-        'Access denied (absent access token)!',
-      ]
-      OpcResp.Body.ResponseHeader.ServiceResult = 0x80200000 // BadIdentityTokenInvalid
-      return res.status(200).send(OpcResp)
+      return res
+        .status(200)
+        .send(opcDenied(reqHandle, statusName, text, code))
     }
-    return res
-      .status(200)
-      .send({ ok: false, message: 'Access not allowed. No token provided' })
+    return res.status(200).send({ ok: false, message: message })
   }
 
+  const token = getToken(req)
+  if (!token || typeof token !== 'string')
+    return deny(
+      'BadIdentityTokenInvalid',
+      'Access denied (absent access token)!',
+      OPC_BAD_IDENTITY_TOKEN_INVALID,
+      'Access not allowed. No token provided'
+    )
+
   jwt.verify(token, config.secret, (err, decoded) => {
-    if (err) {
-      if (reqHandle) {
-        OpcResp.Body.ResponseHeader.RequestHandle = reqHandle
-        OpcResp.Body.ResponseHeader.StringTable = [
-          'BadIdentityTokenRejected',
-          'Access denied (access token rejected)!',
-        ]
-        OpcResp.Body.ResponseHeader.ServiceResult = 0x80210000 // BadIdentityTokenRejected
-        return res.status(200).send(OpcResp)
-      }
-      return res.status(200).send({
-        ok: false,
-        message: 'Access not allowed. ' + err,
-        decoded: decoded,
+    if (err)
+      return deny(
+        'BadIdentityTokenRejected',
+        'Access denied (access token rejected)!',
+        OPC_BAD_IDENTITY_TOKEN_REJECTED,
+        'Access not allowed. ' + err
+      )
+
+    // the user must still exist and the token still be valid; the rights are
+    // the current ones
+    UserRights.getCurrentRights(decoded)
+      .then((rights) => {
+        if (!rights)
+          return deny(
+            'BadIdentityTokenRejected',
+            'Access denied (session ended or user not found)!',
+            OPC_BAD_IDENTITY_TOKEN_REJECTED,
+            'Access not allowed. Session ended or user not found'
+          )
+        req.userId = decoded.id
+        req.token = decoded
+        req.rights = rights
+        next()
       })
-    }
-    req.userId = decoded.id
-    next()
+      .catch((e) => {
+        Log.log('verifyToken: ' + e)
+        // not a rejection: the session stays, the client may retry
+        if (reqHandle)
+          return res
+            .status(200)
+            .send(
+              opcDenied(
+                reqHandle,
+                'BadServerNotConnected',
+                'Database disconnected!',
+                OPC_BAD_SERVER_NOT_CONNECTED
+              )
+            )
+        res.status(503).send({
+          ok: false,
+          unavailable: true,
+          message: 'Authentication service unavailable, try again later',
+        })
+      })
   })
 }
 
-isAdmin = async (req, res, next) => {
-  Log.log('isAdmin')
+// answers a rights lookup failure
+function sendLookupError(res, err) {
+  if (isUnavailable(err))
+    return res.status(503).send({
+      unavailable: true,
+      message: 'Authentication service unavailable, try again later',
+    })
+  Log.log(err)
+  res.status(500).send({ message: 'Internal server error' })
+}
 
-  let tok = checkToken(req)
-  if (tok === false) return false
+const isAdmin = async (req, res, next) => {
+  Log.log('isAdmin', Log.levelDetailed)
 
-  try {
-    let user = await User.findOne({ username: tok.username }).exec()
-    if (!user) {
-      res.status(403).send({ message: 'Require isAdmin rights!' })
-      return
-    }
-
-    let roles = await Role.find({
-      _id: { $in: user.roles },
-    }).exec()
-
-    for (let i = 0; i < roles.length; i++) {
-      if (roles[i].isAdmin) {
-        next()
-        return
-      }
-    }
-
+  const tok = checkToken(req)
+  if (tok === false) {
     res.status(403).send({ message: 'Require isAdmin rights!' })
     return
+  }
+
+  try {
+    const rights = await UserRights.getCurrentRights(tok, { fresh: true })
+    if (rights && rights.isAdmin) {
+      next()
+      return
+    }
+    res.status(403).send({ message: 'Require isAdmin rights!' })
   } catch (err) {
-    res.status(500).send({ message: err })
-    return
+    sendLookupError(res, err)
   }
 }
 
 // any signed-in, existing user (no specific right required)
-isUser = async (req, res, next) => {
+const isUser = async (req, res, next) => {
   const tok = checkToken(req)
   if (tok === false) {
     res.status(403).send({ message: 'Require sign-in!' })
     return
   }
   try {
-    const user = await User.findOne({ username: tok.username }).exec()
-    if (user) {
+    const rights = await UserRights.getCurrentRights(tok)
+    if (rights) {
       next()
       return
     }
     res.status(403).send({ message: 'Require sign-in!' })
   } catch (err) {
-    Log.log(err)
-    res.status(500).send({ message: err })
+    sendLookupError(res, err)
   }
 }
 
-// check and decoded token
-checkToken = (req) => {
-  let res = false
-
-  // Log.log('CheckToken')
-  let token = req.headers['x-access-token'] || req.cookies['x-access-token']
-
-  if (!token) {
-    return res
+// rights read afresh from the database, null when unavailable or not signed in
+async function freshRights(req) {
+  const tok = checkToken(req)
+  if (tok === false) return null
+  try {
+    return await UserRights.getCurrentRights(tok, { fresh: true })
+  } catch (err) {
+    Log.log('Rights unavailable: ' + err.message)
+    return null
   }
-
-  jwt.verify(token, config.secret, (err, decoded) => {
-    if (err) {
-      return res
-    }
-    res = decoded
-  })
-
-  return res
 }
 
-// User in request can send commands?
-canSendCommands = async (req) => {
-  Log.log('canSendCommands?')
-
-  let tok = checkToken(req)
-  if (tok === false) {
-    Log.log("No token found, can't send commands!")
+// User in request can send commands? (rights read from the database, not the token)
+const canSendCommands = async (req) => {
+  const rights = await freshRights(req)
+  if (!rights || !rights.sendCommands) {
+    Log.log("User not found or without rights, can't send commands!")
     return false
   }
-
-  try {
-    const user = await User.findById(tok.id).exec()
-    if (!user) {
-      Log.log("User not found, can't send commands!")
-      return false
-    }
-
-    const roles = await Role.find({
-      _id: { $in: user.roles },
-    }).exec()
-    if (!roles || roles.length == 0) {
-      Log.log("No role found, can't send commands!")
-      return false
-    }
-
-    for (let i = 0; i < roles.length; i++) {
-      if (roles[i].sendCommands) {
-        Log.log('User can send commands!')
-        return true
-      }
-    }
-  } catch (err) {
-    Log.log(err)
-  }
-
-  return false
+  return true
 }
 
 // User in request can send commands to a group1 location?
-canSendCommandTo = async (req, group1) => {
-  Log.log('canSendCommandTo: ' + group1 + ' ?')
-
-  let tok = checkToken(req)
-  if (tok === false) {
-    Log.log("No token found, can't send commands to: " + group1)
-    return false
-  }
-
-  try {
-    const user = await User.findById(tok.id).exec()
-    if (!user) {
-      Log.log("User not found, can't send commands to: " + group1)
-      return false
-    }
-
-    const roles = await Role.find({
-      _id: { $in: user.roles },
-    }).exec()
-
-    if (!roles || roles.length == 0) {
-      Log.log("No role found, can't send commands to: " + group1)
-      return false
-    }
-
-    let canCmd = true
-    for (let i = 0; i < roles.length; i++) {
-      if (roles[i].group1CommandList.length > 0) {
-        // has a list, so in principle deny command
-        canCmd = false
-      }
-      if (roles[i].group1CommandList.includes(group1)) {
-        Log.log('User can send commands to: ' + group1)
-        return true
-      }
-    }
-
-    if (!canCmd) {
-      Log.log('User has no right to issue commands to: ' + group1)
-      return false
-    }
-
-    Log.log('User can send commands to: ' + group1)
-    return canCmd
-  } catch (err) {
-    Log.log(err)
-  }
-
-  Log.log('User has no right to issue commands to: ' + group1)
-  return false
+const canSendCommandTo = async (req, group1) => {
+  const ok = UserRights.canCommandGroup(await freshRights(req), group1)
+  if (!ok) Log.log('User has no right to issue commands to: ' + group1)
+  return ok
 }
 
-// test user right
-hasRight = (req, right) => {
-  Log.log('hasRight')
-
-  let res = this.checkToken(req)
-  if (res === false) return res
-
-  if (right in res) return res[right]
-
-  return false
+// test a user right (current rights, from the database)
+const hasRight = async (req, right) => {
+  const rights = await freshRights(req)
+  return !!rights?.[right]
 }
 
 // CIM-EMS engineering right (model upload/activation, binding approval, artifact
 // download): an admin role is not enough, a role must grant cimEngineering.
-hasCimEngineering = async (req) => {
+const hasCimEngineering = async (req) => {
   const tok = checkToken(req)
   if (tok === false) return false
   try {
-    const user = await User.findOne({ username: tok.username }).exec()
+    if (!(await UserRights.getCurrentRights(tok))) return false
+    const user = await User.findById(tok.id).exec()
     if (!user) return false
     const n = await Role.countDocuments({
       _id: { $in: user.roles },
@@ -265,7 +239,7 @@ hasCimEngineering = async (req) => {
   }
 }
 
-isCimEngineer = async (req, res, next) => {
+const isCimEngineer = async (req, res, next) => {
   if (await hasCimEngineering(req)) {
     next()
     return
@@ -276,6 +250,7 @@ isCimEngineer = async (req, res, next) => {
 const authJwt = {
   verifyToken,
   checkToken,
+  getCurrentRights,
   hasRight,
   isAdmin,
   isUser,

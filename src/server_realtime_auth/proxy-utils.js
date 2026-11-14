@@ -26,6 +26,7 @@ const {
 const jwt = require('jsonwebtoken')
 const config = require('./app/config/auth.config.js')
 const Log = require('./simple-logger')
+const UserRights = require('./app/services/user-rights')
 
 const NODERED_MOUNT_PATH = '/nodered'
 const NODERED_DEFAULT_SERVER = 'http://127.0.0.1:1880/nodered/'
@@ -301,23 +302,38 @@ function createSupervisorProxy(supervisorServer) {
   )
 }
 
-// Proxy the websocket upgrades of a mounted reverse proxy.
+// Proxy the websocket upgrades of a mounted reverse proxy, for admin users.
 // Upgrade requests never reach the express middlewares (so verifyToken cannot run on
 // them), they are handled on the raw http server and the token is verified here instead.
 function attachProxyUpgrade(httpServer, proxy, mountPath, label) {
   const isProxiedRequest = mountPathFilter(mountPath)
 
-  httpServer.on('upgrade', (req, socket, head) => {
+  httpServer.on('upgrade', async (req, socket, head) => {
     if (!isProxiedRequest(null, req)) return
 
-    const decoded = checkUpgradeToken(req)
-    if (decoded === false) {
-      Log.log(label + ' websocket denied (absent or invalid access token)')
-      socket.write('HTTP/1.1 401 Unauthorized\r\nConnection: close\r\n\r\n')
+    const deny = (status, text) => {
+      Log.log(label + ' websocket denied (' + text + ')')
+      socket.write('HTTP/1.1 ' + status + '\r\nConnection: close\r\n\r\n')
       socket.destroy()
-      return
     }
-    if (decoded?.username) req.headers['X-WEBAUTH-USER'] = decoded.username
+
+    const decoded = checkUpgradeToken(req)
+    if (decoded === false) return deny('401 Unauthorized', 'absent or invalid access token')
+
+    // the editors and the log viewer are for admin users: check the rights the user
+    // has now, not the ones the token was issued with
+    let rights = null
+    try {
+      rights = await UserRights.getCurrentRights(decoded, { fresh: true })
+    } catch (err) {
+      return deny('503 Service Unavailable', 'user rights unavailable')
+    }
+    if (!rights) return deny('401 Unauthorized', 'session ended or user not found')
+    if (!rights.isAdmin) return deny('403 Forbidden', 'admin rights required')
+
+    // node lowercases incoming header names: replace anything the client sent
+    delete req.headers['x-webauth-user']
+    if (decoded?.username) req.headers['x-webauth-user'] = decoded.username
 
     proxy.upgrade(req, socket, head)
   })

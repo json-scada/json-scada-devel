@@ -277,6 +277,8 @@ function checkLogin() {
         if (loggedInUser.value !== ck.username)
           loggedInUser.value = ck.username
         // console.log('User is logged in')
+      } else if (data.unavailable) {
+        // server database briefly unavailable: keep the session, check again later
       } else {
         router.push('/login')
         // console.log('User is not logged in')

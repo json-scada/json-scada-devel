@@ -19,6 +19,7 @@ Vue.js single-page application (SPA) for the JSON-SCADA web administration inter
 - **Dev server:** `npm run dev` (Vite, http://localhost:3000)
 - **Production build:** `npm run build`
 - All API calls go through the realtime data server (JWT auth)
+- The readable `json-scada-user` cookie (set by `server_realtime_auth` at sign-in) carries the user's flags and `rights.displayList`; when `rights.displayListTruncated` is true the list was too long for a cookie and must be read from `GET /Invoke/auth/userDisplays` (`public/websage.js` does). A server answer with `unavailable: true` (database down) keeps the session
 - Vue component naming: PascalCase. Single-file components with `<script setup>` preferred
 - Styles: scoped CSS. Global styles in `src/` root
 - Locales: `src/locales/*.json` (13 files) carry the same keys; add every new key to all of them

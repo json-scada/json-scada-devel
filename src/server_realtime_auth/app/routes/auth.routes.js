@@ -20,17 +20,17 @@ module.exports = function (app, accessPoint) {
     [authJwt.isAdmin],
     controller.listUserActions
   )
-  app.use(
+  app.post(
     accessPoint + 'auth/createTag',
     [authJwt.isAdmin],
     controller.createTag
   )
-  app.use(
+  app.post(
     accessPoint + 'auth/updateTag',
     [authJwt.isAdmin],
     controller.updateTag
   )
-  app.use(
+  app.post(
     accessPoint + 'auth/deleteTag',
     [authJwt.isAdmin],
     controller.deleteTag
@@ -46,7 +46,7 @@ module.exports = function (app, accessPoint) {
     [authJwt.isAdmin],
     controller.deleteProtocolConnection
   )
-  app.use(
+  app.post(
     accessPoint + 'auth/createProtocolConnection',
     [authJwt.isAdmin],
     controller.createProtocolConnection
@@ -71,7 +71,7 @@ module.exports = function (app, accessPoint) {
     [authJwt.isAdmin],
     controller.deleteProtocolDriverInstance
   )
-  app.use(
+  app.post(
     accessPoint + 'auth/createProtocolDriverInstance',
     [authJwt.isAdmin],
     controller.createProtocolDriverInstance
@@ -110,6 +110,11 @@ module.exports = function (app, accessPoint) {
     accessPoint + 'auth/listGroup1',
     [authJwt.isAdmin],
     controller.listGroup1
+  )
+  app.get(
+    accessPoint + 'auth/userDisplays',
+    [authJwt.verifyToken],
+    controller.userDisplays
   )
   app.use(
     accessPoint + 'auth/listDisplays',
