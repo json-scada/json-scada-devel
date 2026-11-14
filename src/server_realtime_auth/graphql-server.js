@@ -54,6 +54,12 @@ const MaxQueryDepth = 10 // deepest selection nesting accepted in a query
 const MaxIntrospectionDepth = 30
 // selections in a query document (fields, fragments): bounds validation work
 const MaxQuerySelections = 5000
+// top-level fields (aliases included) of an operation: they run concurrently,
+// so this bounds the database queries started by one request
+const MaxRootFields = 50
+// rows (documents, events, historical values) one request may ask for in all:
+// each list field takes its limit from this budget before it queries
+const MaxOperationRows = 500000
 
 // errors of writes nobody waits for (events, range checks) must not go unhandled
 function logBgError(e) {
@@ -160,6 +166,45 @@ function depthLimitRule(maxDepth, maxIntrospectionDepth, maxSelections) {
       },
     }
   }
+}
+
+// Validation rule refusing operations with more than maxFields top-level
+// fields, counting those of fragments and inline fragments at the top level.
+function rootFieldsRule(maxFields) {
+  return (context) => ({
+    Document(doc) {
+      const fragments = {}
+      for (const def of doc.definitions)
+        if (def.kind === Kind.FRAGMENT_DEFINITION) fragments[def.name.value] = def
+      const count = (selectionSet, seen) => {
+        let n = 0
+        for (const sel of selectionSet?.selections || []) {
+          if (sel.kind === Kind.FIELD) n++
+          else if (sel.kind === Kind.INLINE_FRAGMENT) n += count(sel.selectionSet, seen)
+          else if (sel.kind === Kind.FRAGMENT_SPREAD) {
+            // each spread counts: the same fragment twice runs its fields twice
+            const f = fragments[sel.name.value]
+            if (!f || seen.has(f)) continue // cycle/unknown: reported by graphql
+            seen.add(f)
+            n += count(f.selectionSet, seen)
+            seen.delete(f)
+          }
+          if (n > maxFields) return n
+        }
+        return n
+      }
+      for (const def of doc.definitions)
+        if (def.kind === Kind.OPERATION_DEFINITION) {
+          const n = count(def.selectionSet, new Set())
+          if (n > maxFields)
+            context.reportError(
+              new GraphQLError(
+                `Operation has too many top-level fields (maximum ${maxFields})`
+              )
+            )
+        }
+    },
+  })
 }
 
 let db = null // mongoose models (see app/models)
@@ -790,7 +835,31 @@ async function buildContext(req) {
       }
     }
   }
-  return { req, token, username, rights }
+  return { req, token, username, rights, rowBudget: MaxOperationRows }
+}
+
+// Takes up to `limit` rows from the row budget of the request; refused when
+// the budget is used up. Call refundRows with the rows not used.
+function reserveRows(ctx, limit) {
+  if (!ctx || typeof ctx.rowBudget !== 'number') return limit
+  if (ctx.rowBudget <= 0)
+    throw gqlError(
+      `Request asks for too many rows (maximum ${MaxOperationRows} in all)`,
+      'BAD_USER_INPUT'
+    )
+  const n = Math.min(limit, ctx.rowBudget)
+  ctx.rowBudget -= n
+  return n
+}
+function refundRows(ctx, reserved, rows) {
+  if (ctx && typeof ctx.rowBudget === 'number' && Array.isArray(rows))
+    ctx.rowBudget += Math.max(0, reserved - rows.length)
+  return rows
+}
+// a list resolver's query, limited by the row budget
+async function budgeted(ctx, limit, run) {
+  const n = reserveRows(ctx, limit)
+  return refundRows(ctx, n, await run(n))
 }
 
 // group1 (station) access restriction filter for the realtime collection,
@@ -816,19 +885,20 @@ function requireTokenRight(ctx, right, message) {
   }
 }
 
-// check right against the database (not just the token) like /Invoke does for commands
-async function isAdminDb(ctx) {
-  if (!AUTH) return true
-  if (ctx.token === false) return false
-  try {
-    const user = await db.user.findById(ctx.token.id).exec()
-    if (!user) return false
-    const roles = await db.role.find({ _id: { $in: user.roles } }).exec()
-    return roles.some((r) => r.isAdmin)
-  } catch (err) {
-    Log.log('GraphQL: ' + err.message)
-    return false
-  }
+// admin right as it is now (fresh, from the primary, see services/user-rights),
+// checked once per request: every admin field of an operation shares it
+function isAdminDb(ctx) {
+  if (!AUTH) return Promise.resolve(true)
+  if (ctx.token === false) return Promise.resolve(false)
+  if (!ctx.adminCheck)
+    ctx.adminCheck = authJwt
+      .getCurrentRights(ctx.token, { fresh: true })
+      .then((rights) => !!rights?.isAdmin)
+      .catch((err) => {
+        Log.log('GraphQL: admin check - ' + err.message)
+        throw gqlError('Database disconnected!', 'SERVICE_UNAVAILABLE')
+      })
+  return ctx.adminCheck
 }
 
 async function requireAdmin(ctx) {
@@ -958,11 +1028,13 @@ const resolvers = {
       let sort = { tag: 1 }
       if (typeof sortBy === 'string' && /^[A-Za-z_][A-Za-z0-9_]*$/.test(sortBy))
         sort = { [sortBy]: sortDesc ? -1 : 1 }
-      return await db.tag
-        .find(query)
-        .sort(sort)
-        .skip(skip > 0 ? Math.floor(skip) : 0)
-        .limit(clampLimit(limit))
+      return budgeted(ctx, clampLimit(limit), (n) =>
+        db.tag
+          .find(query)
+          .sort(sort)
+          .skip(skip > 0 ? Math.floor(skip) : 0)
+          .limit(n)
+      )
     },
 
     tagsCount: async (_, { filter }, ctx) => {
@@ -1047,10 +1119,12 @@ const resolvers = {
       const af = tagAccessFilter(ctx)
       if (af) clauses.push(af)
       if (Object.keys(grp).length > 0) clauses.push(grp)
-      return await db.tag
-        .find({ $and: clauses })
-        .sort({ alarmed: -1, timeTagAlarm: -1 })
-        .limit(clampLimit(limit))
+      return budgeted(ctx, clampLimit(limit), (n) =>
+        db.tag
+          .find({ $and: clauses })
+          .sort({ alarmed: -1, timeTagAlarm: -1 })
+          .limit(n)
+      )
     },
 
     soeEvents: async (_, { filter, limit, ascending }, ctx) => {
@@ -1084,7 +1158,7 @@ const resolvers = {
 
       const soeColl = nativeDb().collection(COLL_SOE)
       if (filter.aggregate === true) {
-        return await soeColl
+        return budgeted(ctx, clampLimit(limit), (n) => soeColl
           .aggregate([
             { $match: match },
             {
@@ -1107,10 +1181,12 @@ const resolvers = {
             },
           ])
           .sort(sort)
-          .limit(clampLimit(limit))
-          .toArray()
+          .limit(n)
+          .toArray())
       }
-      return await soeColl.find(match).sort(sort).limit(clampLimit(limit)).toArray()
+      return budgeted(ctx, clampLimit(limit), (n) =>
+        soeColl.find(match).sort(sort).limit(n).toArray()
+      )
     },
 
     historicalData: async (_, { tags, timeBegin, timeEnd, limit }, ctx) => {
@@ -1135,6 +1211,11 @@ const resolvers = {
 
       const pool = getPgPool()
       if (!pool) throw gqlError('Historian database not connected!', 'SERVICE_UNAVAILABLE')
+      const perTag = clampLimit(limit, MaxHistoryLimit)
+      const total = reserveRows(
+        ctx,
+        Math.min(MaxHistoryTotalRows, perTag * allowedTags.length)
+      )
       let resp
       try {
         // `limit` applies to each tag: a busy tag cannot take the rows of the
@@ -1146,8 +1227,9 @@ const resolvers = {
             'WHERE hist.tag = t.tag AND time_tag>=$1 AND time_tag<=$2 ' +
             'ORDER BY time_tag ASC LIMIT $4) AS h ' +
             'ORDER BY h.tag ASC, h.time_tag ASC LIMIT $5',
-          [begin, end, allowedTags, clampLimit(limit, MaxHistoryLimit), MaxHistoryTotalRows]
+          [begin, end, allowedTags, perTag, total]
         )
+        refundRows(ctx, total, resp.rows)
       } catch (err) {
         Log.log('GraphQL: Postgresql error - ' + err.message)
         throw gqlError('Historian database error!', 'SERVICE_UNAVAILABLE')
@@ -1202,11 +1284,13 @@ const resolvers = {
       if (filter.timeBegin) clauses.push({ timeTag: { $gte: filter.timeBegin } })
       if (filter.timeEnd) clauses.push({ timeTag: { $lte: filter.timeEnd } })
       const query = clauses.length > 0 ? { $and: clauses } : {}
-      return await db.userAction
-        .find(query)
-        .sort({ timeTag: -1 })
-        .skip(skip > 0 ? Math.floor(skip) : 0)
-        .limit(clampLimit(limit))
+      return budgeted(ctx, clampLimit(limit), (n) =>
+        db.userAction
+          .find(query)
+          .sort({ timeTag: -1 })
+          .skip(skip > 0 ? Math.floor(skip) : 0)
+          .limit(n)
+      )
     },
 
     users: async (_, __, ctx) => {
@@ -1244,12 +1328,14 @@ const resolvers = {
       return await db.user.findOne({ username: qry.username })
     },
     getTagsByGroup1: async (_, qry, ctx) => {
-      return await db.tag
-        .find(buildTagQuery(ctx, { group1: qry.group1 }))
-        .limit(MaxQueryLimit)
+      return budgeted(ctx, MaxQueryLimit, (n) =>
+        db.tag.find(buildTagQuery(ctx, { group1: qry.group1 })).limit(n)
+      )
     },
     getTags: async (_, qry, ctx) => {
-      return await db.tag.find(buildTagQuery(ctx, { tags: qry.tags })).limit(MaxQueryLimit)
+      return budgeted(ctx, MaxQueryLimit, (n) =>
+        db.tag.find(buildTagQuery(ctx, { tags: qry.tags })).limit(n)
+      )
     },
     getTag: async (_, qry, ctx) => {
       return checkTagAccess(ctx, await db.tag.findOne({ tag: qry.tag }))
@@ -1769,6 +1855,7 @@ async function initGQLServer(app, dbParam, authentication) {
     introspection: true, // only for signed-in users (the token is checked first)
     validationRules: [
       depthLimitRule(MaxQueryDepth, MaxIntrospectionDepth, MaxQuerySelections),
+      rootFieldsRule(MaxRootFields),
     ],
   })
   await srvApollo.start()

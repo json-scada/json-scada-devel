@@ -255,6 +255,8 @@ When the StatusCode for the command is 0 (Good) the command was acknowledged ok.
 
 ### Read History Service Request
 
+At most 1000 NodesToRead; each tag is read once, and at most 200000 values are returned in all (a repeated node counts again).
+
 ### Request Unique Attributes Value
 
 ## GraphQL API
@@ -262,6 +264,8 @@ When the StatusCode for the command is 0 (Good) the command was acknowledged ok.
 Access point: /apollo
 
 An Apollo GraphQL server providing functionality similar to the OPC-like /Invoke API, with a typed, introspectable schema. Authentication uses the same JWT token from the /Invoke/auth/signin service, sent either as the _x-access-token_ HTTP header or cookie. User rights (RBAC) are enforced exactly like in the /Invoke API: group1 (station) access restriction lists, command rights per station, and per-property write rights.
+
+One request may have at most 50 top-level fields (aliases and fragments included) and ask for at most 500000 rows in all (the limits of its list fields add up); a query nested deeper than 10 levels is refused.
 
 The schema is self-documenting: use introspection or point any GraphQL client (Apollo Sandbox, Insomnia, Postman, etc.) to the /apollo endpoint.
 

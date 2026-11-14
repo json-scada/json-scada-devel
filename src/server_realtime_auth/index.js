@@ -224,6 +224,8 @@ const opcIdTypeString = 1
 const beepPointKey = -1
 const EventsRemoveGuardSeconds = 20 // guard not to remove events recently added
 const MaxHistoryRowsPerNode = 10000 // max historian rows returned per requested tag
+const MaxHistoryNodes = 1000 // max NodesToRead in a historian (values) read
+const MaxHistorySamples = 200000 // max samples in one historian read response
 const MaxEventRows = 100000 // max rows returned by an events (soeData) query
 const UserActionsFlushMs = 1000 // interval to write the queued user actions to mongodb
 const UserActionsBatch = 500 // user actions written per insert
@@ -2344,6 +2346,17 @@ function maskConnectionString(cs) {
               }
               return node
             })
+            if (req.body.Body.NodesToRead.length > MaxHistoryNodes) {
+              OpcResp.Body.ResponseHeader.ServiceResult =
+                opc.StatusCode.BadTooManyOperations
+              OpcResp.Body.ResponseHeader.StringTable = [
+                opc.getStatusCodeName(opc.StatusCode.BadTooManyOperations),
+                opc.getStatusCodeText(opc.StatusCode.BadTooManyOperations),
+                'Too many NodesToRead (maximum ' + MaxHistoryNodes + ')',
+              ]
+              res.send(OpcResp)
+              return
+            }
             if (tags.length == 0) {
               OpcResp.Body.ResponseHeader.ServiceResult =
                 opc.StatusCode.GoodNoData
@@ -2677,6 +2690,12 @@ function maskConnectionString(cs) {
             return
           }
 
+          // each requested node gets a result, a repeated node a copy of the
+          // same rows: the database reads every tag once, and the row limit
+          // below is shared by all the nodes of the request
+          const nodeCount = tags.length
+          tags = [...new Set(tags)]
+
           // restrict to tags the user is allowed to see (group1 restriction)
           let allowedTags = tags
           if (userRights?.group1List?.length > 0) {
@@ -2715,6 +2734,11 @@ function maskConnectionString(cs) {
           if (isNaN(rowLimit) || rowLimit < 1) rowLimit = MaxHistoryRowsPerNode
           // a limit for each tag: one busy tag cannot take the rows of the others
           rowLimit = Math.min(rowLimit, MaxHistoryRowsPerNode)
+          // and a limit for the whole response (repeated nodes count again)
+          rowLimit = Math.max(
+            1,
+            Math.min(rowLimit, Math.floor(MaxHistorySamples / nodeCount))
+          )
 
           // all request-supplied values below are bound as query parameters
           // ($1..$n): never build this query by string concatenation
