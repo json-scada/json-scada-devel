@@ -2249,14 +2249,28 @@ exports.changePassword = async (req, res) => {
       res.status(200).send({ error: PASSWORD_TOO_SHORT })
       return
     }
-    user.password = await bcrypt.hash(req.body.newPassword, BCRYPT_COST)
-    await user.save()
-    await UserRights.bumpTokenVersion(user._id)
+    const newHash = await bcrypt.hash(req.body.newPassword, BCRYPT_COST)
+    // one write for the hash and the token version (older tokens are refused
+    // from then on), and only over the password just checked: a concurrent
+    // change (each hash has its own salt) makes this one fail, not both apply
+    user = await User.findOneAndUpdate(
+      { _id: user._id, password: user.password },
+      { $set: { password: newHash }, $inc: { tokenVersion: 1 } },
+      { new: true }
+    )
+      .read('primary')
+      .populate({ path: 'roles', select: '-__v', options: { readPreference: 'primary' } })
+      .exec()
+    UserRights.invalidate()
+    if (!user) {
+      res.status(200).send({ error: 'Password changed meanwhile, try again!' })
+      Log.log('Change password: concurrent change, refused')
+      return
+    }
     registerUserAction(req, 'changePassword')
     Log.log('Password changed!')
 
-    // older tokens are refused from now on: give this session a new one
-    user = await User.findById(user._id).populate('roles', '-__v').exec()
+    // give this session a new token (with the new token version)
     issueSession(req, res, user).status(200).send({})
   } catch (err) {
     Log.log(err)

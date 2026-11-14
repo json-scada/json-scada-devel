@@ -42,6 +42,9 @@ function setDatabaseHealthy(healthy) {
   databaseHealthy = !!healthy
 }
 const inflight = new Map() // user id -> pending lookup, shared by concurrent requests
+// bumped by invalidate(): a lookup started before a change of users or roles
+// does not cache its (old) answer, and no request joins it afterwards
+let generation = 0
 
 // Combines the rights of the (populated) roles of a user.
 function combineRights(roles) {
@@ -108,6 +111,7 @@ function combineRights(roles) {
 async function loadEntry(key) {
   let p = inflight.get(key)
   if (!p) {
+    const gen = generation
     p = (async () => {
       // always the primary (also with JS_SERVER_REALTIME_AUTH_READ_FROM_SECONDARY):
       // a removed right or a password change must not wait for replication
@@ -121,7 +125,7 @@ async function loadEntry(key) {
         })
         .exec()
       if (!user) {
-        cache.delete(key)
+        if (gen === generation) cache.delete(key)
         return null
       }
       const entry = {
@@ -129,10 +133,14 @@ async function loadEntry(key) {
         rights: combineRights(user.roles).rights,
         tokenVersion: Number(user.tokenVersion) || 0,
       }
-      if (cache.size >= CACHE_MAX_ENTRIES) cache.clear()
-      cache.set(key, entry)
+      if (gen === generation) {
+        if (cache.size >= CACHE_MAX_ENTRIES) cache.clear()
+        cache.set(key, entry)
+      }
       return entry
-    })().finally(() => inflight.delete(key))
+    })().finally(() => {
+      if (inflight.get(key) === p) inflight.delete(key)
+    })
     inflight.set(key, p)
   }
   return p
@@ -173,7 +181,9 @@ async function getCurrentRights(token, opts = {}) {
 
 // call after any change of users or roles made by this server
 function invalidate() {
+  generation++
   cache.clear()
+  inflight.clear()
 }
 
 // Can these rights command a point of the given group1?
@@ -215,9 +225,12 @@ async function ensureRevokedIndex(mdb) {
   revokedIndexReady = true
 }
 
-// jti -> expiry date of sign-outs not stored yet (database unavailable at the
-// time); stored by the periodic refresh once the database is back
-const pendingRevoked = new Map()
+// sign-outs made by this server: jti -> expiry date, kept until the token
+// expires, so a refresh that read the collection before a sign-out was
+// stored cannot drop it; `unstored` are those the database did not take yet
+// (unavailable at the time), stored by the periodic refresh once it is back
+const localRevoked = new Map()
+const unstored = new Set()
 
 function revokedExpiry(token) {
   return new Date((Number(token.exp) || Date.now() / 1000 + 86400) * 1000)
@@ -228,28 +241,24 @@ async function storeRevoked(mdb, jti, expireAt) {
   await mdb
     .collection(COLL_REVOKED)
     .updateOne({ _id: jti }, { $set: { expireAt } }, { upsert: true })
-  pendingRevoked.delete(jti)
+  unstored.delete(jti)
 }
 
+let refreshing = false
 async function refreshRevoked() {
+  if (refreshing) return
   const mdb = nativeDb()
   if (!mdb) return
-  const now = Date.now()
-  for (const [jti, expireAt] of pendingRevoked) {
-    if (expireAt.getTime() <= now) {
-      // expired meanwhile: the token is refused by its own expiry now
-      pendingRevoked.delete(jti)
-      revoked.delete(jti)
-      continue
-    }
-    try {
-      await storeRevoked(mdb, jti, expireAt)
-    } catch (err) {
-      Log.log('refreshRevoked: ' + err.message)
-      return // still unavailable: retried on the next refresh
-    }
-  }
+  refreshing = true
   try {
+    const now = Date.now()
+    for (const [jti, expireAt] of localRevoked)
+      if (expireAt.getTime() <= now) {
+        // expired: the token is refused by its own expiry now
+        localRevoked.delete(jti)
+        unstored.delete(jti)
+      }
+    for (const jti of unstored) await storeRevoked(mdb, jti, localRevoked.get(jti))
     const docs = await mdb
       .collection(COLL_REVOKED)
       .find(
@@ -258,10 +267,13 @@ async function refreshRevoked() {
       )
       .toArray()
     const next = new Set(docs.map((d) => d._id))
-    for (const j of pendingRevoked.keys()) next.add(j)
+    // read after the query: sign-outs made while it ran are included
+    for (const j of localRevoked.keys()) next.add(j)
     revoked = next
   } catch (err) {
-    Log.log('refreshRevoked: ' + err.message)
+    Log.log('refreshRevoked: ' + err.message) // retried on the next refresh
+  } finally {
+    refreshing = false
   }
 }
 setInterval(refreshRevoked, REVOKED_REFRESH_MS).unref()
@@ -271,7 +283,8 @@ async function revokeToken(token) {
   if (!token?.jti) return
   const expireAt = revokedExpiry(token)
   revoked.add(token.jti)
-  pendingRevoked.set(token.jti, expireAt)
+  localRevoked.set(token.jti, expireAt)
+  unstored.add(token.jti)
   const mdb = nativeDb()
   if (!mdb) return
   try {
@@ -281,12 +294,6 @@ async function revokeToken(token) {
   }
 }
 
-// Password change: every token issued before it stops being accepted.
-async function bumpTokenVersion(userId) {
-  await db.user.updateOne({ _id: userId }, { $inc: { tokenVersion: 1 } }).exec()
-  invalidate()
-}
-
 module.exports = {
   RightsUnavailableError,
   combineRights,
@@ -294,6 +301,5 @@ module.exports = {
   invalidate,
   canCommandGroup,
   revokeToken,
-  bumpTokenVersion,
   setDatabaseHealthy,
 }
