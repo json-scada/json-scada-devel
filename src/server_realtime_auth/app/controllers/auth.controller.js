@@ -33,6 +33,11 @@ const AdmZip = require('adm-zip')
 // escaping. Both come from ldapts itself, so they match exactly the encoders
 // the client uses when it serializes a search request.
 const { Client, Filter, DN } = require('ldapts')
+const { checkToken } = require('../middlewares/authJwt')
+const { clientAddress } = require('../services/client-address')
+const { stripSessionToken } = require('../../proxy-utils')
+const crypto = require('node:crypto')
+const UserRights = require('../services/user-rights')
 const ProcessManager = require('../services/process-manager')
 const RestartScheduler = require('../services/restart-scheduler')
 const SystemSettings = require('../services/system-settings')
@@ -42,6 +47,14 @@ const Tag = db.tag
 const ProtocolDriverInstance = db.protocolDriverInstance
 const ProtocolConnection = db.protocolConnection
 const UserAction = db.userAction
+const BCRYPT_COST = 10
+// shortest password accepted when one is set (stored passwords are not checked)
+const MIN_PASSWORD_LENGTH = 8
+const PASSWORD_TOO_SHORT =
+  'Password too short (minimum ' + MIN_PASSWORD_LENGTH + ' characters)!'
+function passwordTooShort(pw) {
+  return typeof pw !== 'string' || pw.length < MIN_PASSWORD_LENGTH
+}
 
 /**
  * Generates a CLSID-style UUID (version 4)
@@ -59,10 +72,28 @@ const generateClsid = () => {
   return `{${generateHex(8)}-${generateHex(4)}-4${generateHex(3)}-${(Math.floor(Math.random() * 4) + 8).toString(16)}${generateHex(3)}-${generateHex(12)}}`
 }
 
+// Error text for an admin route answer: what the admin can act on (invalid
+// field, duplicate name, missing file), never internals such as stack traces,
+// paths of the server or database messages; the full error goes to the log.
+function errorText(err) {
+  if (err?.code === 11000)
+    return 'Duplicate value: ' + Object.keys(err.keyValue || {}).join(', ')
+  if (err?.name === 'ValidationError' || err?.name === 'CastError')
+    return String(err.message).slice(0, 500)
+  if (typeof err?.code === 'string' && /^E[A-Z]+$/.test(err.code))
+    return 'File operation failed (' + err.code + ')'
+  return 'Operation failed, see the server log.'
+}
+
 // add header to identify json-scada user for Grafana auto-login (auth.proxy)
+// (node lowercases incoming header names: drop any client-sent value first, or it
+// would be forwarded next to ours and could impersonate another user)
 exports.addXWebAuthUser = (req) => {
-  let ck = checkToken(req)
-  if (ck !== false) req.headers['X-WEBAUTH-USER'] = ck?.username
+  delete req.headers['x-webauth-user']
+  // verifyToken already checked the token
+  const ck = req.token || checkToken(req)
+  if (ck) req.headers['x-webauth-user'] = ck.username
+  stripSessionToken(req)
 }
 
 exports.listUserActions = async (req, res) => {
@@ -93,7 +124,7 @@ exports.listUserActions = async (req, res) => {
     res.status(200).send({ userActions: userActions, countTotal: count })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -136,11 +167,31 @@ function changesCommStatusOwnedField(stored, body) {
   )
 }
 
+// A tag name never begins with a number (or a signed number): a point id that
+// is a number or a digit string is read as a point key (_id), anything else as
+// a tag name (asPointKey in index.js and graphql-server.js).
+const tagNameError =
+  'Invalid tag name: it must not be empty nor begin with a number.'
+function isValidTagName(name) {
+  return (
+    typeof name === 'string' && name.trim() !== '' && !/^[+-]?\d/.test(name.trim())
+  )
+}
+
 exports.createTag = async (req, res) => {
   Log.log('createTag')
   try {
     if (isCommStatusTagName(req.body?.tag) || req.body?.commStatus) {
       res.status(200).send({ error: commStatusTagError })
+      return
+    }
+    if (
+      req.body?.tag !== undefined &&
+      req.body?.tag !== null &&
+      String(req.body.tag).trim() !== '' &&
+      !isValidTagName(req.body.tag)
+    ) {
+      res.status(200).send({ error: tagNameError })
       return
     }
     if (req.body?._id && req.body?._id != 0) {
@@ -183,7 +234,7 @@ exports.createTag = async (req, res) => {
     res.status(200).send(tag)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -203,6 +254,11 @@ exports.updateTag = async (req, res) => {
         res.status(200).send({ error: commStatusTagError })
         return
       }
+      if ('tag' in req.body && !isValidTagName(req.body.tag)) {
+        res.status(200).send({ error: tagNameError })
+        return
+      }
+      if ('tag' in req.body) req.body.tag = req.body.tag.trim()
 
       let IsNumberVal = function (value) {
         if (/^(\-|\+)?([0-9]+(\.[0-9]+)?)$/.test(value)) return true
@@ -225,7 +281,7 @@ exports.updateTag = async (req, res) => {
     } else res.status(200).send({ error: 'No _id in update request.' })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -243,7 +299,7 @@ exports.deleteTag = async (req, res) => {
     } else res.status(200).send({ error: 'No _id in delete request.' })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -254,8 +310,9 @@ exports.listTags = async (req, res) => {
   if ('page' in req.body && 'itemsPerPage' in req.body)
     skip = req.body.itemsPerPage * (req.body.page - 1)
   let filter = {}
-  if ('filter' in req.body) filter = req.body.filter
-  req.body.filter['_id'] = { $nin: [-1, -2] }
+  if (req.body.filter && typeof req.body.filter === 'object')
+    filter = req.body.filter
+  filter['_id'] = { $nin: [-1, -2] }
 
   let limit = req.body.itemsPerPage || 10
   let orderby = {}
@@ -276,7 +333,7 @@ exports.listTags = async (req, res) => {
     res.status(200).send(ret)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1153,7 +1210,7 @@ exports.updateProtocolConnection = async (req, res) => {
     res.status(200).send({ ...restartInfo })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1218,7 +1275,7 @@ exports.deleteProtocolConnection = async (req, res) => {
     res.status(200).send({ error: false, ...restartInfo })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1240,7 +1297,7 @@ exports.createProtocolConnection = async (req, res) => {
     res.status(200).send({ _id: protocolConnection._id, error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1261,7 +1318,7 @@ exports.getProtocolConnectionModel = async (req, res) => {
       .send({ error: false, protocolConnection: protocolConnection })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1273,7 +1330,7 @@ exports.listProtocolConnections = async (req, res) => {
     res.status(200).send(protocolConnections)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1301,7 +1358,7 @@ exports.deleteProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1318,7 +1375,7 @@ exports.listNodes = async (req, res) => {
     res.status(200).send([...new Set(listNodes)])
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1331,7 +1388,7 @@ exports.createProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ _id: driverInstance._id, error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1343,7 +1400,7 @@ exports.listProtocolDriverInstances = async (req, res) => {
     res.status(200).send(driverInstances)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1384,7 +1441,7 @@ exports.updateProtocolDriverInstance = async (req, res) => {
     res.status(200).send({ error: false, processWarning })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1398,7 +1455,7 @@ exports.listUsers = async (req, res) => {
     res.status(200).send(users)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1410,7 +1467,7 @@ exports.listRoles = async (req, res) => {
     res.status(200).send(roles)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1429,10 +1486,11 @@ exports.userAddRole = async (req, res) => {
     }
     user.roles.push(role._id)
     await user.save()
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1457,12 +1515,20 @@ exports.userRemoveRole = async (req, res) => {
       res.status(200).send({ error: 'User not found!' })
       return
     }
+    if (
+      role.isAdmin &&
+      (await remainingAdmins({ fromUser: user._id, role: role._id })) === 0
+    ) {
+      res.status(200).send({ error: LAST_ADMIN_MESSAGE })
+      return
+    }
     user.roles.pull(role._id)
     await user.save()
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
@@ -1474,8 +1540,13 @@ exports.listGroup1 = async (req, res) => {
     res.status(200).send(groups)
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
+}
+
+// Displays the signed-in user may open (an empty list means all of them).
+exports.userDisplays = (req, res) => {
+  res.status(200).send({ displayList: req.rights?.displayList || [] })
 }
 
 exports.listDisplays = (req, res) => {
@@ -1485,7 +1556,7 @@ exports.listDisplays = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
 
@@ -1517,7 +1588,7 @@ exports.openDisplay = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
 
@@ -1528,13 +1599,21 @@ exports.openDisplay = (req, res) => {
 exports.saveDisplay = (req, res) => {
   Log.log('saveDisplay')
 
-  // Sanitize file path to prevent directory traversal
+  // only .svg files directly in the svg folder (no directory traversal)
   const svgDir = path.resolve(__dirname, '..', '..', '..', '..', 'svg')
-  const requestedPath = path.resolve(svgDir, path.basename(req.body.file || ''))
+  const fileName = path.basename(String(req.body?.file || ''))
+  const requestedPath = path.resolve(svgDir, fileName)
 
-  if (!requestedPath.startsWith(svgDir)) {
-    Log.log('saveDisplay: Invalid file path attempted: ' + req.body.file)
-    res.status(400).send({ error: 'Invalid file path' })
+  if (
+    !/^[^.][^/\\]*\.svg$/i.test(fileName) ||
+    path.dirname(requestedPath) !== svgDir
+  ) {
+    Log.log('saveDisplay: Invalid file name attempted: ' + req.body?.file)
+    res.status(400).send({ error: 'Invalid file name (must be a .svg file)' })
+    return
+  }
+  if (typeof req.body.content !== 'string') {
+    res.status(400).send({ error: 'Missing display content' })
     return
   }
 
@@ -1542,44 +1621,117 @@ exports.saveDisplay = (req, res) => {
     //handling error
     if (err) {
       Log.log(err)
-      res.status(200).send({ error: err })
+      res.status(200).send({ error: errorText(err) })
       return
     }
-
+    // the content itself is in the file, the audit keeps name and size
+    registerUserAction(req, 'saveDisplay', { body: { file: fileName, size: req.body.content.length } })
     res.status(200).send({ error: false })
   })
 }
 
+// Users that would still hold a role with isAdmin after a change: without the
+// admin flag of role `withoutRole`, without user `withoutUser`, or with user
+// `fromUser` losing role `role`. Used to refuse changes locking every admin out.
+async function remainingAdmins({ withoutRole, withoutUser, fromUser, role } = {}) {
+  const adminRoleIds = (
+    await Role.find({ isAdmin: true }).select('_id').read('primary').lean().exec()
+  )
+    .map((r) => String(r._id))
+    .filter((id) => id !== String(withoutRole))
+  if (adminRoleIds.length === 0) return 0
+  const users = await User.find({ roles: { $in: adminRoleIds } })
+    .select('_id roles')
+    .read('primary')
+    .lean()
+    .exec()
+  return users.filter((u) => {
+    if (withoutUser !== undefined && String(u._id) === String(withoutUser))
+      return false
+    if (fromUser !== undefined && String(u._id) === String(fromUser))
+      return u.roles.some(
+        (r) => adminRoleIds.includes(String(r)) && String(r) !== String(role)
+      )
+    return true
+  }).length
+}
+const LAST_ADMIN_MESSAGE =
+  'Refused: no user would be left with administrator rights!'
+
 exports.updateRole = async (req, res) => {
   Log.log('Update role')
   try {
+    if (
+      'isAdmin' in req.body &&
+      !req.body.isAdmin &&
+      (await remainingAdmins({ withoutRole: req.body._id })) === 0
+    ) {
+      res.status(200).send({ error: LAST_ADMIN_MESSAGE })
+      return
+    }
     registerUserAction(req, 'updateRole')
     await Role.findOneAndUpdate({ _id: req.body._id }, req.body)
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
 exports.updateUser = async (req, res) => {
   Log.log('Update user: ' + req?.body?.username)
   try {
+    if ('username' in req.body) {
+      const current = await User.findById(req.body._id).select('username').lean().exec()
+      if (current?.username === 'admin' && req.body.username !== 'admin') {
+        res.status(200).send({ error: 'Cannot rename admin user!' })
+        return
+      }
+    }
+    if (
+      'password' in req.body &&
+      req.body.password !== '' &&
+      req.body.password !== null &&
+      passwordTooShort(req.body.password)
+    ) {
+      res.status(200).send({ error: PASSWORD_TOO_SHORT })
+      return
+    }
     registerUserAction(req, 'updateUser')
     if (
       'password' in req.body &&
       req.body.password !== '' &&
       req.body.password !== null
     )
-      req.body.password = bcrypt.hashSync(req.body.password, 8)
+      req.body.password = await bcrypt.hash(req.body.password, BCRYPT_COST)
     else delete req.body['password']
     delete req.body['roles']
+    // the token version only moves forward (a stale copy must not revive old sessions)
+    delete req.body['tokenVersion']
+    if (
+      'username' in req.body &&
+      (await usernameTaken(req.body.username, req.body._id))
+    ) {
+      res.status(200).send({ error: 'User name already exists!' })
+      return
+    }
     await User.findOneAndUpdate({ _id: req.body._id }, req.body)
+    // a password set by an admin ends the sessions of that user
+    if ('password' in req.body) await UserRights.bumpTokenVersion(req.body._id)
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
+}
+
+// Is the user name used by another user? (names identify users at sign-in)
+async function usernameTaken(username, exceptId) {
+  if (typeof username !== 'string' || username.trim() === '') return false
+  const other = await User.findOne({ username: username }).select('_id').lean().exec()
+  return !!other && String(other._id) !== String(exceptId)
 }
 
 exports.createRole = async (req, res) => {
@@ -1592,15 +1744,25 @@ exports.createRole = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
 exports.createUser = async (req, res) => {
   Log.log('Create user')
   try {
-    if (req.body.password && req.body.password !== '')
-      req.body.password = bcrypt.hashSync(req.body.password, 8)
+    delete req.body.tokenVersion
+    if (await usernameTaken(req.body.username, null)) {
+      res.status(200).send({ error: 'User name already exists!' })
+      return
+    }
+    if (req.body.password && req.body.password !== '') {
+      if (passwordTooShort(req.body.password)) {
+        res.status(200).send({ error: PASSWORD_TOO_SHORT })
+        return
+      }
+      req.body.password = await bcrypt.hash(req.body.password, BCRYPT_COST)
+    }
     const user = new User(req.body)
     await user.save()
     req.body._id = user._id
@@ -1608,54 +1770,65 @@ exports.createUser = async (req, res) => {
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
 exports.deleteRole = async (req, res) => {
   Log.log('Delete role')
 
-  // do not delete a role that is attributed to a user
-  let users = await User.find({ roles: req.body._id }).exec()
-  if (users.length > 0)
-    return res
-      .status(200)
-      .send({ error: 'Cannot delete role that is attributed to a user!' })
-
-  registerUserAction(req, 'deleteRole')
-
   try {
+    // do not delete a role that is attributed to a user
+    let users = await User.find({ roles: req.body._id }).exec()
+    if (users.length > 0)
+      return res
+        .status(200)
+        .send({ error: 'Cannot delete role that is attributed to a user!' })
+
+    registerUserAction(req, 'deleteRole')
+
     await Role.findOneAndDelete({ _id: req.body._id })
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
 exports.deleteUser = async (req, res) => {
   Log.log('Delete user')
-  if (req.body.username === 'admin') {
-    res.status(200).send({ error: 'Cannot delete admin user!' })
-    return
-  }
-  registerUserAction(req, 'deleteUser')
-
   try {
+    // the protected user is identified by the stored document, not by the
+    // username the request claims
+    const target = await User.findById(req.body._id).exec()
+    if (req.body.username === 'admin' || target?.username === 'admin') {
+      res.status(200).send({ error: 'Cannot delete admin user!' })
+      return
+    }
+    if (target && (await remainingAdmins({ withoutUser: target._id })) === 0) {
+      res.status(200).send({ error: LAST_ADMIN_MESSAGE })
+      return
+    }
+    registerUserAction(req, 'deleteUser')
+
     await User.findOneAndDelete({ _id: req.body._id })
+    UserRights.invalidate()
     res.status(200).send({ error: false })
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: errorText(err) })
   }
 }
 
 // create user profile passing username, email, password and roles
 exports.signup = async (req, res) => {
+  if (passwordTooShort(req.body?.password))
+    return res.status(400).send({ message: PASSWORD_TOO_SHORT })
   const user = new User({
     username: req.body.username,
     email: req.body.email,
-    password: bcrypt.hashSync(req.body.password, 8),
+    password: await bcrypt.hash(String(req.body.password), BCRYPT_COST),
   })
 
   registerUserAction(req, 'signup')
@@ -1683,172 +1856,276 @@ exports.signup = async (req, res) => {
   }
 }
 
+// ---------------------------------------------------------------------------
+// Sign-in throttling: after SIGNIN_MAX_FAILURES failed attempts of the same
+// client address for the same user name, further attempts are refused until
+// SIGNIN_LOCK_MS passed. Kept in memory (a restart clears it). The address is
+// the one of the connection unless it comes from a trusted proxy (see
+// services/client-address.js).
+// ---------------------------------------------------------------------------
+const SIGNIN_MAX_FAILURES = 5
+const SIGNIN_LOCK_MS = 15 * 60 * 1000
+const SIGNIN_MAX_TRACKED = 10000 // bound of the failure table
+// failures of one client address, whatever the user names (password spraying)
+const SIGNIN_MAX_FAILURES_PER_ADDRESS = 30
+// password checks running at once (bcrypt and LDAP binds are expensive)
+const SIGNIN_MAX_CONCURRENT = 8
+// ...and from one client address, so one client cannot take every slot
+const SIGNIN_MAX_CONCURRENT_PER_ADDRESS = 2
+let signinsInProgress = 0
+const signinsByAddress = new Map() // client address -> checks running
+const MAX_USERNAME_LOGGED = 64 // characters of a failed user name kept in logs
+const signinFailures = new Map() // key -> { count, first, lockedUntil }
+
+function signinKey(req) {
+  return (
+    clientAddress(req) +
+    '|' +
+    String(req.body?.username).slice(0, 256).toLowerCase()
+  )
+}
+function signinLocked(key) {
+  const e = signinFailures.get(key)
+  return !!e && e.lockedUntil > Date.now()
+}
+function purgeSigninFailures() {
+  const now = Date.now()
+  for (const [k, e] of signinFailures)
+    if (now - e.first > SIGNIN_LOCK_MS && e.lockedUntil < now)
+      signinFailures.delete(k)
+}
+function signinFailed(key, max = SIGNIN_MAX_FAILURES) {
+  const now = Date.now()
+  let e = signinFailures.get(key)
+  if (!e || now - e.first > SIGNIN_LOCK_MS) e = { count: 0, first: now, lockedUntil: 0 }
+  e.count++
+  if (e.count >= max) e.lockedUntil = now + SIGNIN_LOCK_MS
+  if (!signinFailures.has(key) && signinFailures.size >= SIGNIN_MAX_TRACKED) {
+    purgeSigninFailures()
+    // still full: drop the oldest entries (Map keeps insertion order)
+    for (const k of signinFailures.keys()) {
+      if (signinFailures.size < SIGNIN_MAX_TRACKED) break
+      signinFailures.delete(k)
+    }
+  }
+  signinFailures.set(key, e)
+}
+setInterval(purgeSigninFailures, 60 * 1000).unref()
+
+const SIGNIN_FAIL_MESSAGE = 'Invalid user name or password.'
+// compared against when the user does not exist, so the response time does not tell
+const DUMMY_HASH = bcrypt.hashSync('json-scada-dummy-password', BCRYPT_COST)
+
+// sessions last maxSessionDays of the user's roles, at least one hour; LDAP
+// users at most ldap.maxSessionHours (default 12): the directory is only
+// consulted at sign-in, so a disabled account must not keep a long session
+const MIN_SESSION_SECONDS = 3600
+const DEFAULT_LDAP_SESSION_HOURS = 12
+function sessionSeconds(rights, user) {
+  const days = Number(rights?.maxSessionDays)
+  let seconds = Math.max(
+    MIN_SESSION_SECONDS,
+    Math.round((Number.isFinite(days) ? days : 0) * 86400)
+  )
+  if (user?.isLDAPUser) {
+    const h = Number(config.ldap?.maxSessionHours)
+    const cap = Math.round(
+      (Number.isFinite(h) && h > 0 ? h : DEFAULT_LDAP_SESSION_HOURS) * 3600
+    )
+    seconds = Math.min(seconds, Math.max(60, cap))
+  }
+  return seconds
+}
+
+// cookies are sent over https when the request came that way (also behind a proxy)
+function isSecureRequest(req) {
+  return req.secure || req.headers['x-forwarded-proto'] === 'https'
+}
+
+// Issues a session for a user with populated roles: the access token (http only
+// cookie) and a cookie with plain user data for the client side scripts.
+// The token only identifies the user (rights are read from the database on each
+// request), which keeps it small also for users with many stations.
+const MAX_USER_COOKIE_BYTES = 3500
+function issueSession(req, res, user) {
+  const { rights, authorities } = UserRights.combineRights(user.roles)
+  const seconds = sessionSeconds(rights, user)
+  const token = jwt.sign(
+    {
+      id: user.id,
+      username: user.username,
+      tv: Number(user.tokenVersion) || 0,
+      jti: crypto.randomUUID(),
+    },
+    config.secret,
+    { expiresIn: seconds }
+  )
+  // the station lists are not used by the client scripts and can be long
+  const { group1List, group1CommandList, ...clientRights } = rights
+  const userCookie = {
+    id: user._id,
+    username: user.username,
+    email: user.email,
+    isLDAPUser: user.isLDAPUser,
+    roles: authorities,
+    rights: clientRights,
+  }
+  // browsers drop cookies over ~4 KB: a long display list is left out and the
+  // client reads it from auth/userDisplays (displayListTruncated: true)
+  if (encodeURIComponent(JSON.stringify(userCookie)).length > MAX_USER_COOKIE_BYTES) {
+    const { displayList, ...rest } = clientRights
+    userCookie.rights = { ...rest, displayListTruncated: true }
+  }
+  return res
+    .cookie('x-access-token', token, {
+      httpOnly: true,
+      secure: isSecureRequest(req),
+      sameSite: 'lax',
+      maxAge: (seconds + 86400) * 1000,
+    })
+    .cookie(
+      'json-scada-user',
+      JSON.stringify(userCookie),
+      {
+        httpOnly: false,
+        secure: isSecureRequest(req),
+        sameSite: 'lax',
+        maxAge: (2 * seconds + 86400) * 1000,
+      }
+    )
+}
+
 // User signin request
 exports.signin = async (req, res) => {
   try {
     let user = null
 
-    // Try LDAP authentication first if enabled
-    if (config.ldap.enabled) {
-      user = await authenticateWithLDAP(req.body.username, req.body.password)
+    if (
+      typeof req.body?.username !== 'string' ||
+      typeof req.body?.password !== 'string' ||
+      req.body.username === ''
+    ) {
+      return res.status(200).send({ ok: false, message: SIGNIN_FAIL_MESSAGE })
     }
 
-    // Fall back to local authentication if LDAP auth failed or is disabled
-    if (!user) {
-      user = await User.findOne({
-        username: req.body.username,
+    const attemptKey = signinKey(req)
+    const addressKey = 'address|' + clientAddress(req)
+    if (signinLocked(attemptKey) || signinLocked(addressKey)) {
+      Log.log(
+        'Sign-in locked for ' +
+          req.body.username.slice(0, MAX_USERNAME_LOGGED) +
+          ' from ' +
+          clientAddress(req)
+      )
+      return res.status(200).send({
+        ok: false,
+        message: 'Too many failed attempts, try again later.',
       })
-        .populate('roles', '-__v')
+    }
+    const address = clientAddress(req)
+    if (
+      signinsInProgress >= SIGNIN_MAX_CONCURRENT ||
+      (signinsByAddress.get(address) || 0) >= SIGNIN_MAX_CONCURRENT_PER_ADDRESS
+    )
+      return res.status(503).send({
+        ok: false,
+        message: 'Server busy, try again in a moment.',
+      })
+    const failed = () => {
+      signinFailed(attemptKey)
+      signinFailed(addressKey, SIGNIN_MAX_FAILURES_PER_ADDRESS)
+      UserActionsQueue.enqueue({
+        username: req.body.username.slice(0, MAX_USERNAME_LOGGED),
+        action: 'signinFailed',
+        properties: { address: clientAddress(req) },
+        timeTag: new Date(),
+      })
+      return res
+        .status(200)
+        .clearCookie('x-access-token', {
+          httpOnly: true,
+          secure: isSecureRequest(req),
+          sameSite: 'lax',
+        })
+        .send({ ok: false, message: SIGNIN_FAIL_MESSAGE })
+    }
+
+    signinsInProgress++
+    signinsByAddress.set(address, (signinsByAddress.get(address) || 0) + 1)
+    try {
+      // A local account is checked here only: its password never goes to the
+      // directory, and an LDAP login can never take it over. An LDAP account
+      // (or an unknown name, when LDAP is enabled) is checked by the
+      // directory only: a password stored for it is never accepted.
+      const local = await User.findOne({ username: req.body.username })
+        .read('primary') // a password just changed must be the one checked
+        .populate({ path: 'roles', select: '-__v', options: { readPreference: 'primary' } })
         .exec()
 
-      if (!user) {
-        return res.status(200).send({ ok: false, message: 'User Not found.' })
-      }
+      if (local && !local.isLDAPUser) {
+        const passwordIsValid = await bcrypt.compare(
+          req.body.password,
+          local.password || DUMMY_HASH
+        )
+        if (!local.password || !passwordIsValid) return failed()
+        user = local
 
-      const passwordIsValid = bcrypt.compareSync(
-        req.body.password,
-        user.password
-      )
-
-      if (!passwordIsValid) {
-        return res.status(200).cookie('x-access-token', null).send({
-          ok: false,
-          message: 'Wrong Password!',
-        })
+        // hashes made with a lower cost (older versions) are upgraded now
+        if (bcrypt.getRounds(user.password) < BCRYPT_COST)
+          User.updateOne(
+            { _id: user._id, password: user.password },
+            { $set: { password: await bcrypt.hash(req.body.password, BCRYPT_COST) } }
+          )
+            .exec()
+            .catch((e) => Log.log('Password rehash: ' + e.message))
+      } else if (config.ldap.enabled) {
+        user = await authenticateWithLDAP(req.body.username, req.body.password)
+        if (!user) return failed()
+      } else {
+        // no such user (or an LDAP user while LDAP is off): same time as a check
+        await bcrypt.compare(req.body.password, DUMMY_HASH)
+        return failed()
       }
+    } finally {
+      signinsInProgress--
+      const n = (signinsByAddress.get(address) || 1) - 1
+      if (n <= 0) signinsByAddress.delete(address)
+      else signinsByAddress.set(address, n)
     }
+    signinFailures.delete(attemptKey)
 
     // Populate roles for LDAP user
     if (user.isLDAPUser) {
       user = await User.findById(user._id).populate('roles', '-__v').exec()
     }
 
-    // Combines all roles rights for the user
-    let authorities = []
-    let rights = {
-      isAdmin: false,
-      changePassword: false,
-      sendCommands: false,
-      enterAnnotations: false,
-      enterNotes: false,
-      enterManuals: false,
-      enterLimits: false,
-      substituteValues: false,
-      ackEvents: false,
-      ackAlarms: false,
-      disableAlarms: false,
-      group1List: [],
-      group1CommandList: [],
-      displayList: [],
-      maxSessionDays: 0.0,
-    }
+    // register user action (the user name of the account, not of the request)
+    registerUserAction(req, 'signin', { username: user.username, noBody: true })
 
-    for (let i = 0; i < user.roles.length; i++) {
-      authorities.push(user.roles[i].name)
-      if ('isAdmin' in user.roles[i])
-        rights.isAdmin = rights.isAdmin || user.roles[i].isAdmin
-      if ('changePassword' in user.roles[i])
-        rights.changePassword =
-          rights.changePassword || user.roles[i].changePassword
-      if ('sendCommands' in user.roles[i])
-        rights.sendCommands = rights.sendCommands || user.roles[i].sendCommands
-      if ('enterAnnotations' in user.roles[i])
-        rights.enterAnnotations =
-          rights.enterAnnotations || user.roles[i].enterAnnotations
-      if ('enterNotes' in user.roles[i])
-        rights.enterNotes = rights.enterNotes || user.roles[i].enterNotes
-      if ('enterManuals' in user.roles[i])
-        rights.enterManuals = rights.enterManuals || user.roles[i].enterManuals
-      if ('enterLimits' in user.roles[i])
-        rights.enterLimits = rights.enterLimits || user.roles[i].enterLimits
-      if ('substituteValues' in user.roles[i])
-        rights.substituteValues =
-          rights.substituteValues || user.roles[i].substituteValues
-      if ('ackEvents' in user.roles[i])
-        rights.ackEvents = rights.ackEvents || user.roles[i].ackEvents
-      if ('ackAlarms' in user.roles[i])
-        rights.ackAlarms = rights.ackAlarms || user.roles[i].ackAlarms
-      if ('disableAlarms' in user.roles[i])
-        rights.disableAlarms =
-          rights.disableAlarms || user.roles[i].disableAlarms
-      if ('group1List' in user.roles[i])
-        rights.group1List =
-          (
-            i > 0 &&
-            (rights.group1List.length === 0 ||
-              user.roles[i].group1List.length === 0)
-          ) ?
-            []
-          : rights.group1List.concat(user.roles[i].group1List)
-      if ('group1CommandList' in user.roles[i])
-        rights.group1CommandList = rights.group1CommandList.concat(
-          user.roles[i].group1CommandList
-        )
-      if ('displayList' in user.roles[i])
-        rights.displayList = rights.displayList.concat(
-          user.roles[i].displayList
-        )
-      if ('maxSessionDays' in user.roles[i])
-        if (user.roles[i].maxSessionDays > rights.maxSessionDays)
-          rights.maxSessionDays = user.roles[i].maxSessionDays
-    }
-
-    const token = jwt.sign(
-      { id: user.id, username: user.username, rights: rights },
-      config.secret,
-      {
-        expiresIn: rights.maxSessionDays * 86400, // days*24 hours
-      }
-    )
-
-    // register user action
-    registerUserAction(req, 'signin')
-
-    // return the access token in a cookie unaccessible to javascript (http only)
-    // also return a cookie with plain user data accessible to the client side scripts
-    res
+    issueSession(req, res, user)
       .status(200)
-      .cookie('x-access-token', token, {
-        httpOnly: true,
-        secure: false,
-        maxAge: (1 + rights.maxSessionDays) * 86400 * 1000,
-      })
-      .cookie(
-        'json-scada-user',
-        JSON.stringify({
-          id: user._id,
-          username: user.username,
-          email: user.email,
-          isLDAPUser: user.isLDAPUser,
-          roles: authorities,
-          rights: rights,
-        }),
-        {
-          httpOnly: false,
-          secure: false,
-          maxAge: (1 + 2 * rights.maxSessionDays) * 86400 * 1000,
-        }
-      )
       .send({ ok: true, message: 'Signed In' })
   } catch (err) {
-    if (err) {
-      Log.log(err)
-      res.status(200).send({ ok: false, message: err })
-      return
-    }
+    Log.log(err)
+    res.status(200).send({ ok: false, message: 'Sign-in error' })
   }
 }
 
-// Sign out: eliminate the cookie with access token
-exports.signout = (req, res) => {
-  registerUserAction(req, 'signout')
+// Sign out: the token is revoked (a kept copy stops working) and the cookie removed
+exports.signout = async (req, res) => {
+  // only a valid session is audited, never what the request claims
+  const tok = checkToken(req)
+  if (tok !== false) {
+    registerUserAction(req, 'signout', { noBody: true })
+    await UserRights.revokeToken(tok)
+  }
 
   return res
     .status(200)
-    .cookie('x-access-token', null, {
+    .clearCookie('x-access-token', {
       httpOnly: true,
-      secure: false,
-      maxAge: 0,
+      secure: isSecureRequest(req),
+      sameSite: 'lax',
     })
     .send({
       ok: true,
@@ -1856,26 +2133,26 @@ exports.signout = (req, res) => {
     })
 }
 
-// check and decoded token
-checkToken = (req) => {
-  let res = false
-  let token = req.headers['x-access-token'] || req.cookies['x-access-token']
-  if (!token) {
-    return res
-  }
-  jwt.verify(token, config.secret, (err, decoded) => {
-    if (err) {
-      return res
-    }
-    res = decoded
-  })
-  return res
-}
-// Modify password change to handle LDAP users
+// Password change of the signed-in user (not for LDAP users). Every session of
+// the user issued before it ends; this one gets a new token.
 exports.changePassword = async (req, res) => {
   Log.log('User request for password change.')
   try {
-    let user = await User.findOne({ username: req.body.username }).exec()
+    const ck = checkToken(req)
+    let rights = null
+    try {
+      rights = ck === false ? null : await UserRights.getCurrentRights(ck, { fresh: true })
+    } catch (e) {
+      res.status(200).send({ error: 'Database not available, try again later!' })
+      return
+    }
+    if (!rights || ck.username !== req.body.username || !rights.changePassword) {
+      res.status(200).send({ error: "Can't change password!" })
+      Log.log("Can't change password!")
+      return
+    }
+
+    let user = await User.findById(ck.id).read('primary').exec()
     if (!user) {
       res.status(200).send({ error: 'User not found!' })
       Log.log('Change password user not found!')
@@ -1889,27 +2166,16 @@ exports.changePassword = async (req, res) => {
       return
     }
 
-    let ck = checkToken(req)
     if (
-      ck === false ||
-      ck?.username !== req.body.username ||
-      !ck?.rights?.changePassword
-    ) {
-      res.status(200).send({ error: "Can't change password!" })
-      Log.log("Can't change password!")
-      return
-    }
-    if (
-      !('currentPassword' in req.body) ||
-      req.body.currentPassword === '' ||
-      req.body.currentPassword === null
+      typeof req.body.currentPassword !== 'string' ||
+      req.body.currentPassword === ''
     ) {
       res.status(200).send({ error: 'Invalid current password!' })
       Log.log('Invalid current password!')
       return
     }
 
-    const passwordIsValid = bcrypt.compareSync(
+    const passwordIsValid = await bcrypt.compare(
       req.body.currentPassword,
       user.password
     )
@@ -1919,26 +2185,27 @@ exports.changePassword = async (req, res) => {
       return
     }
 
-    if (
-      !('newPassword' in req.body) ||
-      req.body.newPassword === '' ||
-      req.body.newPassword === null
-    ) {
+    if (typeof req.body.newPassword !== 'string' || req.body.newPassword === '') {
       res.status(200).send({ error: 'Invalid new password!' })
       Log.log('Invalid new password!')
       return
     }
-    user.password = bcrypt.hashSync(req.body.newPassword, 8)
+    if (passwordTooShort(req.body.newPassword)) {
+      res.status(200).send({ error: PASSWORD_TOO_SHORT })
+      return
+    }
+    user.password = await bcrypt.hash(req.body.newPassword, BCRYPT_COST)
     await user.save()
+    await UserRights.bumpTokenVersion(user._id)
     registerUserAction(req, 'changePassword')
-    res.status(200).send({})
     Log.log('Password changed!')
-    delete req.body['currentPassword']
-    delete req.body['newPassword']
-    registerUserAction(req, 'restartProcesses')
+
+    // older tokens are refused from now on: give this session a new one
+    user = await User.findById(user._id).populate('roles', '-__v').exec()
+    issueSession(req, res, user).status(200).send({})
   } catch (err) {
     Log.log(err)
-    res.status(200).send({ error: err })
+    res.status(200).send({ error: 'Password change error' })
   }
 }
 
@@ -1984,6 +2251,50 @@ const PLATFORM_SCRIPTS = {
     ? 'restart_services.bat'
     : 'restart_processes.sh',
 }
+
+// Why the users/roles of a project zip (mongoexport files, one JSON document
+// per line) cannot be imported, or null: both files are needed and some user
+// must hold a role with isAdmin.
+function projectAdminProblem(zip) {
+  const read = (name) => {
+    const e = zip.getEntry(name)
+    return e ? zip.readAsText(e) : null
+  }
+  const rolesTxt = read('roles.json')
+  const usersTxt = read('users.json')
+  if (rolesTxt === null || usersTxt === null)
+    return 'Project file without users.json/roles.json: the import would remove all users!'
+  const docs = (txt) =>
+    txt
+      .split(/\r?\n/)
+      .filter((l) => l.trim() !== '')
+      .map((l) => {
+        try {
+          return JSON.parse(l)
+        } catch (e) {
+          return null
+        }
+      })
+  const oid = (v) => (v && typeof v === 'object' ? v.$oid : v)
+  const adminRoles = new Set(
+    docs(rolesTxt)
+      .filter((r) => r && r.isAdmin === true)
+      .map((r) => String(oid(r._id)))
+  )
+  const hasAdmin = docs(usersTxt).some(
+    (u) =>
+      u &&
+      Array.isArray(u.roles) &&
+      u.roles.some((r) => adminRoles.has(String(oid(r))))
+  )
+  return hasAdmin
+    ? null
+    : 'Project file has no user with an admin role: the import would lock everybody out!'
+}
+
+// limits of an uploaded project zip once unpacked (uploads are up to 100 MB)
+const MAX_PROJECT_UNPACKED_BYTES = 1024 * 1024 * 1024
+const MAX_PROJECT_ENTRIES = 10000
 
 // Kill a script that never finishes instead of leaking child processes.
 const SCRIPT_TIMEOUT_MS = 5 * 60 * 1000
@@ -2090,7 +2401,13 @@ exports.exportProject = async (req, res) => {
         return
       }
       registerUserAction(req, 'exportProject')
-      res.download(filePath)
+      // the exported file holds the whole configuration: do not leave it behind
+      res.download(filePath, (err) => {
+        if (err) Log.log('Project download error: ' + err.message)
+        fs.unlink(filePath, (e) => {
+          if (e) Log.log('Could not remove ' + filePath + ': ' + e.message)
+        })
+      })
     })
   } catch (err) {
     Log.log(err)
@@ -2101,6 +2418,8 @@ exports.exportProject = async (req, res) => {
 // import project file: download, extract zip project file, import collections and move some files
 exports.importProject = async (req, res) => {
   Log.log('Import project')
+  let zipPath = null // removed on any failure before the import starts
+  let started = false
   try {
     if (!req.files || !req.files.projectFileData)
       throw new Error('No project file uploaded!')
@@ -2135,7 +2454,7 @@ exports.importProject = async (req, res) => {
     if (!fs.existsSync(projectPath))
       fs.mkdirSync(projectPath, { recursive: true, mode: 0o700 })
 
-    const zipPath = path.join(projectPath, safeName)
+    zipPath = path.join(projectPath, safeName)
     await upload.mv(zipPath)
     const zip = new AdmZip(zipPath)
 
@@ -2147,7 +2466,14 @@ exports.importProject = async (req, res) => {
     // separator is a path separator on Windows and an ordinary character on
     // Linux, and adm-zip writes entry names verbatim).
     const resolvedBase = path.resolve(projectPath)
-    for (const entry of zip.getEntries()) {
+    const entries = zip.getEntries()
+    // zip bomb guard: limits on the unpacked size and number of entries
+    if (entries.length > MAX_PROJECT_ENTRIES)
+      throw new Error('Project file has too many entries!')
+    const unpacked = entries.reduce((n, e) => n + (Number(e.header?.size) || 0), 0)
+    if (unpacked > MAX_PROJECT_UNPACKED_BYTES)
+      throw new Error('Project file too large when unpacked!')
+    for (const entry of entries) {
       const entryName = entry.entryName
       // directory entries legitimately end with '/', everything else must be a
       // plain relative path of non-empty, non-traversing segments
@@ -2173,19 +2499,62 @@ exports.importProject = async (req, res) => {
       }
     }
 
+    // the import scripts replace all users and roles: a project without a
+    // user holding an admin role would lock everybody out
+    const adminProblem = projectAdminProblem(zip)
+    if (adminProblem) throw new Error(adminProblem)
+
     zip.extractAllTo(projectPath, true)
     Log.log('Files extracted to: ' + projectPath)
 
+    // the extracted files hold the whole configuration (users, connection
+    // passwords): remove them, and the zip, once the import is over
+    const cleanup = () => {
+      for (const p of [
+        zipPath,
+        ...entries
+          .filter((e) => !e.isDirectory)
+          .map((e) => path.resolve(projectPath, e.entryName)),
+      ])
+        fs.unlink(p, (e) => {
+          if (e && e.code !== 'ENOENT')
+            Log.log('Could not remove ' + p + ': ' + e.message)
+        })
+    }
+
     // Fixed script, no shell, no arguments taken from the request.
-    const cmd = spawnPlatformScript('importProject')
+    let cmd
+    try {
+      cmd = spawnPlatformScript('importProject')
+    } catch (e) {
+      cleanup()
+      throw e
+    }
+    started = true
+    let spawnError = null
+    cmd.on('error', (e) => (spawnError = e))
     cmd.on('close', (code) => {
       Log.log(`child process exited with code ${code}`)
-      registerUserAction(req, 'importProject')
+      cleanup()
+      // users and roles were replaced behind the back of the rights cache
+      UserRights.invalidate()
+      registerUserAction(req, 'importProject', {
+        body: { projectFileName: safeName, exitCode: code },
+      })
+      if (spawnError || code !== 0) {
+        res.status(200).send({
+          error:
+            'Project import failed (' +
+            (spawnError ? spawnError.message : 'exit code ' + code) +
+            '), see the server log!',
+        })
+        return
+      }
       res.status(200).send({ error: false })
-      return
     })
   } catch (err) {
     Log.log(err)
+    if (zipPath && !started) fs.unlink(zipPath, () => {})
     res.status(200).send({ error: err.message || String(err) })
   }
 }
@@ -2370,33 +2739,21 @@ exports.sanitizeDatabase = async function (req, res) {
   res.status(200).send({ error: false })
 }
 
-// enqueue use action for later insertion to mongodb
-function registerUserAction(req, actionName) {
-  let body = {}
-  Object.assign(body, req.body)
-
-  let ck = checkToken(req)
-  if (ck !== false) {
-    Log.log(actionName + ' - ' + ck?.username)
-    delete body['password']
-    // register user action
-    UserActionsQueue.enqueue({
-      username: ck?.username,
-      properties: body,
-      action: actionName,
-      timeTag: new Date(),
-    })
-  } else {
-    Log.log(actionName + ' - ' + req.body?.username)
-    delete body['password']
-    // register user action
-    UserActionsQueue.enqueue({
-      username: req.body?.username,
-      properties: body,
-      action: actionName,
-      timeTag: new Date(),
-    })
-  }
+// enqueue user action for later insertion to mongodb (UserActionsQueue removes
+// secrets). Without a valid token (sign-in, sign-up) the user name is the one
+// of the request: pass `username` once it is known to be genuine.
+function registerUserAction(req, actionName, opts = {}) {
+  const body = Object.assign({}, req.body)
+  const ck = req.token || checkToken(req)
+  const username =
+    ck !== false && ck ? ck.username : opts.username ?? req.body?.username
+  Log.log(actionName + ' - ' + String(username).substring(0, MAX_USERNAME_LOGGED))
+  UserActionsQueue.enqueue({
+    username: username,
+    properties: opts.noBody ? {} : opts.body ?? body,
+    action: actionName,
+    timeTag: new Date(),
+  })
 }
 
 // LDAP authentication helper
@@ -2561,6 +2918,15 @@ async function authenticateWithLDAP(username, password) {
 
     // Find or create user in local database
     let user = await User.findOne({ username: userData.username })
+    // the directory may answer with a name of its own (case, other attribute):
+    // a local account with that name is never turned into this LDAP user
+    if (user && !user.isLDAPUser) {
+      Log.log(
+        'LDAP - Refused: a local (non LDAP) user has the name ' +
+          userData.username
+      )
+      return null
+    }
 
     const defaultRole = await Role.findOne({ name: config.ldap.defaultRole })
 

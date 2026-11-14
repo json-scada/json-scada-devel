@@ -28,10 +28,13 @@ const { GraphQLError, GraphQLScalarType, Kind } = require('graphql')
 const cors = require('cors')
 const express = require('express')
 const { ObjectId, Double } = require('mongodb')
-const { Pool } = require('pg')
+const { getPgPool } = require('./pg-pool') // historian pool shared with /Invoke/
 const { authJwt } = require('./app/middlewares')
 const { canSendCommands, canSendCommandTo } = require('./app/middlewares/authJwt.js')
+const { findCommandPoint, commandRefusal } = require('./app/services/command-guard')
 const UserActionsQueue = require('./userActionsQueue')
+const UserRights = require('./app/services/user-rights')
+const { clientAddress } = require('./app/services/client-address')
 const Log = require('./simple-logger')
 
 const API_AP = process.env.JS_GRAPHQL_AP || '/apollo'
@@ -43,11 +46,94 @@ const EventsRemoveGuardSeconds = 20
 const DoInsertCommandAsSOE = true
 const CommandSentAsSOESymbol = '⚙️➡️'
 const MaxQueryLimit = 20000
-const MaxHistoryLimit = 50000
+const MaxHistoryLimit = 50000 // max historical values per tag
+const MaxHistoryTotalRows = 500000 // max historical values in one answer
+const MaxQueryDepth = 10 // deepest selection nesting accepted in a query
+// schema introspection (__schema/__type) nests type references deeply (the
+// standard GraphiQL/Apollo query has 15 levels): it gets a limit of its own
+const MaxIntrospectionDepth = 30
+
+// errors of writes nobody waits for (events, range checks) must not go unhandled
+function logBgError(e) {
+  Log.log('GraphQL: background write error: ' + (e?.message || e))
+}
+
+// A point id names a point key (_id) only when it is a number or a string of
+// digits: '22KV_BRK' is a tag name, not key 22 (parseInt would say 22).
+function asPointKey(id) {
+  if (typeof id === 'number') return Number.isFinite(id) ? id : null
+  if (typeof id === 'string' && /^-?\d+$/.test(id.trim())) return Number(id.trim())
+  return null
+}
+
+// Validation rule refusing queries nested deeper than maxDepth (fragments included)
+function depthLimitRule(maxDepth, maxIntrospectionDepth) {
+  return (context) => {
+    const fragments = {}
+    let introspectionDepth = 0
+    const depthOf = (selectionSet, visited, inIntrospection) => {
+      if (!selectionSet) return 0
+      let max = 0
+      for (const sel of selectionSet.selections) {
+        let d = 0
+        if (sel.kind === Kind.FIELD) {
+          const name = sel.name.value
+          if (
+            !inIntrospection &&
+            (name === '__schema' || name === '__type') &&
+            sel.selectionSet
+          ) {
+            // measured against its own limit, counts as one level here
+            const id = 1 + depthOf(sel.selectionSet, visited, true)
+            if (id > introspectionDepth) introspectionDepth = id
+            d = 1
+          } else
+            d = sel.selectionSet
+              ? 1 + depthOf(sel.selectionSet, visited, inIntrospection)
+              : 1
+        } else if (sel.kind === Kind.INLINE_FRAGMENT)
+          d = depthOf(sel.selectionSet, visited, inIntrospection)
+        else if (sel.kind === Kind.FRAGMENT_SPREAD) {
+          const name = sel.name.value
+          if (!visited.has(name) && fragments[name])
+            d = depthOf(
+              fragments[name].selectionSet,
+              new Set([...visited, name]),
+              inIntrospection
+            )
+        }
+        if (d > max) max = d
+      }
+      return max
+    }
+    return {
+      Document(doc) {
+        for (const def of doc.definitions)
+          if (def.kind === Kind.FRAGMENT_DEFINITION) fragments[def.name.value] = def
+        for (const def of doc.definitions)
+          if (def.kind === Kind.OPERATION_DEFINITION) {
+            introspectionDepth = 0
+            const depth = depthOf(def.selectionSet, new Set(), false)
+            if (depth > maxDepth)
+              context.reportError(
+                new GraphQLError(
+                  `Query is nested too deeply (${depth} levels, maximum ${maxDepth})`
+                )
+              )
+            if (introspectionDepth > maxIntrospectionDepth)
+              context.reportError(
+                new GraphQLError(
+                  `Introspection query is nested too deeply (${introspectionDepth} levels, maximum ${maxIntrospectionDepth})`
+                )
+              )
+          }
+      },
+    }
+  }
+}
 
 let db = null // mongoose models (see app/models)
 let AUTH = true // authentication/RBAC enabled?
-let pgPool = null // postgresql connection pool (for historical data)
 
 // ----------------------------------------------------------------------------
 // Custom scalars
@@ -156,7 +242,7 @@ const typeDefs = `#graphql
     "Query sequence of events (SOE) data. Defaults to the last hour when no time range is given."
     soeEvents(filter: SoeFilter, limit: Int = 1000, ascending: Boolean = false): [SoeEvent!]!
 
-    "Query historical values (PostgreSQL/TimescaleDB 'hist' table) for a list of tags."
+    "Query historical values (PostgreSQL/TimescaleDB 'hist' table) for a list of tags; limit is the maximum number of values per tag."
     historicalData(
       tags: [String!]!
       timeBegin: DateTime
@@ -657,7 +743,7 @@ function nativeDb() {
   return conn.db
 }
 
-function buildContext(req) {
+async function buildContext(req) {
   let token = false,
     username = 'unknown',
     rights = null
@@ -665,7 +751,13 @@ function buildContext(req) {
     token = authJwt.checkToken(req)
     if (token !== false) {
       if ('username' in token) username = token.username
-      if ('rights' in token) rights = token.rights
+      // rights as they are now in the database, not the ones of sign-in time
+      // (verifyToken already loaded them)
+      try {
+        rights = req.rights || (await authJwt.getCurrentRights(token)) || null
+      } catch (e) {
+        throw gqlError('Database disconnected!', 'SERVICE_UNAVAILABLE')
+      }
     }
   }
   return { req, token, username, rights }
@@ -758,8 +850,8 @@ function buildTagQuery(ctx, filter) {
 
 // find-point query by numeric key or tag name (optionally group1-restricted)
 function findPointQuery(ctx, tagOrId, applyGroupRestriction) {
-  const asNumber = parseInt(tagOrId)
-  const key = isNaN(asNumber) ? { tag: tagOrId } : { _id: asNumber }
+  const asNumber = asPointKey(tagOrId)
+  const key = asNumber === null ? { tag: String(tagOrId) } : { _id: asNumber }
   if (applyGroupRestriction) {
     const gf = groupAccessFilter(ctx)
     if (gf) return { ...key, ...gf }
@@ -778,33 +870,9 @@ function checkTagAccess(ctx, doc) {
   return doc
 }
 
-function getPgPool() {
-  if (pgPool) return pgPool
-  let pgopt = {}
-  if ('PGHOST' in process.env || 'PGHOSTADDR' in process.env) pgopt = null
-  else
-    pgopt = {
-      host: '127.0.0.1',
-      database: 'json_scada',
-      user: 'json_scada',
-      password: 'json_scada',
-      port: 5432,
-    }
-  Log.log('GraphQL: Postgresql - connecting')
-  pgPool = new Pool(pgopt)
-  pgPool.on('error', (err) => {
-    Log.log('GraphQL: Postgresql - ' + err.message)
-    try {
-      pgPool.end()
-    } catch (e) {}
-    pgPool = null
-  })
-  return pgPool
-}
-
 function originatorIp(req) {
   return (
-    req.headers['x-real-ip'] || req.headers['x-forwarded-for'] || req.socket?.remoteAddress
+    clientAddress(req)
   )
 }
 
@@ -1039,11 +1107,16 @@ const resolvers = {
       if (!pool) throw gqlError('Historian database not connected!', 'SERVICE_UNAVAILABLE')
       let resp
       try {
+        // `limit` applies to each tag: a busy tag cannot take the rows of the
+        // others; the whole answer is capped as well
         resp = await pool.query(
-          'SELECT tag, value, flags, time_tag, time_tag_at_source FROM hist ' +
-            'WHERE time_tag>=$1 AND time_tag<=$2 AND tag = ANY($3) ' +
-            'ORDER BY tag ASC, time_tag ASC LIMIT $4',
-          [begin, end, allowedTags, clampLimit(limit, MaxHistoryLimit)]
+          'SELECT h.tag, h.value, h.flags, h.time_tag, h.time_tag_at_source ' +
+            'FROM unnest($3::text[]) AS t(tag) CROSS JOIN LATERAL (' +
+            'SELECT tag, value, flags, time_tag, time_tag_at_source FROM hist ' +
+            'WHERE hist.tag = t.tag AND time_tag>=$1 AND time_tag<=$2 ' +
+            'ORDER BY time_tag ASC LIMIT $4) AS h ' +
+            'ORDER BY h.tag ASC, h.time_tag ASC LIMIT $5',
+          [begin, end, allowedTags, clampLimit(limit, MaxHistoryLimit), MaxHistoryTotalRows]
         )
       } catch (err) {
         Log.log('GraphQL: Postgresql error - ' + err.message)
@@ -1121,11 +1194,13 @@ const resolvers = {
       return await db.systemSetting.findOne({ key: 'global' })
     },
 
-    protocolDriverInstances: async () => {
+    protocolDriverInstances: async (_, __, ctx) => {
+      await requireAdmin(ctx)
       return await db.protocolDriverInstance.find()
     },
 
-    protocolConnections: async () => {
+    protocolConnections: async (_, __, ctx) => {
+      await requireAdmin(ctx)
       return await db.protocolConnection.find()
     },
 
@@ -1149,10 +1224,12 @@ const resolvers = {
     getTag: async (_, qry, ctx) => {
       return checkTagAccess(ctx, await db.tag.findOne({ tag: qry.tag }))
     },
-    getProtocolDriverInstances: async () => {
+    getProtocolDriverInstances: async (_, __, ctx) => {
+      await requireAdmin(ctx)
       return await db.protocolDriverInstance.find()
     },
-    getProtocolConnections: async () => {
+    getProtocolConnections: async (_, __, ctx) => {
+      await requireAdmin(ctx)
       return await db.protocolConnection.find()
     },
   },
@@ -1177,6 +1254,16 @@ const resolvers = {
 
       // special command tags that start with $$ do not need to be found in the database
       if (typeof tagOrId === 'string' && tagOrId.startsWith('$$')) {
+        // a user whose roles restrict commands to some groups needs '$$' in that list
+        if (AUTH && !(await canSendCommandTo(ctx.req, '$$')))
+          throw gqlError('User has no right to issue special ($$) commands!', 'FORBIDDEN')
+        UserActionsQueue.enqueue({
+          username: ctx.username,
+          tag: tagOrId,
+          action: 'Command',
+          properties: { value: new Double(cmdVal), valueString: cmdValStr },
+          timeTag: new Date(),
+        })
         const result = await mdb.collection(COLL_COMMANDS).insertOne({
           protocolSourceConnectionNumber: new Double(-1),
           protocolSourceCommonAddress: new Double(-1),
@@ -1196,10 +1283,8 @@ const resolvers = {
         return { ok: true, commandHandle: result.insertedId.toString() }
       }
 
-      // look for the command point in the database
-      const data = await mdb
-        .collection(COLL_REALTIME)
-        .findOne(findPointQuery(ctx, tagOrId, false))
+      // look for the command point in the database (primary: a fresh block counts)
+      const data = await findCommandPoint(mdb, findPointQuery(ctx, tagOrId, false))
       if (data === null || typeof data._id !== 'number')
         throw gqlError('Command point not found!', 'NOT_FOUND')
 
@@ -1214,6 +1299,13 @@ const resolvers = {
             'FORBIDDEN'
           )
         }
+      }
+
+      // only command points, and not while blocked by the operator
+      const refusal = await commandRefusal(mdb, data)
+      if (refusal) {
+        Log.log(`GraphQL: command refused: ${refusal} [${ctx.username}] [${data.tag}]`)
+        throw gqlError(refusal, 'FORBIDDEN')
       }
 
       let addressing = {}
@@ -1271,7 +1363,7 @@ const resolvers = {
           timeTagAtSource: new Date(),
           timeTagAtSourceOk: true,
           ack: 1,
-        })
+        }).catch(logBgError)
       }
 
       UserActionsQueue.enqueue({
@@ -1397,7 +1489,7 @@ const resolvers = {
         case 'ACK_ALL_ALARMS': {
           result = await mdb
             .collection(COLL_REALTIME)
-            .updateMany({ ...gf }, { $set: { alarmed: false } })
+            .updateMany({ alarmed: true, ...gf }, { $set: { alarmed: false } })
           // make digital event tags return to zero after acknowledged
           await mdb.collection(COLL_REALTIME).updateMany(
             {
@@ -1415,7 +1507,7 @@ const resolvers = {
                   value: 0,
                   valueString: '$stateTextFalse',
                   timeTagAtSource: null,
-                  TimeTagAtSourceOk: null,
+                  timeTagAtSourceOk: null,
                 },
               },
             ]
@@ -1450,7 +1542,7 @@ const resolvers = {
                   value: 0,
                   valueString: '$stateTextFalse',
                   timeTagAtSource: null,
-                  TimeTagAtSourceOk: null,
+                  timeTagAtSourceOk: null,
                 },
               },
             ]
@@ -1509,7 +1601,8 @@ const resolvers = {
 
     updateTagProperties: async (_, { tagOrId, properties }, ctx) => {
       const mdb = nativeDb()
-      const findPoint = findPointQuery(ctx, tagOrId, false)
+      // the group1 restriction of the user applies to property writes
+      const findPoint = findPointQuery(ctx, tagOrId, true)
       const prevData = await mdb.collection(COLL_REALTIME).findOne(findPoint)
       if (!prevData) throw gqlError('Point not found!', 'NOT_FOUND')
 
@@ -1566,14 +1659,23 @@ const resolvers = {
           'loLimit' in set ||
           'hysteresis' in set
         ) {
-          mdb.collection(COLL_REALTIME).updateOne(findPoint, {
-            $set: {
-              sourceDataUpdate: {
-                ...prevData.sourceDataUpdate,
-                rangeCheck: new Date().getTime(),
+          // merge on the server: a copy read earlier could overwrite what a
+          // driver wrote in the meantime
+          mdb
+            .collection(COLL_REALTIME)
+            .updateOne({ _id: prevData._id }, [
+              {
+                $set: {
+                  sourceDataUpdate: {
+                    $mergeObjects: [
+                      { $ifNull: ['$sourceDataUpdate', {}] },
+                      { rangeCheck: new Date().getTime() },
+                    ],
+                  },
+                },
               },
-            },
-          })
+            ])
+            .catch(logBgError)
         }
       }
 
@@ -1592,7 +1694,7 @@ const resolvers = {
           timeTagAtSource: eventDate,
           timeTagAtSourceOk: true,
           ack: 1,
-        })
+        }).catch(logBgError)
       }
 
       // insert event for changed (substituted) value
@@ -1615,7 +1717,7 @@ const resolvers = {
           timeTagAtSource: eventDate,
           timeTagAtSourceOk: true,
           ack: 1,
-        })
+        }).catch(logBgError)
       }
 
       return { ok: true, matchedCount: result.matchedCount }
@@ -1634,16 +1736,18 @@ async function initGQLServer(app, dbParam, authentication) {
   const srvApollo = new ApolloServer({
     typeDefs,
     resolvers,
-    introspection: true,
+    introspection: true, // only for signed-in users (the token is checked first)
+    validationRules: [depthLimitRule(MaxQueryDepth, MaxIntrospectionDepth)],
   })
   await srvApollo.start()
 
   const guards = AUTH ? [authJwt.verifyToken] : []
+  // the token is checked before the body is read
   app.use(
     API_AP,
     cors(),
-    express.json({ limit: '50mb' }),
     ...guards,
+    express.json({ limit: '50mb' }),
     expressMiddleware(srvApollo, {
       context: async ({ req }) => buildContext(req),
     })

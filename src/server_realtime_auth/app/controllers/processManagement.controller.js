@@ -32,10 +32,8 @@ const SystemSettings = require('../services/system-settings')
 const ProtocolDriverInstance = db.protocolDriverInstance
 
 function registerUserAction(req, actionName) {
-  const body = {}
-  Object.assign(body, req.body)
-  delete body['password']
-  const ck = checkToken(req)
+  const body = Object.assign({}, req.body) // secrets removed by the queue
+  const ck = req.token || checkToken(req)
   UserActionsQueue.enqueue({
     username: ck ? ck.username : req.body?.username,
     properties: body,
