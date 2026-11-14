@@ -14,6 +14,11 @@ const Log = require('../../simple-logger')
 const db = require('../models')
 
 const CACHE_TTL_MS = 10000
+// how old cached rights may be when the database cannot be read: commands and
+// admin actions (fresh lookups) accept only a short outage, other requests a
+// longer one; past that the answer is "unavailable" (503), never stale rights
+const MAX_STALE_FRESH_MS = 60 * 1000
+const MAX_STALE_MS = 10 * 60 * 1000
 const CACHE_MAX_ENTRIES = 5000
 const REVOKED_REFRESH_MS = 10000
 const COLL_REVOKED = 'revokedTokens'
@@ -144,9 +149,11 @@ async function getCurrentRights(token, opts = {}) {
   const hit = cache.get(key)
 
   let entry = null
-  if (hit && !opts.fresh && Date.now() - hit.t < CACHE_TTL_MS) entry = hit
+  const age = hit ? Date.now() - hit.t : Infinity
+  const staleOk = age < (opts.fresh ? MAX_STALE_FRESH_MS : MAX_STALE_MS)
+  if (hit && !opts.fresh && age < CACHE_TTL_MS) entry = hit
   else if (!databaseHealthy) {
-    if (!hit) throw new RightsUnavailableError()
+    if (!staleOk) throw new RightsUnavailableError()
     entry = hit
   } else {
     try {
@@ -154,8 +161,8 @@ async function getCurrentRights(token, opts = {}) {
     } catch (err) {
       if (err?.name === 'CastError') return null // not a valid user id
       Log.log('getCurrentRights: ' + err)
-      // database trouble: keep serving the last known rights rather than fail open
-      if (!hit) throw new RightsUnavailableError()
+      // database trouble: keep serving the recently known rights for a while
+      if (!staleOk) throw new RightsUnavailableError()
       entry = hit
     }
   }
@@ -208,9 +215,40 @@ async function ensureRevokedIndex(mdb) {
   revokedIndexReady = true
 }
 
+// jti -> expiry date of sign-outs not stored yet (database unavailable at the
+// time); stored by the periodic refresh once the database is back
+const pendingRevoked = new Map()
+
+function revokedExpiry(token) {
+  return new Date((Number(token.exp) || Date.now() / 1000 + 86400) * 1000)
+}
+
+async function storeRevoked(mdb, jti, expireAt) {
+  await ensureRevokedIndex(mdb)
+  await mdb
+    .collection(COLL_REVOKED)
+    .updateOne({ _id: jti }, { $set: { expireAt } }, { upsert: true })
+  pendingRevoked.delete(jti)
+}
+
 async function refreshRevoked() {
   const mdb = nativeDb()
   if (!mdb) return
+  const now = Date.now()
+  for (const [jti, expireAt] of pendingRevoked) {
+    if (expireAt.getTime() <= now) {
+      // expired meanwhile: the token is refused by its own expiry now
+      pendingRevoked.delete(jti)
+      revoked.delete(jti)
+      continue
+    }
+    try {
+      await storeRevoked(mdb, jti, expireAt)
+    } catch (err) {
+      Log.log('refreshRevoked: ' + err.message)
+      return // still unavailable: retried on the next refresh
+    }
+  }
   try {
     const docs = await mdb
       .collection(COLL_REVOKED)
@@ -220,7 +258,7 @@ async function refreshRevoked() {
       )
       .toArray()
     const next = new Set(docs.map((d) => d._id))
-    for (const j of revoked) if (pendingRevoked.has(j)) next.add(j)
+    for (const j of pendingRevoked.keys()) next.add(j)
     revoked = next
   } catch (err) {
     Log.log('refreshRevoked: ' + err.message)
@@ -228,29 +266,16 @@ async function refreshRevoked() {
 }
 setInterval(refreshRevoked, REVOKED_REFRESH_MS).unref()
 
-const pendingRevoked = new Set() // revoked here, not yet stored
-
 // Sign-out: the token stops being accepted even if a copy of it is kept.
 async function revokeToken(token) {
   if (!token?.jti) return
+  const expireAt = revokedExpiry(token)
   revoked.add(token.jti)
-  pendingRevoked.add(token.jti)
+  pendingRevoked.set(token.jti, expireAt)
   const mdb = nativeDb()
   if (!mdb) return
   try {
-    await ensureRevokedIndex(mdb)
-    await mdb.collection(COLL_REVOKED).updateOne(
-      { _id: token.jti },
-      {
-        $set: {
-          expireAt: new Date(
-            (Number(token.exp) || Date.now() / 1000 + 86400) * 1000
-          ),
-        },
-      },
-      { upsert: true }
-    )
-    pendingRevoked.delete(token.jti)
+    await storeRevoked(mdb, token.jti, expireAt)
   } catch (err) {
     Log.log('revokeToken: ' + err.message)
   }

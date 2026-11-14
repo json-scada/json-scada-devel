@@ -2966,12 +2966,14 @@ function maskConnectionString(cs) {
           // a duplicate means a previous try did store that one
           if ((firstError?.code ?? err?.code) === 11000) stored = inserted + 1
           else {
-            UserActionsQueue.dequeueMany(inserted)
+            UserActionsQueue.ack(batch.slice(0, inserted))
             Log.log('User actions not stored, will retry: ' + err.message)
             break
           }
         }
-        UserActionsQueue.dequeueMany(stored)
+        // acknowledged by identity: an overflow during the insert may have
+        // dropped some of these from the queue already
+        UserActionsQueue.ack(batch.slice(0, stored))
       }
     } finally {
       flushingActions = false
