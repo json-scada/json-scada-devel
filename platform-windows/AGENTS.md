@@ -29,7 +29,7 @@ Windows platform packaging, installation, and runtime management for JSON-SCADA.
 - **Service scripts:** `create_services.bat` (PostgreSQL via `pg_ctl`, then `winsw-services.ps1 -Action Install`, OPC-DA server registration), `remove_services.bat` (`-Action Remove`), `start_services.bat`, `stop_services.bat`, `restart_services.bat`
   - `remove_services.bat` stops services synchronously, then runs `kill_processes_by_pattern.ps1` before unregistering services. The helper uses CIM to terminate processes whose command lines contain any case-insensitive literal `-Patterns` substring. By default it matches paths under the installation's `sql\`, `bin\`, and `platform-windows\` directories. It skips itself and its callers and exits 2 if a CIM query or termination fails.
 - **Protocol scripts:** `start_protocols.bat`, `stop_protocols.bat`, `restart_protocols.bat`
-- **Build:** `build.bat`, `buildupd.bat`
+- **Build:** `build.bat` and `buildupd.bat` also build the custom-developments templates, which require Node.js 22.23.4 or newer in the bundled runtime or on PATH
 - **Config:** `conf/` subdirectory mirrors `conf-templates/` for deployed configs
 - **Credentials:** PSCP (`pscp.exe`) for secure file transfer
 - **Tools:** `wget.exe`, `tar.exe`, `WinSW.exe`, `ffmpeg.exe`, `sounder.exe`, `json-extractor.bat`

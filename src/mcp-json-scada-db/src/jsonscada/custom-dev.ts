@@ -162,7 +162,7 @@ role rights apply (commands, acknowledgements, property changes, station filters
 
 ## Templates
 
-Astro 5 + React 18 + Tailwind + shadcn/ui components, TypeScript. Copy one as the starting point:
+Astro 7, React 19, Tailwind CSS 4 and shadcn/ui components with TypeScript. Building requires Node.js 22.23.4 or newer. Copy one as the starting point:
 
 ${Object.entries(TEMPLATES)
   .map(([k, v]) => `- \`${k}\`: ${v}`)

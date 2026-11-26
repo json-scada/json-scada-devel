@@ -131,7 +131,7 @@ export function StationList({
             onChange={(event) => setQuery(event.target.value)}
             placeholder="Filter stations and tags"
             aria-label="Filter stations and tags"
-            className="w-full rounded-md border border-hairline bg-surface-2 py-1.5 pl-8 pr-2 text-xs text-ink-1 placeholder:text-ink-3 focus:border-series-1 focus:outline-none"
+            className="w-full rounded-md border border-hairline bg-surface-2 py-1.5 pl-8 pr-2 text-xs text-ink-1 placeholder:text-ink-3 focus:border-series-1 focus:outline-hidden"
           />
         </div>
       </div>
@@ -277,7 +277,7 @@ function PointRows({
               <span
                 aria-hidden
                 className={cn(
-                  'grid h-3.5 w-3.5 shrink-0 place-items-center rounded-sm border',
+                  'grid h-3.5 w-3.5 shrink-0 place-items-center rounded-xs border',
                   selected ?
                     'border-series-1 bg-series-1'
                   : 'border-ink-3/50'

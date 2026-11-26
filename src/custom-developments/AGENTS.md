@@ -12,7 +12,7 @@ Web apps (dashboards, equipment faceplates, special views) served by `server_rea
 ## Local Contracts
 
 - Each app is one folder; the folder name is the URL. A folder is routed when it has `dist/index.html` (or a plain `index.html`); routes are created when `server_realtime_auth` starts. Apps and their list are served to signed-in users only (no session: redirect to `/login`)
-- Templates are Astro 5 + React 18 + Tailwind + shadcn/ui (TypeScript). `astro.config.mjs` derives `base: /custom-developments/<folder>` from the folder name: keep that, so a copied template needs no config change
+- Templates use Astro 7, React 19, Tailwind CSS 4 and shadcn/ui with TypeScript. Building requires Node.js 22.23.4 or newer. `astro.config.mjs` derives `base: /custom-developments/<folder>` from the folder name: keep that, so a copied template needs no config change
 - Data goes only through `src/lib/scadaOpcApi.ts` (same-origin `fetch('/Invoke/')` with the login cookie; the user's role rights apply). Every template holds an identical copy: change it in all templates at once. The MCP server parses its exported functions, JSDoc, data interfaces, `OpcStatusCodes` and `OpcAcknowledge` at request time and compares each app's copy with the templates'
 - The AdminUI lists each app with the `<title>` and `<meta name="description">` of its built `index.html`: give every app a real title and description (the Astro placeholder `Astro description` is not shown)
 - Components that call the API mount with `client:only="react"`
@@ -20,6 +20,7 @@ Web apps (dashboards, equipment faceplates, special views) served by `server_rea
 
 ## Work Guidance
 
+- Keep `@types/node` on the oldest supported Node.js major, and use a TypeScript version supported by `@astrojs/check`
 - Keep `README.md` (user workflow and API list) consistent with `scadaOpcApi.ts` and the MCP guide `CUSTOM_DEV_GUIDE`
 - Commands in templates follow the `transformer_with_command` flow: `issueCommand`, then poll `getCommandAckStatus` until Good/Bad or a timeout
 

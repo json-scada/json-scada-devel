@@ -1,7 +1,7 @@
 // @ts-check
 import { defineConfig } from "astro/config";
 import react from "@astrojs/react";
-import tailwind from "@astrojs/tailwind";
+import tailwindcss from '@tailwindcss/vite';
 import { fileURLToPath } from 'url';
 import path from 'path';
 
@@ -13,10 +13,6 @@ const folderName = path.basename(__dirname);
 // https://astro.build/config
 export default defineConfig({
   base: `/custom-developments/${folderName}`,
-  integrations: [
-    react(),
-    tailwind({
-      applyBaseStyles: false,
-    }),
-  ],
+  integrations: [react()],
+  vite: { plugins: [tailwindcss()] },
 });

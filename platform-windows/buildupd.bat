@@ -2,7 +2,7 @@ echo This script builds JSON-SCADA Windows x64 binaries and updates NodeJS NPM m
 echo Required tools:
 echo - Dotnet Core SDK 8.0
 echo - Golang 1.22+
-echo - Node.js 20+
+echo - Node.js 22.23.4+
 
 set JSPATH=\json-scada
 set SRCPATH=%JSPATH%\src

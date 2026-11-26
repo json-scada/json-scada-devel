@@ -2,6 +2,8 @@
 
 Use the example templates to create your own custom developments.
 
+Building a template requires Node.js 22.23.4 or newer. Run `npm ci` in the template folder to install its locked dependencies.
+
 The apps are served by the realtime server under `/custom-developments/<folder>/` to signed-in users only (a browser without a session is sent to the login page); the data they read is limited by the rights of the user.
 
 1.  Duplicate the template folder and rename it to your own development name.

@@ -3,7 +3,7 @@
 # Required tools:
 # Dotnet SDK 8.0+
 # Golang 1.21+
-# Node.js 20+
+# Node.js 22.23.4+
 
 ARG1=${1:-linux-x64}
 case $(uname -m) in
