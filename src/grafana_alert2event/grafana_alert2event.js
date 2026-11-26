@@ -39,7 +39,7 @@ const beepPointKey = -1
 
 var jsConfigFile = '../../conf/json-scada.json'
 const Queue = require('queue-fifo')
-const fs = require('fs')
+const fs = require('node:fs')
 const mongo = require('mongodb')
 const { MongoClient, ReadPreference } = require('mongodb')
 const { setInterval } = require('timers')

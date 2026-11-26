@@ -4,7 +4,7 @@ Grafana webhook listener that converts Grafana alert notifications to JSON-SCADA
 
 It accepts the Grafana Alerting webhook payload (Grafana 8+ unified alerting, current API). The legacy (pre-Grafana 8) webhook notification payload is still accepted for backward compatibility.
 
-Requires Node.js.
+Requires Node.js 20.19.0 or newer.
 
 ## Run
 

@@ -10,7 +10,7 @@ Node.js service that converts Grafana alerts to JSON-SCADA events. Listens for G
 
 ## Local Contracts
 
-- **Language:** Node.js
+- **Runtime:** Node.js 20.19.0 or newer
 - **Main entry:** `grafana_alert2event.js` — single-file application
 - **Config:** Environment variables or command-line arguments
 
