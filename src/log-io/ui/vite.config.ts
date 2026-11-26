@@ -9,6 +9,8 @@ export default defineConfig({
   base: './',
   plugins: [react()],
   build: {
+    // Preserve the browser targets used by the Vite 7 build.
+    target: ['chrome107', 'edge107', 'firefox104', 'safari16'],
     // Keep output in "build" so the json-scada build pipeline and the server's
     // build-ui script (which copies ui/build -> server/lib/ui) keep working.
     outDir: 'build',

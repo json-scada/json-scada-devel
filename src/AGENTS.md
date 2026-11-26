@@ -89,7 +89,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 | [inkscape-extension](inkscape-extension/AGENTS.md) | Python | Inkscape SVG SCADA editor extension |
 | svg-display-editor | — | SVG display editor (docs) |
 | svgedit | JS | Web-based SVG editor (submodule) |
-| log-io | Node.js | Log streaming UI |
+| log-io | Node.js | Log streaming server, file input and UI. The UI build and tests require Node.js 22.22.2+ on 22.x, 24.15.0+ on 24.x, or 26+ |
 | [carbone-reports](carbone-reports/AGENTS.md) | Node.js | Carbone report generation example |
 | [backup-mongo](backup-mongo/AGENTS.md) | Node.js | Configuration collection export to mongo shell scripts |
 | [updateUser](updateUser/AGENTS.md) | Node.js | User creation and password reset utility |

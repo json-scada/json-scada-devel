@@ -46,6 +46,12 @@ log.io-server
 
 Browse to http://localhost:6688
 
+## Build the bundled UI
+
+The UI build and tests require Node.js 22.22.2+ on the 22.x line, 24.15.0+ on the 24.x line, or 26 and newer.
+From `ui/`, run `npm ci`, `npm test`, and `npm run build`. The build writes static assets to `ui/build/`.
+From `server/`, `npm run build:ui` builds the UI and copies the assets into `server/lib/ui/`.
+
 ## Install & run file input
 
 Install via npm
