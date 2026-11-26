@@ -89,6 +89,14 @@ func (e *Engine) negativeCon(replyTo asdu.Connect, pack *asdu.ASDU) {
 	pack.Coa.IsNegative = false
 }
 
+// unknownCAReply mirrors the request with cause 46 (unknown common address)
+// and the negative bit set.
+func (e *Engine) unknownCAReply(replyTo asdu.Connect, pack *asdu.ASDU) {
+	pack.Coa.IsNegative = true
+	_ = pack.SendReplyMirror(e.reply(replyTo), asdu.UnknownCA)
+	pack.Coa.IsNegative = false
+}
+
 func (e *Engine) positiveCon(replyTo asdu.Connect, pack *asdu.ASDU) {
 	_ = pack.SendReplyMirror(e.reply(replyTo), asdu.ActivationCon)
 }

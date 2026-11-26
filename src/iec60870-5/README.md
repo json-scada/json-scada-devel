@@ -286,9 +286,12 @@ Deliberately different from the C# drivers:
   parameter with a negative confirmation (not only the automatic mapping of
   command destinations), and so does one with the test bit set (nothing is
   queued). Counter interrogation and reset process are forwarded as before.
-- A station interrogation answers the points of its common address only; the
-  global address takes every point of the connection. An interrogation of a
-  common address no tag is mapped to gets a negative confirmation.
+- A station or group interrogation answers the points of its common address
+  only, so one server connection can concentrate several RTUs, each
+  interrogated on its own CA; the global address (65535, or 255 with 1-octet
+  CAs) takes every point of the connection. An interrogation of a common
+  address no tag is mapped to gets a negative mirror with cause 46 (unknown
+  common address).
 - The 101/104 clients execute the stored select-before-operate twin once, on a
   positive select confirmation that matches its common address, object address
   and type within 30 s of the select; the pending execute is dropped when the
@@ -323,7 +326,7 @@ go test ./internal/cs101util/ # serial vs TCP port names
 go test ./test/               # cs104 client <-> server protocol loopback (no MongoDB)
 go test ./internal/cliapp/    # client writer latency, batching and tag auto-creation (MongoDB)
 go test ./internal/srvapp/    # server flow control and large-interrogation loopback; commands,
-                              # SBO, interrogation, value conversion, autoCreateTags (MongoDB)
+                              # SBO, interrogation (per common address), value conversion, autoCreateTags (MongoDB)
 ```
 
 The loopback test wires a go-iecp5 server and client over `127.0.0.1` and checks

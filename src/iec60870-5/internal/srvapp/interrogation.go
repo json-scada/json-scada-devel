@@ -78,12 +78,12 @@ func (e *Engine) Interrogation(srv *Conn, replyTo asdu.Connect, pack *asdu.ASDU,
 	q := int(qoi)
 	out := e.reply(replyTo)
 	jslog.Log(jslog.LevelBasic, "%s[%d] Group interrogation BEGIN", conName, q)
-	// a station interrogation answers the points of its common address; only
-	// the global address takes every one of the connection
+	// a station or group interrogation answers the points of its common
+	// address; only the global address takes every one of the connection
 	global := isGlobalCA(replyTo, pack.CommonAddr)
 	if !global && !e.knownCA(srv, int(pack.CommonAddr)) {
 		srv.Sec.UnknownCA(replyTo, pack, "interrogation")
-		e.negativeCon(replyTo, pack)
+		e.unknownCAReply(replyTo, pack)
 		jslog.Log(jslog.LevelBasic, "%s[%d] Group interrogation of unknown common address %d", conName, q, int(pack.CommonAddr))
 		return
 	}

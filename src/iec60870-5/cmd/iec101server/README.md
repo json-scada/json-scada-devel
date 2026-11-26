@@ -143,7 +143,7 @@ Use a command like this below to add a destination without removing others.
 Parameters description for _protocolDestinations_
 
 - _**protocolDestinationConnectionNumber**_ - Number code of the protocol connection (must match the number code of the desired distribution connection defined on _protocolConnections_ collection). **Mandatory parameter**.
-- _**protocolDestinationCommonAddress**_ - Common Address (CA) used for the IEC 101 protocol. **Mandatory parameter**.
+- _**protocolDestinationCommonAddress**_ - Common Address (CA) used for the IEC 101 protocol. **Mandatory parameter**. A station or group interrogation to this CA answers only the points mapped to it (the global CA answers all), so one connection can forward several RTUs, each on its own CA.
 - _**protocolDestinationObjectAddress**_ - Information Object Address (IOA) for the distributed value on protocol (the combination of CA/IOA must not repeat for distinct objects on the same connection). **Mandatory parameter**.
 - _**protocolDestinationASDU**_ - ASDU type number code for data transport. E.g 13 for float, 1 for digital single, 45 for digital command. **Mandatory parameter**.
 - _**protocolDestinationCommandDuration**_ - Command options, IEC-104 QU field: 0=Unspecified, 1=Short Pulse, 2=Long Pulse, 3=Persistent. Just meaningful for commands. **Mandatory parameter**.

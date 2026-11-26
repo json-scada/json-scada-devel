@@ -249,3 +249,61 @@ func TestInterrogationDestinations(t *testing.T) {
 		t.Errorf("group 1 interrogation sent %v, want only IOA 801", g1)
 	}
 }
+
+// One server connection concentrating several RTUs: a station or group
+// interrogation to a common address answers only that address, the global
+// address every point, and an address without points gets cause 46.
+func TestInterrogationCommonAddress(t *testing.T) {
+	e, c, _ := cmdEngine(t,
+		point(40, "analog", 7, dest(1, 7, 100, 13, bson.M{"protocolDestinationGroup": 1.0})),
+		point(41, "analog", 14, dest(1, 14, 200, 13, bson.M{"protocolDestinationGroup": 2.0})),
+		point(42, "analog", 24, dest(1, 24, 300, 13, bson.M{"protocolDestinationGroup": 8.0})),
+	)
+	gi := func(ca asdu.CommonAddr, q asdu.QualifierOfInterrogation) *fakeLink {
+		l := &fakeLink{}
+		e.Interrogation(c, l, buildASDU(t, func(l asdu.Connect) error {
+			return asdu.InterrogationCmd(l, asdu.CauseOfTransmission{Cause: asdu.Activation}, ca, q)
+		}), q)
+		return l
+	}
+	cases := []struct {
+		name string
+		ca   asdu.CommonAddr
+		q    asdu.QualifierOfInterrogation
+		want map[int]float64
+	}{
+		{"station CA 24", 24, asdu.QOIStation, map[int]float64{300: 24}},
+		{"group 8 CA 24", 24, asdu.QOIGroup8, map[int]float64{300: 24}},
+		{"group 8 CA 7", 7, asdu.QOIGroup8, map[int]float64{}},
+		{"station global", asdu.GlobalCommonAddr, asdu.QOIStation, map[int]float64{100: 7, 200: 14, 300: 24}},
+	}
+	for _, tc := range cases {
+		l := gi(tc.ca, tc.q)
+		got := sentValues(l)
+		if len(got) != len(tc.want) {
+			t.Errorf("%s sent %v, want %v", tc.name, got, tc.want)
+		}
+		for ioa, v := range tc.want {
+			if got[ioa] != v {
+				t.Errorf("%s sent %v, want %v", tc.name, got, tc.want)
+			}
+		}
+		all := l.all()
+		if len(all) < 2 || all[0].Coa.Cause != asdu.ActivationCon || all[0].Coa.IsNegative ||
+			all[len(all)-1].Coa.Cause != asdu.ActivationTerm {
+			t.Errorf("%s: want positive ACTCON ... ACTTERM, got %d ASDUs", tc.name, len(all))
+			continue
+		}
+		for _, a := range all {
+			if tc.ca != asdu.GlobalCommonAddr && a.CommonAddr != tc.ca {
+				t.Errorf("%s: ASDU %v sent with CA %d", tc.name, a.Type, a.CommonAddr)
+			}
+		}
+	}
+
+	all := gi(99, asdu.QOIStation).all()
+	if len(all) != 1 || all[0].Type != asdu.C_IC_NA_1 || all[0].Coa.Cause != asdu.UnknownCA ||
+		!all[0].Coa.IsNegative || all[0].CommonAddr != 99 {
+		t.Errorf("interrogation of unknown CA 99: want one negative cause 46 mirror, got %v", all)
+	}
+}
