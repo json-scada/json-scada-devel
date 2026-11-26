@@ -2,6 +2,8 @@
 
 This is a Model Context Protocol (MCP) server that provides access to a {json:scada} MongoDB database. It allows AI models to query real-time data, historical records, system logs, and send commands to control points within the SCADA system.
 
+Requires Node.js 20.19.0 or newer.
+
 ## Features
 
 - **Point Discovery**: Search for points by tag, description, or group.

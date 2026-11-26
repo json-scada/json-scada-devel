@@ -11,7 +11,7 @@ Model Context Protocol (MCP) server that gives AI assistants (Claude, Cline, Cur
 
 ## Local Contracts
 
-- **Language:** TypeScript (Node.js)
+- **Language and runtime:** TypeScript on Node.js 20.19.0 or newer
 - **Package manager:** npm
 - **Build:** `npm run build` (TypeScript -> JS in `dist/`)
 - **SDK:** MCP TypeScript SDK v2 (`@modelcontextprotocol/server` + `@modelcontextprotocol/node`), protocol revision 2026-07-28 with legacy (2025-era) fallback
