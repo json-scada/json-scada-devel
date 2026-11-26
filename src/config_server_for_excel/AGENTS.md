@@ -10,7 +10,7 @@ HTTP server that feeds the `json-scada-config.xlsm` workbook with JSON-SCADA con
 
 ## Local Contracts
 
-- **Language:** Node.js
+- **Runtime:** Node.js 20.19.0 or newer
 - **Main entry:** `index.js`
 - **Pattern:** standard Node.js app (`app-defs.js`, `load-config.js`, `simple-logger.js`)
 - **Config:** JSON-SCADA config file (`JS_CONFIG_FILE`)

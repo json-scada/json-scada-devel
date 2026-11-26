@@ -7,7 +7,7 @@ The workbook is `json-scada-config.xlsm` (shipped in this directory, and also in
 `conf-templates/`). Enable macros in Excel and start this server before opening
 it.
 
-Requires Node.js.
+Requires Node.js 20.19.0 or newer.
 
 ## Run
 

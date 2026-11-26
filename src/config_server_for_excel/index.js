@@ -19,7 +19,7 @@
 
 const express = require('express')
 const { MongoClient, Double } = require('mongodb')
-const { parse } = require('json2csv')
+const { Parser } = require('@json2csv/plainjs')
 const Log = require('./simple-logger')
 const AppDefs = require('./app-defs')
 const LoadConfig = require('./load-config')
@@ -88,7 +88,8 @@ app.use(express.text({ limit: '200mb' }))
 const IP_BIND = process.env.JS_CSEXCEL_IP_BIND || AppDefs.IP_BIND
 const HTTP_PORT = process.env.JS_CSEXCEL_HTTP_PORT || AppDefs.HTTP_PORT
 
-app.listen(HTTP_PORT, IP_BIND, () => {
+app.listen(HTTP_PORT, IP_BIND, (error) => {
+  if (error) throw error
   Log.log('listening on ' + IP_BIND + ':' + HTTP_PORT)
 })
 
@@ -134,7 +135,7 @@ MongoClient.connect(
 
       res.setHeader('content-type', 'text/csv')
       res.setHeader('header', 'present')
-      res.send(parse(results, { fields: instFields }))
+      res.send(new Parser({ fields: instFields }).parse(results))
     })
 
     app.get('/excel/protocolDriverInstances.json', async function (req, res) {
@@ -177,7 +178,7 @@ MongoClient.connect(
 
       res.setHeader('content-type', 'text/csv')
       res.setHeader('header', 'present')
-      res.send(parse(results, { fields: connsFields }))
+      res.send(new Parser({ fields: connsFields }).parse(results))
     })
 
     app.get('/excel/connections.json', async function (req, res) {
@@ -263,7 +264,7 @@ MongoClient.connect(
 
       res.setHeader('content-type', 'text/csv')
       res.setHeader('header', 'present')
-      res.send(parse(results, { fields }))
+      res.send(new Parser({ fields }).parse(results))
     })
 
     app.get('/excel/realtimeData.json', async function (req, res) {
