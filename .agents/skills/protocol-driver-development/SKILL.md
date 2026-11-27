@@ -155,25 +155,28 @@ Tag fields a **client driver reads** to know what/how to acquire:
 A **client driver writes** new values *only* as a `$set` of the `sourceDataUpdate` object:
 
 ```json
-"sourceDataUpdate": {
-  "valueAtSource": 123.45,
-  "valueStringAtSource": "123.45",
-  "valueJsonAtSource": "{...}",
-  "asduAtSource": "M_ME_NC_1",
-  "causeOfTransmissionAtSource": "3",
-  "timeTagAtSource": {"$date": "..."},      // device timestamp (or null)
-  "timeTagAtSourceOk": true,                 // device timestamp trustworthy
-  "timeTag": {"$date": "..."},              // local time of processing
-  "invalidAtSource": false,
-  "notTopicalAtSource": false,
-  "substitutedAtSource": false,
-  "blockedAtSource": false,
-  "overflowAtSource": false,
-  "transientAtSource": false,
-  "carryAtSource": false,
-  "originator": "MY_PROTOCOL|9999|CONN_NAME"
+{
+  "sourceDataUpdate": {
+    "valueAtSource": 123.45,
+    "valueStringAtSource": "123.45",
+    "valueJsonAtSource": "{...}",
+    "asduAtSource": "M_ME_NC_1",
+    "causeOfTransmissionAtSource": "3",
+    "timeTagAtSource": {"$date": "..."},
+    "timeTagAtSourceOk": true,
+    "timeTag": {"$date": "..."},
+    "invalidAtSource": false,
+    "notTopicalAtSource": false,
+    "substitutedAtSource": false,
+    "blockedAtSource": false,
+    "overflowAtSource": false,
+    "transientAtSource": false,
+    "carryAtSource": false,
+    "originator": "MY_PROTOCOL|9999|CONN_NAME"
+  }
 }
 ```
+(`timeTagAtSource` is the device timestamp or `null`; `timeTagAtSourceOk` marks it trustworthy; `timeTag` is the local processing time.)
 
 Filter by `{protocolSourceConnectionNumber, protocolSourceObjectAddress}` (add
 `protocolSourceCommonAddress` when addresses repeat across groups). Never upsert from the
@@ -184,16 +187,18 @@ Tag fields a **server driver reads** — each tag holds a `protocolDestinations`
 (one entry per server connection publishing that tag):
 
 ```json
-"protocolDestinations": [{
-  "protocolDestinationConnectionNumber": 1001,
-  "protocolDestinationCommonAddress": 1,
-  "protocolDestinationObjectAddress": 3285,
-  "protocolDestinationASDU": 13,
-  "protocolDestinationCommandDuration": 0,
-  "protocolDestinationCommandUseSBO": false,
-  "protocolDestinationKConv1": 1, "protocolDestinationKConv2": 0,
-  "protocolDestinationGroup": 0, "protocolDestinationHoursShift": 0
-}]
+{
+  "protocolDestinations": [{
+    "protocolDestinationConnectionNumber": 1001,
+    "protocolDestinationCommonAddress": 1,
+    "protocolDestinationObjectAddress": 3285,
+    "protocolDestinationASDU": 13,
+    "protocolDestinationCommandDuration": 0,
+    "protocolDestinationCommandUseSBO": false,
+    "protocolDestinationKConv1": 1, "protocolDestinationKConv2": 0,
+    "protocolDestinationGroup": 0, "protocolDestinationHoursShift": 0
+  }]
+}
 ```
 
 Server drivers watch `realtimeData` change streams (on `sourceDataUpdate`/value changes)

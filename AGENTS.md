@@ -113,6 +113,7 @@ All protocol drivers, web UI, data processors, and tools. Contains its own child
 - [src/iec61850/iec61850_server/](src/iec61850/iec61850_server/AGENTS.md) — IEC 61850 MMS server (Go)
 - [src/iccp/](src/iccp/AGENTS.md) — ICCP TASE.2 client/server drivers (Go)
 - [src/telegraf-listener/](src/telegraf-listener/AGENTS.md) — Telegraf listener (Node.js)
+- [src/n8n-client/](src/n8n-client/AGENTS.md) — n8n workflow-automation driver (Node.js)
 - [src/plc4j-client/](src/plc4j-client/AGENTS.md) — Various PLC protocols client via PLC4X (Java)
 - [src/camera-onvif/](src/camera-onvif/AGENTS.md) — ONVIF camera (Node.js)
 - [src/cim-ems/](src/cim-ems/AGENTS.md) — CIM/CGMES EMS driver (Python)

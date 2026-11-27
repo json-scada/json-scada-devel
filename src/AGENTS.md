@@ -55,6 +55,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 - [mongofw](mongofw/AGENTS.md) — MongoDB forwarder/firewall for one-way air-gap replication (Node.js)
 - [cs_custom_processor](cs_custom_processor/AGENTS.md) — Customizable change stream data processor (TypeScript)
 - [cs_data_processor](cs_data_processor/AGENTS.md) — Change stream data processor (Node.js)
+- [cs_data_processor-go](cs_data_processor-go/AGENTS.md) — Change stream data processor (Go, drop-in alternative)
 - [process_pg_sql](process_pg_sql/AGENTS.md) — Loads the SQL files queued in `sql/` into PostgreSQL (Node.js; `process_pg_hist`/`process_pg_rtdata` services)
 - [OPC-UA-Client-Go](OPC-UA-Client-Go/AGENTS.md) — OPC UA client driver (Go, drop-in alternative, no .NET runtime)
 - [OPC-UA-Server](OPC-UA-Server/AGENTS.md) — OPC UA server driver (Node.js)
@@ -63,6 +64,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 - [iec61850/iec61850_client](iec61850/iec61850_client/AGENTS.md) — IEC 61850 MMS client driver (Go, drop-in alternative, no native library)
 - [iec61850/iec61850_server](iec61850/iec61850_server/AGENTS.md) — IEC 61850 MMS server driver (Go, drop-in alternative, no native library)
 - [telegraf-listener](telegraf-listener/AGENTS.md) — Telegraf UDP JSON listener (Node.js)
+- [n8n-client](n8n-client/AGENTS.md) — n8n workflow-automation driver (Node.js)
 - [plc4j-client](plc4j-client/AGENTS.md) — Multi-protocol PLC client on Apache PLC4X/PLC4J: Modbus, S7, ADS, OPC UA, KNXnet/IP, EtherNet/IP (Java)
 - [camera-onvif](camera-onvif/AGENTS.md) — ONVIF camera control and streaming (Node.js)
 - [custom-developments](custom-developments/AGENTS.md) — Custom web apps served under /custom-developments and their Astro + React templates
@@ -72,8 +74,8 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 
 | Component | Language | Purpose |
 |---|---|---|
-| libiec61850 | C | libiec61850 C library (submodule) |
-| libiec61850-1.6.0 | C | libiec61850 v1.6.0 (submodule) |
+| iec60870-5 | Go | IEC 60870-5-101/103/104 client and server drivers |
+| node-red-driver | Node.js | Node-RED protocol driver |
 
 ### Core Services (no AGENTS.md, use parent doc)
 
@@ -97,8 +99,6 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 | [demo_simul](demo_simul/AGENTS.md) | Node.js | Demo data simulator |
 | [grafana_alert2event](grafana_alert2event/AGENTS.md) | Node.js | Grafana alert to SCADA event bridge |
 | certificate-creator | Bash | TLS cert creation scripts |
-| ClassicClientSolutions | C# .NET | OPC Classic client libraries (submodule) |
-| ClassicServerSolutions | C# .NET | OPC Classic server libraries (submodule) |
 | opcdaaehda-client-solution-net | C# .NET | OPC DA/AE/HDA client .NET Standard |
 
 ### Dependencies (no AGENTS.md, use parent doc)
