@@ -38,8 +38,8 @@ import (
 const (
 	CopyrightMessage   = "{json:scada} OPC-UA Client Driver (Go) - Copyright 2020-2026 Ricardo L. Olsen"
 	ProtocolDriverName = "OPC-UA"
-	DriverVersion      = "0.2.1"
-	LibraryVersion     = "gopcua v0.9.1 + security events (github.com/riclolsen/opcua d13e326)"
+	DriverVersion      = "0.3.0"
+	LibraryVersion     = "gopcua v0.9.1 + security events (github.com/riclolsen/opcua 9fa11e0)"
 )
 
 // Queue and key-allocation limits, same values as the C# driver.
