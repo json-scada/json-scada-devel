@@ -22,8 +22,8 @@ RequestExecutionLevel admin
 
 ;--------------------------------
 
-!define VERSION "v.0.72"
-!define VERSION_ "0.72.0.0"
+!define VERSION "v.0.73"
+!define VERSION_ "0.73.0.0"
 
 ; PostgreSQL major version bundled in postgresql-runtime (PGBIN_1), read from pg_ctl.exe at compile time.
 ; Upgrades over data of another major keep the old runtime (see upgrade.ps1).

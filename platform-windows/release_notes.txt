@@ -137,6 +137,18 @@ Inkscape+SAGE:
 
 -------------------------------------------------------------------
 
+Notes for version 0.73:
+
+* New jscli command line client. Connect to local or remote JSON-SCADA servers over HTTPS with your existing account. Use flags to read and export tags, history, alarms and events, update point properties in batches, and issue commands or check their acknowledgment. The CLI also runs custom GraphQL and HTTP API requests and imports, exports and converts JSON, CSV, XLSX and ODS. Install from the source checkout with python -m pip install ./src/jscli.
+* Alarms Viewer: the Aggregated mode shows the latest alarm occurrence per point and acknowledges all occurrences for that point. Optional columns are saved per user. The realtime list now excludes alarms for points that no longer exist.
+* IEC 60870-5-101 and 104 servers answer station and group interrogations for the requested common address. Global interrogations still span the full connection.
+* MQTT Sparkplug B: fixed a loop of rebirth requests when duplicate edge nodes use the same identity.
+* OPC UA client updated to version 0.3.0 with an updated OPC UA library.
+* Windows service removal now waits for services to stop and terminates leftover processes from the installation before unregistering services.
+* Custom Developments templates updated to Astro 7 and require Node.js 22.23.4 or newer to build. Dependencies updated for the MCP server, log viewer, Grafana alert bridge and Excel configuration server.
+
+-------------------------------------------------------------------
+
 Notes for version 0.72:
 
 * Security Events: cyber-security events (unexpected or suspicious conditions) reported by the protocol drivers to the secEvents collection, with severity level, kind, source (protocol library or driver checks), peer identification and repeat folding. Protocols that generate them: IEC 61850 (client and server), Modbus (client and server), SunSpec (client), IEC 60870-5-101, 103 and 104 (clients, plus the 101 and 104 servers), ICCP (client and server), DNP3 (client and server) and OPC UA (client and server). Events include connections and TLS handshakes, malformed frames, unauthorized or stale commands, peer identity changes, unknown peers and protocol violations. The Security Events viewer (Admin UI, role right viewSecEvents) lists and filters them; they are removed after secEventsRetentionDays (60 by default).
