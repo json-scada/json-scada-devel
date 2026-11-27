@@ -153,7 +153,7 @@ Docker Compose setup for full JSON-SCADA demo stack.
 
 - `compile-docker/` — Docker Compose build of the demo binaries (Go drivers, PLC4J) and Node.js modules into `demo-docker/bin` and `src/`; keep its service set in step with the root `Dockerfile` build stages and `demo-docker/docker-compose.yaml` (see [compile-docker/README.md](compile-docker/README.md))
 - `README.md` — authoritative project front page; `index.md` is generated from it by `node docs/sync-index.mjs` (never edit `index.md` by hand). After changing either file or any heading they link to, run `node docs/sync-index.mjs --check` (fails on a stale `index.md` or a broken link/anchor)
-- `Dockerfile` — Main Docker image build
+- `Dockerfile` — Main Docker image build. The OPC UA server uses the writable `/app/json-scada/conf` volume as its XDG config directory for the generated certificate store.
 - `supervisord.conf` — Process manager config
 - `.idx/` — IDX development environment config
 - `.agents/skills/` — agent skills; `svg-scada` has an identical copy under `svg/.agents/skills/` (see [svg/AGENTS.md](svg/AGENTS.md))

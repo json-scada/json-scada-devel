@@ -480,6 +480,10 @@ RUN chmod +x /docker-entrypoint-initdb.d/mongo/*.sh \
 # inside conf/, so the service user must be able to write there.
 RUN chown -R jsonscada /app/json-scada/conf
 
+# Supervisor switches user without changing HOME. Give the OPC UA server a
+# writable XDG config directory for node-opcua's certificate store.
+RUN printf '\nenvironment=XDG_CONFIG_HOME="/app/json-scada/conf"\n' >> /etc/supervisor/conf.d/opcua_server.ini
+
 # Create a master database initialization script
 RUN echo '#!/bin/bash\n\
 export POSTGRES_HOST_AUTH_METHOD=trust\n\
