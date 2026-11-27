@@ -24,4 +24,4 @@ require (
 replace github.com/riclolsen/json-scada/src/go-common => ../go-common
 
 // deviation D36: the riclolsen fork adds security event reporting.
-replace github.com/gopcua/opcua => github.com/riclolsen/opcua v0.0.0-20261123000924-d13e326cfd70
+replace github.com/gopcua/opcua => github.com/riclolsen/opcua v0.0.0-20261127131115-9fa11e022e23
