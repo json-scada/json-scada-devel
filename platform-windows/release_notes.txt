@@ -140,6 +140,7 @@ Inkscape+SAGE:
 Notes for version 0.73:
 
 * New jscli command line client. Connect to local or remote JSON-SCADA servers over HTTPS with your existing account. Use flags to read and export tags, history, alarms and events, update point properties in batches, and issue commands or check their acknowledgment. The CLI also runs custom GraphQL and HTTP API requests and imports, exports and converts JSON, CSV, XLSX and ODS. Install from the source checkout with python -m pip install ./src/jscli.
+* The JSON-SCADA MCP server now supports Skills over MCP on stdio and HTTP. Compatible clients can discover built-in skills for GraphQL integrations, driver development and SVG display authoring, plus a configuration skill for each of the 29 protocol drivers covering connection settings, point mapping and verification.
 * Alarms Viewer: the Aggregated mode shows the latest alarm occurrence per point and acknowledges all occurrences for that point. Optional columns are saved per user. The realtime list now excludes alarms for points that no longer exist.
 * IEC 60870-5-101 and 104 servers answer station and group interrogations for the requested common address. Global interrogations still span the full connection.
 * MQTT Sparkplug B: fixed a loop of rebirth requests when duplicate edge nodes use the same identity.
