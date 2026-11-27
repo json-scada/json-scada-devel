@@ -94,6 +94,7 @@ All source code for the JSON-SCADA platform: protocol drivers, web UI, data proc
 | log-io | Node.js | Log streaming server, file input and UI. The UI build and tests require Node.js 22.22.2+ on 22.x, 24.15.0+ on 24.x, or 26+ |
 | [carbone-reports](carbone-reports/AGENTS.md) | Node.js | Carbone report generation example |
 | [backup-mongo](backup-mongo/AGENTS.md) | Node.js | Configuration collection export to mongo shell scripts |
+| `jscli` (`jscli/AGENTS.md`) | Python | Authenticated HTTPS client for the JSON-SCADA APIs and data exchange |
 | [updateUser](updateUser/AGENTS.md) | Node.js | User creation and password reset utility |
 | [alarm_beep](alarm_beep/AGENTS.md) | Node.js | Alarm audio notification |
 | [demo_simul](demo_simul/AGENTS.md) | Node.js | Demo data simulator |

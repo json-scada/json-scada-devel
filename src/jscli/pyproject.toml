@@ -1,0 +1,18 @@
+[build-system]
+requires = ["setuptools>=77"]
+build-backend = "setuptools.build_meta"
+
+[project]
+name = "json-scada-jscli"
+version = "0.1.0"
+description = "HTTPS command line client for the JSON-SCADA API"
+readme = "README.md"
+requires-python = ">=3.10"
+license = "GPL-3.0-or-later"
+dependencies = ["defusedxml>=0.7.1,<1", "odfpy>=1.4.1,<2", "openpyxl>=3.1.5,<4"]
+
+[project.scripts]
+jscli = "jscli.cli:main"
+
+[tool.setuptools.packages.find]
+include = ["jscli"]

@@ -143,6 +143,7 @@ Open http://127.0.0.1 on a browser (user="admin" and password="jsonscada"). See 
 - [Custom Data Processor](src/cs_custom_processor/README.md)
 - [Custom Developments](src/custom-developments/README.md)
 - [Realtime Data Server](src/server_realtime_auth/README.md)
+- `jscli` command line client for the HTTPS API and JSON, CSV, XLSX, and ODS data exchange. See `src/jscli/README.md`.
 - [Report Generators](docs/report_generators.md)
 - [Deep Wiki](https://deepwiki.com/riclolsen/json-scada)
 
