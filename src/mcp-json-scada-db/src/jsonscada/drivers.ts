@@ -21,7 +21,12 @@ import { fileURLToPath } from 'node:url'
 // Protocol driver names accepted by the system (mirrors the AdminUI
 // ProtocolDriverInstancesTab list), with the README (relative to the src/
 // folder of the installation) that documents the driver's connection settings.
-export const PROTOCOL_DRIVERS: Record<string, { doc?: string; role: string }> =
+interface ProtocolDriver {
+  doc?: string
+  role: string
+}
+
+const drivers =
   {
     'IEC60870-5-104': { doc: 'iec60870-5/cmd/iec104client/README.md', role: 'client' },
     'IEC60870-5-104_SERVER': { doc: 'iec60870-5/cmd/iec104server/README.md', role: 'server' },
@@ -52,11 +57,14 @@ export const PROTOCOL_DRIVERS: Record<string, { doc?: string; role: string }> =
     PI_DATA_ARCHIVE_CLIENT: { role: 'client' },
     ONVIF: { doc: 'camera-onvif/README.md', role: 'client' },
     'CIM-EMS': { doc: 'cim-ems/README.md', role: 'client' },
-  }
+  } satisfies Record<string, ProtocolDriver>
+
+export type ProtocolDriverName = keyof typeof drivers
+export const PROTOCOL_DRIVERS: Record<ProtocolDriverName, ProtocolDriver> = drivers
 
 export const PROTOCOL_DRIVER_NAMES = Object.keys(PROTOCOL_DRIVERS) as [
-  string,
-  ...string[],
+  ProtocolDriverName,
+  ...ProtocolDriverName[],
 ]
 
 // The src/ folder of the installation (this package lives in src/mcp-json-scada-db,

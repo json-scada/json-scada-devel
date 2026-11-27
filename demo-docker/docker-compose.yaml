@@ -446,6 +446,7 @@ services:
     volumes:
       # driver READMEs under src/ are served by the driver documentation tools
       - ../src:/src:ro
+      - ../.agents/skills:/.agents/skills:ro
       - ./conf:/conf
       - ./log:/log
     links:

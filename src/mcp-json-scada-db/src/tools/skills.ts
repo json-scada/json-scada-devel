@@ -40,10 +40,15 @@ export function svgSkillCandidates(): string[] {
 }
 
 export async function readSvgSkill(): Promise<{ file: string; text: string }> {
+  const { file, bytes } = await readSvgSkillFile()
+  return { file, text: bytes.toString('utf8') }
+}
+
+export async function readSvgSkillFile(): Promise<{ file: string; bytes: Buffer }> {
   const tried: string[] = []
   for (const file of svgSkillCandidates()) {
     try {
-      return { file, text: await fs.readFile(file, 'utf8') }
+      return { file, bytes: await fs.readFile(file) }
     } catch {
       tried.push(file)
     }

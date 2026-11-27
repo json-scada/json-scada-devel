@@ -165,6 +165,7 @@ RUN mkdir -p /var/log/supervisor \
 # We assume the context is the project root (one level up from demo-docker)
 COPY ./src/ /app/json-scada/src/
 COPY ./svg/ /app/json-scada/svg/
+COPY ./.agents/skills/ /app/json-scada/.agents/skills/
 RUN chmod o+w -R /app/json-scada/svg
 
 # src/svgedit is a git submodule: a checkout made without --recursive leaves it

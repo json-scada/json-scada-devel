@@ -46,6 +46,8 @@ import { CIM_EMS_GUIDE } from "./jsonscada/cim-ems.js";
 import { registerDisplayAdminTools, registerDisplayReadTools } from "./tools/displays.js";
 import { registerLogTools } from "./tools/logs.js";
 import { registerSkillTools } from "./tools/skills.js";
+import { loadSkillCatalog } from "./skill-catalog.js";
+import type { SkillCatalog } from "@modelcontextprotocol/server/ext/skills";
 import { registerHealthTools } from "./tools/health.js";
 import { registerOperatorTools } from "./tools/operator.js";
 import { registerUserTools } from "./tools/users.js";
@@ -83,7 +85,7 @@ let cimEmsAdminTools = true;
 // Builds a fully configured MCP server instance. A factory is needed because
 // the SDK serves each stdio connection / HTTP request from its own instance.
 // The same factory serves both protocol eras (2026-07-28 and 2025-era clients).
-function buildServer(): McpServer {
+function buildServer(skills: SkillCatalog): McpServer {
   const server = new McpServer({
     name: packageInfo.name || "mcp-json-scada-db",
     version: packageInfo.version || "0.0.0",
@@ -104,6 +106,7 @@ function buildServer(): McpServer {
   registerDisplayReadTools(server, mgr);
   registerLogTools(server);
   registerSkillTools(server);
+  skills.attach(server);
   registerHealthTools(server, mgr);
   registerCalculationsReadTools(server, mgr);
   registerSystemTagTools(server, mgr);
@@ -227,6 +230,8 @@ async function main() {
     });
 
   try {
+    const skills = await loadSkillCatalog();
+    const factory = () => buildServer(skills);
     if (transportType === "http") {
       const bind =
         process.env[ENV_PREFIX + "IP_BIND"] ||
@@ -239,7 +244,7 @@ async function main() {
 
       // Stateless per-request handler: serves 2026-07-28 clients natively and
       // 2025-era clients through the SDK's stateless legacy fallback.
-      const mcpHandler = toNodeHandler(createMcpHandler(() => buildServer()), {
+      const mcpHandler = toNodeHandler(createMcpHandler(factory), {
         onerror: (error) => console.error("HTTP request error:", error),
       });
 
@@ -269,7 +274,7 @@ async function main() {
         Log.log(`MCP Server running on HTTP at http://${bind}:${port}`);
       });
     } else {
-      serveStdio(() => buildServer(), {
+      serveStdio(factory, {
         onerror: (error) => console.error("stdio error:", error),
       });
       Log.log("MCP Server running on stdio");

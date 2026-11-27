@@ -33,6 +33,18 @@ Built on the MCP TypeScript SDK v2 (`@modelcontextprotocol/server`). It implemen
 - **HTTP**: stateless. Every request is handled on its own, with no `Mcp-Session-Id`. Older clients get stateless responses, and GET/DELETE session requests return `405`.
 - DNS rebinding protection: HTTP requests whose `Host`/`Origin` hostname is not in `JS_MCPJSDB_ALLOWED_HOSTS` are rejected. When that variable is unset, requests must use a localhost name if the server is bound to a loopback address, and are not checked on any other bind address.
 
+### Skills over MCP
+
+On both transports, MCP clients using protocol revision **2026-07-28** can discover `io.modelcontextprotocol/skills` in `server/discover`. Use `skills/list` to get the catalog or `skills/get` with a skill's `SKILL.md` URI to get its YAML frontmatter and file manifest. Each manifest carries the SHA-256 digest and byte size of every published file. Fetch files with `resources/read` and list directory children with `resources/directory/read`. [MCP Skills extension specification](https://modelcontextprotocol.io/extensions/skills/overview)
+
+- `skill://graphql-api-apps/SKILL.md` covers integrations with the JSON-SCADA GraphQL API.
+- `skill://protocol-driver-development/SKILL.md` covers JSON-SCADA communication driver development.
+- `skill://svg-scada/SKILL.md` covers authoring SVG displays with SCADA markup.
+
+Every driver returned by `list_protocol_drivers` also has a configuration skill. Its URI uses the lowercase driver name with underscores replaced by hyphens, such as `skill://configure-modbus-server/SKILL.md`. Each skill covers connection settings, point mapping and verification through the AdminUI or MCP tools. When installed, the driver README is available in the skill as `references/driver.md`. For PLCTAG, I104M and the PI Data Archive entries, use the reference for the driver installed at your site.
+
+The catalog loads the installed files at startup. Restart the MCP server after updating them. It uses `JS_MCPJSDB_SVG_SKILL` and the usual SVG search paths when loading `svg-scada`. The existing SVG skill tool, resource and prompt continue reading the file on demand.
+
 ## Configuration
 
 The server expects a MongoDB connection string. You can configure this via environment variables or a configuration file in the parent directory (standard {json:scada} behavior).
@@ -47,7 +59,7 @@ The server expects a MongoDB connection string. You can configure this via envir
 - `JS_MCPJSDB_ADMIN_USERNAME` / `JS_MCPJSDB_ADMIN_PASSWORD`: Credentials of an AdminUI user with an `isAdmin` role. When both are set, the configuration and process management tools are registered (see below). Unset by default.
 - `JS_MCPJSDB_ADMIN_URL`: Base URL of the AdminUI server (`server_realtime_auth`) used by those tools (defaults to `http://127.0.0.1:8080`).
 - `JS_MCPJSDB_CIM_EMS_TOOLS`: Set to `false` to leave out the CIM-EMS model, binding, run and request tools (for example when network model details must not reach the AI provider). The CIM-EMS status and result tools stay available.
-- `JS_MCPJSDB_SRC_DIR`: Installation `src` folder used to read driver documentation (defaults to the parent folder of this package).
+- `JS_MCPJSDB_SRC_DIR`: Installation `src` folder used to locate driver documentation and the neighboring `.agents/skills` directory (defaults to the parent folder of this package).
 - `JS_MCPJSDB_SVG_DIR`: Folder of the SCADA displays read by `list_displays` / `get_display` (defaults to the `svg` folder next to `src`). `save_display` writes through the AdminUI API, which always uses the installation `svg` folder.
 - `JS_MCPJSDB_SVG_SKILL`: Path of the svg-scada skill served by `get_svg_scada_skill` (defaults to `<svg dir>/.agents/skills/svg-scada/SKILL.md`, then `.agents/skills/svg-scada/SKILL.md` in the installation folder).
 - `JS_MCPJSDB_CUSTOM_DEV_DIR`: Folder of the custom developments read by `check_custom_developments` and the API reference (defaults to the `custom-developments` folder next to this package).
